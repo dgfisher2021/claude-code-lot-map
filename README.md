@@ -109,8 +109,17 @@ A terminal that shows pictures gets the map exactly as the app draws it: kitty 0
 - The animations are paused in Chromium and stepped by the renderer: up to 15 frames a second for four seconds after the map changes, 4 for the next sixteen, 2 while a call runs, and one every two seconds after that. On a WSL laptop that came to about a quarter of one core while busy and 6% at rest.
 - A picture of 12 by 24 pixels per cell is sharp on a terminal at normal scaling.
 - Inside tmux, Claude Code draws no pictures unless it is told to with `CLAUDE_CODE_FORCE_TERMINAL_IMAGES=1` and tmux has `allow-passthrough` on; lot-map follows the same rule.
-- Windows Terminal shows no pictures of this kind. On Windows, run kitty inside WSL (`sudo apt install kitty`, then `kitty`), which WSLg shows as an ordinary window.
+- Windows Terminal shows no pictures of this kind: use [a window of its own](#a-window-of-its-own) beside the session, or run kitty inside WSL (`sudo apt install kitty`, then `kitty`), which WSLg shows as an ordinary window.
 - Set `terminalPicture` to `off` to keep the cells in every terminal.
+
+### A window of its own
+
+`/lot-map window` shows the map, as the app draws it, in a pane of its own beside the session, for a terminal that shows Sixel pictures but not a mod's: Windows Terminal 1.22 and later, foot, mlterm, WezTerm.
+
+- From WSL in Windows Terminal it splits the current tab (`wt.exe -w 0 split-pane`) and starts the window there. Anywhere else it answers with the line to run in a pane of your own: `node <plugin>/renderer/view.mjs <folder>`.
+- The session keeps its live map in a temporary folder of its own while the window is wanted. The window runs the same renderer as [Pictures](#pictures), at the size of its pane, and draws each frame as Sixel, at most ten a second.
+- It closes when the session ends, or on `q` or ctrl+c. Closing it leaves the session as it was; `/lot-map window` opens it again.
+- It needs Node 22 and a Chromium, as pictures do.
 
 ## Options
 
@@ -173,13 +182,13 @@ echo '{"theme":"dark","colors":"accent=#7fb4ff,active=#b8d6ff,text=#e6edf7"}' | 
 
 ## What it shows and what it keeps
 
-The mod makes no network requests, reads no files, runs no processes, calls no model and adds nothing to the conversation. The one exception is [picture mode](#pictures) in a terminal that shows pictures, where it runs a local renderer and writes its drawing and frames to a temporary folder. Its rows live only for the session. The same on one page: [Privacy](PRIVACY.md).
+The mod makes no network requests, reads no files, runs no processes, calls no model and adds nothing to the conversation. The exceptions are [picture mode](#pictures) in a terminal that shows pictures and [the map window](#a-window-of-its-own) when you ask for it, where it runs a local renderer and writes its drawing and frames to a temporary folder. Its rows live only for the session. The same on one page: [Privacy](PRIVACY.md).
 
 Like any mod that follows tool calls, it is handed every call's whole input, including command lines and the text written to files. It takes names from that and nothing else; the code that does so is `classify` in `hooks/map.ts`. A marketplace added from this repository follows its `main` branch, so an update brings whatever is there: read the diff before updating if that matters to you.
 
 It asks Claude Code for one thing: how full the context window is, after each model step. Between sessions it keeps one thing, the name of the model last used in each folder, so that it can show a change. Each is stored under the folder's full path, in Claude Code's own store for the plugin.
 
-What its hooks do. The mod listens to the session's start, prompts, turns, model steps, tool calls, skills, compaction, and to three events of settings hooks: `PreToolUse`, where it sees whether a hook refused the call, asked for permission or took a moment, and `UserPromptSubmit` and `SessionStart`, where it sees the context a hook added. Each of its hooks passes the event on as it came and returns what came back as it was: it changes no input, no result, no context and no permission decision, and makes none of its own. Its one command, `/lot-map`, opens the pane.
+What its hooks do. The mod listens to the session's start, prompts, turns, model steps, tool calls, skills, compaction, and to three events of settings hooks: `PreToolUse`, where it sees whether a hook refused the call, asked for permission or took a moment, and `UserPromptSubmit` and `SessionStart`, where it sees the context a hook added. Each of its hooks passes the event on as it came and returns what came back as it was: it changes no input, no result, no context and no permission decision, and makes none of its own. Its one command, `/lot-map`, opens the pane; `/lot-map window` opens [a window of its own](#a-window-of-its-own).
 
 A label holds a name, never content:
 

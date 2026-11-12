@@ -262,6 +262,60 @@ async function writePicture($: EngineInterface, state: Board, now: number, setup
   await $.fs.write(`${picture.dir}/map.svg`, svg)
 }
 
+/**
+ * The map in a window of its own, for a terminal that shows Sixel pictures but not a mod's Image, such as Windows
+ * Terminal: `/lot-map window` keeps the live map in a folder (map.svg, and a heartbeat in alive) and opens
+ * renderer/view.mjs beside the session to draw it.
+ */
+const sharing: { dir?: string; timer?: Timer; written: string; beat: number } = { written: '', beat: 0 }
+
+/** Writes the map when the board has changed, and the heartbeat every few seconds, so the window knows the session lives. */
+async function share($: EngineInterface, setup: Setup): Promise<void> {
+  const dir = sharing.dir
+  if (dir === undefined) return
+  await quietly(async () => {
+    const state = await read($, board)
+    const now = await $.clock.now()
+    const seen = JSON.stringify(state)
+    if (seen !== sharing.written) {
+      sharing.written = seen
+      await $.fs.write(`${dir}/map.svg`, framedMap(state, now, setup, 920, 860))
+    }
+    if (now - sharing.beat >= 3000) {
+      sharing.beat = now
+      await $.fs.write(`${dir}/alive`, String(now))
+    }
+  })
+}
+
+/** Starts keeping the live map and opens the window beside this one in Windows Terminal; elsewhere, says how to open it. */
+async function openWindow($: EngineInterface, setup: Setup): Promise<string> {
+  if (sharing.dir === undefined) {
+    const tmp = ((await $.env.get('TMPDIR')) ?? '') || '/tmp'
+    sharing.dir = `${tmp}/lot-map-live-${Math.random().toString(36).slice(2, 10)}`
+    await share($, setup)
+    sharing.timer = $.clock.every(250, () => void share($, setup))
+  }
+  const view = `${$.plugin.root}/renderer/view.mjs`
+  const node = (await quietly(() => $.process.run(['sh', '-c', 'command -v node'])))?.stdout.trim() || 'node'
+  const distro = (await $.env.get('WSL_DISTRO_NAME')) ?? ''
+  if (distro !== '') {
+    const opened = await quietly(() =>
+      $.process.run(['wt.exe', '-w', '0', 'split-pane', '--vertical', '--size', '0.45', 'wsl.exe', '-d', distro, '--', node, view, sharing.dir ?? '']),
+    )
+    if (opened?.exitCode === 0) return setup.t.windowOpened
+  }
+  return setup.t.windowByHand(`${node} ${view} ${sharing.dir}`)
+}
+
+/** Stops keeping the live map and removes its folder; a window still open sees its heartbeat go and closes. */
+async function stopSharing($: EngineInterface): Promise<void> {
+  const dir = sharing.dir
+  sharing.timer?.cancel()
+  Object.assign(sharing, { dir: undefined, timer: undefined, written: '', beat: 0 })
+  if (dir !== undefined && /\/lot-map-live-[a-z0-9]+$/.test(dir)) await quietly(() => $.process.run(['rm', '-rf', '--', dir]))
+}
+
 /** What a settings hook added to the context: shown as the hook acting and, when it brought records, as memory. */
 async function noteContext($: EngineInterface, context: readonly string[] | undefined, when: string, setup: Setup): Promise<void> {
   const { t } = setup
@@ -300,7 +354,7 @@ export const register: Register = (on, options) => {
   const opening = { id: PANE, title: t.title, ...(setup.terminalMap ? { columns: MAP_COLUMNS, rows: MAP_ROWS } : {}) }
 
   on('session.start', async ($, e, next) => {
-    await quietly(() => $.command.register({ name: 'lot-map', description: t.command }))
+    await quietly(() => $.command.register({ name: 'lot-map', description: t.command, argumentHint: '[window]' }))
     picture.canShow = setup.terminalMap && setup.terminalPicture === 'auto' && (await quietly(() => showsPictures($))) === true
     void quietly(() => $.ui.open(opening))
     await quietly(async () => {
@@ -311,9 +365,17 @@ export const register: Register = (on, options) => {
     return next(e)
   })
 
-  on('command.run', { command: 'lot-map' }, async $ => {
+  on('command.run', { command: 'lot-map' }, async ($, e) => {
+    if (e.args.trim() === 'window') return { text: await openWindow($, setup) }
     const opened = await $.ui.open(opening)
     return { text: opened.isPlaced ? t.opened : t.cannotOpen(String(opened.reason)) }
+  })
+
+  on('session.end', async ($, e, next) => {
+    const result = await next(e)
+    // A /clear ends the conversation but not the process: the window stays for what comes next.
+    if (e.reason !== 'clear') await stopSharing($)
+    return result
   })
 
   on('ui.close', async ($, e, next) => {

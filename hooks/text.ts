@@ -27,6 +27,9 @@ export type Strings = {
   noCounts: string
   /** In a terminal pane too narrow for the map: how wide it would need to be. */
   tooNarrow: (columns: number) => string
+  /** After `/lot-map window`: the map opened in a pane of its own, or how to open it by hand. */
+  windowOpened: string
+  windowByHand: (command: string) => string
   idle: string
   context: string
   andMore: (n: number) => string
@@ -77,6 +80,8 @@ const en: Strings = {
   nothingYet: 'Nothing yet.',
   noCounts: 'No counts yet.',
   tooNarrow: columns => `Widen the pane to ${columns} columns to see the map.`,
+  windowOpened: 'Map window opened beside this one.',
+  windowByHand: command => `Run this in a pane of a terminal that shows Sixel pictures: ${command}`,
   idle: 'Nothing is running.',
   context: 'context',
   andMore: n => ` and ${n} more`,
@@ -127,6 +132,8 @@ const ru: Strings = {
   nothingYet: 'Пока ничего не было.',
   noCounts: 'Счётчики пусты.',
   tooNarrow: columns => `Расширьте панель до ${columns} столбцов, чтобы увидеть карту.`,
+  windowOpened: 'Окно с картой открыто рядом.',
+  windowByHand: command => `Запустите это в панели терминала, который показывает картинки Sixel: ${command}`,
   idle: 'Сейчас ничего не выполняется.',
   context: 'контекст',
   andMore: n => ` и ещё ${n}`,
@@ -177,6 +184,8 @@ const es: Strings = {
   nothingYet: 'Todavía nada.',
   noCounts: 'Aún no hay recuentos.',
   tooNarrow: columns => `Ensancha el panel a ${columns} columnas para ver el mapa.`,
+  windowOpened: 'Ventana del mapa abierta al lado.',
+  windowByHand: command => `Ejecuta esto en un panel de una terminal que muestre imágenes Sixel: ${command}`,
   idle: 'No hay nada en ejecución.',
   context: 'contexto',
   andMore: n => ` y ${n} más`,
@@ -227,6 +236,8 @@ const fr: Strings = {
   nothingYet: 'Rien pour le moment.',
   noCounts: 'Aucun compteur pour le moment.',
   tooNarrow: columns => `Élargissez le panneau à ${columns} colonnes pour voir la carte.`,
+  windowOpened: 'Fenêtre de la carte ouverte à côté.',
+  windowByHand: command => `Lancez ceci dans un volet d'un terminal qui affiche les images Sixel : ${command}`,
   idle: 'Rien en cours.',
   context: 'contexte',
   andMore: n => ` et ${n} de plus`,
@@ -277,6 +288,8 @@ const de: Strings = {
   nothingYet: 'Noch nichts.',
   noCounts: 'Noch keine Zählerstände.',
   tooNarrow: columns => `Verbreitern Sie das Feld auf ${columns} Spalten, um die Karte zu sehen.`,
+  windowOpened: 'Kartenfenster daneben geöffnet.',
+  windowByHand: command => `Führen Sie dies in einem Bereich eines Terminals aus, das Sixel-Bilder zeigt: ${command}`,
   idle: 'Nichts läuft.',
   context: 'Kontext',
   andMore: n => ` und ${n} weitere`,
@@ -327,6 +340,8 @@ const it: Strings = {
   nothingYet: 'Ancora niente.',
   noCounts: 'Ancora nessun conteggio.',
   tooNarrow: columns => `Allarga il pannello a ${columns} colonne per vedere la mappa.`,
+  windowOpened: 'Finestra della mappa aperta accanto.',
+  windowByHand: command => `Esegui questo in un riquadro di un terminale che mostra immagini Sixel: ${command}`,
   idle: 'Niente in esecuzione.',
   context: 'contesto',
   andMore: n => ` e altri ${n}`,
@@ -378,6 +393,8 @@ const pt: Strings = {
   nothingYet: 'Ainda nada.',
   noCounts: 'Ainda sem contagens.',
   tooNarrow: columns => `Alargue o painel para ${columns} colunas para ver o mapa.`,
+  windowOpened: 'Janela do mapa aberta ao lado.',
+  windowByHand: command => `Execute isto num painel de um terminal que mostre imagens Sixel: ${command}`,
   idle: 'Nada em execução.',
   context: 'contexto',
   andMore: n => ` e mais ${n}`,

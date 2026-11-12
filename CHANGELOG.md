@@ -2,6 +2,12 @@
 
 What changed in each version of lot-map, newest first. To get a new version, see [Updating](README.md#updating).
 
+## 0.8.0 (2026-11-12)
+
+- `/lot-map window`: the map, as the app draws it, in a pane of its own beside the session, for a terminal that shows Sixel pictures but not a mod's, such as Windows Terminal. From WSL it splits the current Windows Terminal tab; elsewhere it gives the line to run. See [A window of its own](README.md#a-window-of-its-own).
+- The window closes when the session ends, or on `q` or ctrl+c; a `/clear` keeps it.
+- [PRIVACY.md](PRIVACY.md) says what the window writes and runs.
+
 ## 0.7.1 (2026-11-12)
 
 - Fixed: when a renderer starts it clears up after renderers that were killed, and it could also remove a `lot-map-*` file or folder in the temporary directory that was not one of theirs. Now it removes only a folder holding a renderer's pid file whose process is gone.

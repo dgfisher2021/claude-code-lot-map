@@ -24,6 +24,13 @@ function sweep() {
   for (const name of readdirSync(tmpdir())) {
     if (!name.startsWith('lot-map-')) continue
     const folder = join(tmpdir(), name)
+    // A session's live map for `/lot-map window` whose heartbeat stopped long ago: its session ended without tidying up.
+    if (name.startsWith('lot-map-live-')) {
+      try {
+        if (Date.now() - statSync(join(folder, 'alive')).mtimeMs > 10 * 60_000) rmSync(folder, { recursive: true, force: true })
+      } catch {}
+      continue
+    }
     let pid
     try {
       pid = Number(readFileSync(join(folder, 'pid'), 'utf8'))
@@ -225,6 +232,8 @@ async function show() {
 
 process.on('SIGTERM', () => finish(0))
 process.on('SIGINT', () => finish(0))
+// A terminal pane that closes hangs up on everything it started.
+process.on('SIGHUP', () => finish(0))
 // Nobody reading any more: the parent is gone.
 process.stdout.on('error', () => finish(0))
 

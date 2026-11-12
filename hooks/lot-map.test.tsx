@@ -1180,6 +1180,70 @@ test('pictures stay off where the terminal shows none or the option says off', {
   await ui.unmount()
 })
 
+/** Answers `$.process.run` as a shell where node is /usr/bin/node and every command succeeds, and keeps each argv. */
+function fakeHost(on: On): string[][] {
+  const runs: string[][] = []
+  on('session.end', () => ({ sessionId: 'test' }))
+  on('process.run', (_, e) => {
+    runs.push([...e.argv])
+    return { value: { exitCode: 0, stdout: e.argv[0] === 'sh' ? '/usr/bin/node\n' : '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
+  })
+  return runs
+}
+
+test('/lot-map window keeps the live map for a window of its own and opens it beside the session in Windows Terminal', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  mock.env(on, { WSL_DISTRO_NAME: 'Ubuntu', TMPDIR: '/tmp' })
+  on('tool.call', () => ({ result: {} }))
+  const runs = fakeHost(on)
+  const written: { path: string; text: string }[] = []
+  on('fs.write', (_, e) => {
+    written.push({ path: e.path, text: e.text })
+    return { value: undefined }
+  })
+
+  await $.tool.call({ tool: 'Read', file_path: '/a/b/content.py' })
+  const answer = await $.command.run({ command: 'lot-map', args: 'window' } as never)
+  expect(answer.text).toBe('Map window opened beside this one.')
+  const wt = runs.find(argv => argv[0] === 'wt.exe') ?? []
+  const dir = wt.at(-1) ?? ''
+  expect(dir).toMatch(/^\/tmp\/lot-map-live-[a-z0-9]+$/)
+  expect(wt.slice(0, 12)).toEqual(['wt.exe', '-w', '0', 'split-pane', '--vertical', '--size', '0.45', 'wsl.exe', '-d', 'Ubuntu', '--', '/usr/bin/node'])
+  expect(wt[12]).toMatch(/\/renderer\/view\.mjs$/)
+  const maps = () => written.filter(w => w.path === `${dir}/map.svg`)
+  expect(maps().length).toBe(1)
+  expect(maps()[0]?.text).toMatch(/^<svg [^>]*width="920" height="860"/)
+  expect(written.some(w => w.path === `${dir}/alive`)).toBe(true)
+
+  // An unchanged board is not written again; a new call is.
+  await clock.advance(1000)
+  expect(maps().length).toBe(1)
+  await $.tool.call({ tool: 'Bash', command: 'make test', description: 'Run the tests' })
+  await clock.advance(300)
+  expect(maps().length).toBe(2)
+  expect(maps()[1]?.text).not.toBe(maps()[0]?.text)
+
+  // A /clear keeps the window; the end of the session takes its folder away.
+  await $.session.end({ reason: 'clear' } as never)
+  expect(runs.some(argv => argv[0] === 'rm')).toBe(false)
+  await $.session.end({ reason: 'other' } as never)
+  expect(runs.at(-1)).toEqual(['rm', '-rf', '--', dir])
+})
+
+test('outside Windows Terminal /lot-map window says how to open the window by hand, and /lot-map still opens the pane', async ($, on) => {
+  mock.clock(on, { now: NOW })
+  mock.env(on, { TMPDIR: '/tmp' })
+  const runs = fakeHost(on)
+  on('fs.write', () => ({ value: undefined }))
+  on('ui.open', () => ({ value: { isPlaced: true } }))
+
+  const answer = await $.command.run({ command: 'lot-map', args: 'window' } as never)
+  expect(answer.text).toMatch(/^Run this in a pane of a terminal that shows Sixel pictures: \/usr\/bin\/node \S+\/renderer\/view\.mjs \/tmp\/lot-map-live-[a-z0-9]+$/)
+  expect(runs.some(argv => argv[0] === 'wt.exe')).toBe(false)
+  expect((await $.command.run({ command: 'lot-map', args: '' } as never)).text).toBe('Work map opened.')
+  await $.session.end({ reason: 'other' } as never)
+})
+
 test('a map the terminal no longer holds stops asking to be painted', async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
   on('tool.call', () => ({ result: {} }))
