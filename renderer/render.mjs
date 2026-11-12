@@ -16,15 +16,25 @@ import { mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, statSync, w
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-/** Removes what renderers that ended without tidying up left behind: their folders say which process they were. */
+/**
+ * Removes what renderers that ended without tidying up left behind. Only a folder with a renderer's pid file whose
+ * process is gone is removed: anything else of that name is not this renderer's to touch.
+ */
 function sweep() {
   for (const name of readdirSync(tmpdir())) {
     if (!name.startsWith('lot-map-')) continue
     const folder = join(tmpdir(), name)
+    let pid
     try {
-      process.kill(Number(readFileSync(join(folder, 'pid'), 'utf8')), 0)
+      pid = Number(readFileSync(join(folder, 'pid'), 'utf8'))
+    } catch {
+      continue
+    }
+    if (!(pid > 0)) continue
+    try {
+      process.kill(pid, 0)
     } catch (error) {
-      if (error.code !== 'EPERM') rmSync(folder, { recursive: true, force: true })
+      if (error.code === 'ESRCH') rmSync(folder, { recursive: true, force: true })
     }
   }
 }

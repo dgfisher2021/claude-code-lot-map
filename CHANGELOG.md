@@ -2,6 +2,10 @@
 
 What changed in each version of lot-map, newest first. To get a new version, see [Updating](README.md#updating).
 
+## 0.7.1 (2026-11-12)
+
+- Fixed: when a renderer starts it clears up after renderers that were killed, and it could also remove a `lot-map-*` file or folder in the temporary directory that was not one of theirs. Now it removes only a folder holding a renderer's pid file whose process is gone.
+
 ## 0.7.0 (2026-11-12)
 
 - Pictures in a terminal that shows them (kitty, Ghostty, iTerm2 3.5 and later): headless Chromium paints the map exactly as the app draws it, and the pane shows each frame. Everywhere else, and whenever a picture is refused, the map stays in cells. See [Pictures](README.md#pictures).
