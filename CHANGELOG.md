@@ -2,6 +2,11 @@
 
 What changed in each version of lot-map, newest first. To get a new version, see [Updating](README.md#updating).
 
+## 0.8.1 (2026-11-12)
+
+- Fixed: the map window opened black and closed. A pane Windows Terminal starts through `wsl.exe` has a bare PATH, without `~/.local/bin`, so the renderer found no Chromium, after waiting on the snap `chromium-browser`, whose `--version` never returns on WSL. `/lot-map window` now hands the window the Chromium the session finds, and the renderer also looks in `~/.local/bin` and `~/bin` before `chromium-browser`, waiting at most five seconds on each.
+- The window says "Starting the map…" until the first picture, and when the map cannot be drawn it says why and stays until `q`.
+
 ## 0.8.0 (2026-11-12)
 
 - `/lot-map window`: the map, as the app draws it, in a pane of its own beside the session, for a terminal that shows Sixel pictures but not a mod's, such as Windows Terminal. From WSL it splits the current Windows Terminal tab; elsewhere it gives the line to run. See [A window of its own](README.md#a-window-of-its-own).

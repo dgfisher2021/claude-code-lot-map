@@ -73,8 +73,14 @@ function hint() {
   out.write(`\x1b[${size.rows};1H\x1b[2mq closes this window\x1b[0m`)
 }
 
+/** A line in the middle of the window, until the first picture covers it. */
+function say(text) {
+  out.write(`\x1b[${Math.max(1, Math.floor(size.rows / 2))};1H\x1b[2K${text}`)
+}
+
 out.write('\x1b[?25l\x1b[2J')
 hint()
+say('Starting the map…')
 if (asked) out.write('\x1b[16t')
 out.on('resize', relayout)
 
@@ -111,12 +117,16 @@ createInterface({ input: renderer.stdout }).on('line', line => {
     rdir = line.slice(6)
     feed()
   } else if (line.startsWith('frame ')) draw()
-  else if (line.startsWith('error ')) {
-    out.write(`\x1b[1;1H${line.slice(6)}`)
-    setTimeout(() => quit(1), 4000)
-  }
+  else if (line.startsWith('error ')) failed = line.slice(6)
 })
-renderer.on('exit', () => quit(0))
+// Without its renderer the window has nothing to show: it says why, and stays until a key closes it.
+let failed = ''
+renderer.on('exit', () => {
+  if (isQuitting) return
+  out.write('\x1b[2J')
+  say(`The map cannot be drawn: ${failed || 'its renderer stopped'}.`)
+  out.write(`\x1b[${size.rows};1H\x1b[2mpress q to close this window\x1b[0m`)
+})
 
 /** Draws the newest frame, unless one went out a moment ago or the terminal is still reading it: then it is drawn later. */
 function draw() {

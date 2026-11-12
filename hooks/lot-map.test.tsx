@@ -1180,13 +1180,15 @@ test('pictures stay off where the terminal shows none or the option says off', {
   await ui.unmount()
 })
 
-/** Answers `$.process.run` as a shell where node is /usr/bin/node and every command succeeds, and keeps each argv. */
+/** Answers `$.process.run` as a host with node and a chromium launcher on the session's PATH, and keeps each argv. */
 function fakeHost(on: On): string[][] {
   const runs: string[][] = []
   on('session.end', () => ({ sessionId: 'test' }))
   on('process.run', (_, e) => {
     runs.push([...e.argv])
-    return { value: { exitCode: 0, stdout: e.argv[0] === 'sh' ? '/usr/bin/node\n' : '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
+    const script = e.argv[0] === 'sh' ? (e.argv[2] ?? '') : ''
+    const stdout = script.includes('node') ? '/usr/bin/node\n' : script.includes('chromium') ? '/home/u/.local/bin/chromium\n' : ''
+    return { value: { exitCode: 0, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
   })
   return runs
 }
@@ -1208,8 +1210,24 @@ test('/lot-map window keeps the live map for a window of its own and opens it be
   const wt = runs.find(argv => argv[0] === 'wt.exe') ?? []
   const dir = wt.at(-1) ?? ''
   expect(dir).toMatch(/^\/tmp\/lot-map-live-[a-z0-9]+$/)
-  expect(wt.slice(0, 12)).toEqual(['wt.exe', '-w', '0', 'split-pane', '--vertical', '--size', '0.45', 'wsl.exe', '-d', 'Ubuntu', '--', '/usr/bin/node'])
-  expect(wt[12]).toMatch(/\/renderer\/view\.mjs$/)
+  // The pane starts with a bare PATH: node and Chromium go in as found in the session.
+  expect(wt.slice(0, 14)).toEqual([
+    'wt.exe',
+    '-w',
+    '0',
+    'split-pane',
+    '--vertical',
+    '--size',
+    '0.45',
+    'wsl.exe',
+    '-d',
+    'Ubuntu',
+    '--',
+    'env',
+    'LOT_MAP_CHROMIUM=/home/u/.local/bin/chromium',
+    '/usr/bin/node',
+  ])
+  expect(wt[14]).toMatch(/\/renderer\/view\.mjs$/)
   const maps = () => written.filter(w => w.path === `${dir}/map.svg`)
   expect(maps().length).toBe(1)
   expect(maps()[0]?.text).toMatch(/^<svg [^>]*width="920" height="860"/)
@@ -1238,7 +1256,9 @@ test('outside Windows Terminal /lot-map window says how to open the window by ha
   on('ui.open', () => ({ value: { isPlaced: true } }))
 
   const answer = await $.command.run({ command: 'lot-map', args: 'window' } as never)
-  expect(answer.text).toMatch(/^Run this in a pane of a terminal that shows Sixel pictures: \/usr\/bin\/node \S+\/renderer\/view\.mjs \/tmp\/lot-map-live-[a-z0-9]+$/)
+  expect(answer.text).toMatch(
+    /^Run this in a pane of a terminal that shows Sixel pictures: env LOT_MAP_CHROMIUM=\/home\/u\/\.local\/bin\/chromium \/usr\/bin\/node \S+\/renderer\/view\.mjs \/tmp\/lot-map-live-[a-z0-9]+$/,
+  )
   expect(runs.some(argv => argv[0] === 'wt.exe')).toBe(false)
   expect((await $.command.run({ command: 'lot-map', args: '' } as never)).text).toBe('Work map opened.')
   await $.session.end({ reason: 'other' } as never)

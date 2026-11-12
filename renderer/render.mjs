@@ -8,7 +8,8 @@
 //   error <text>  the renderer cannot run; it exits
 // The size of the picture is the width and height of map.svg's root element; data-running="1" there says a call runs.
 //
-// Chromium is LOT_MAP_CHROMIUM when set, else the first of chromium, chromium-browser, google-chrome on PATH that runs.
+// Chromium is LOT_MAP_CHROMIUM when set, else the first that runs of chromium on PATH, ~/.local/bin/chromium,
+// ~/bin/chromium, google-chrome, and chromium-browser.
 // It is driven over a pipe, never a port, and goes with this process. The process ends with its parent.
 
 import { spawn, spawnSync } from 'node:child_process'
@@ -89,8 +90,12 @@ function fail(text) {
 
 function findChromium() {
   const named = process.env.LOT_MAP_CHROMIUM
-  for (const bin of named ? [named] : ['chromium', 'chromium-browser', 'google-chrome', 'google-chrome-stable']) {
-    const probe = spawnSync(bin, ['--version'], { encoding: 'utf8', timeout: 15_000 })
+  // A process started without a login shell (a pane wsl.exe opens) has no ~/.local/bin on its PATH: look there too,
+  // before chromium-browser, which on WSL is often a snap wrapper whose --version never returns.
+  const home = process.env.HOME ?? ''
+  const own = home === '' ? [] : [join(home, '.local/bin/chromium'), join(home, 'bin/chromium')]
+  for (const bin of named ? [named] : ['chromium', ...own, 'google-chrome', 'google-chrome-stable', 'chromium-browser']) {
+    const probe = spawnSync(bin, ['--version'], { encoding: 'utf8', timeout: 5_000 })
     if (probe.status === 0 && /chrom/i.test(probe.stdout)) return bin
   }
   return undefined

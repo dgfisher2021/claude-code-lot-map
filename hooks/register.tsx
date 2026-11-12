@@ -297,15 +297,17 @@ async function openWindow($: EngineInterface, setup: Setup): Promise<string> {
     sharing.timer = $.clock.every(250, () => void share($, setup))
   }
   const view = `${$.plugin.root}/renderer/view.mjs`
+  // Found here, where the session's PATH has them: a pane wsl.exe opens starts with a bare PATH that has neither.
   const node = (await quietly(() => $.process.run(['sh', '-c', 'command -v node'])))?.stdout.trim() || 'node'
+  const chromium = (await quietly(() => $.process.run(['sh', '-c', 'command -v chromium || command -v google-chrome'])))?.stdout.trim().split('\n')[0] ?? ''
+  const found = chromium !== '' && !/\s/.test(chromium) ? [`LOT_MAP_CHROMIUM=${chromium}`] : []
+  const command = ['env', ...found, node, view, sharing.dir ?? '']
   const distro = (await $.env.get('WSL_DISTRO_NAME')) ?? ''
   if (distro !== '') {
-    const opened = await quietly(() =>
-      $.process.run(['wt.exe', '-w', '0', 'split-pane', '--vertical', '--size', '0.45', 'wsl.exe', '-d', distro, '--', node, view, sharing.dir ?? '']),
-    )
+    const opened = await quietly(() => $.process.run(['wt.exe', '-w', '0', 'split-pane', '--vertical', '--size', '0.45', 'wsl.exe', '-d', distro, '--', ...command]))
     if (opened?.exitCode === 0) return setup.t.windowOpened
   }
-  return setup.t.windowByHand(`${node} ${view} ${sharing.dir}`)
+  return setup.t.windowByHand(command.join(' '))
 }
 
 /** Stops keeping the live map and removes its folder; a window still open sees its heartbeat go and closes. */
