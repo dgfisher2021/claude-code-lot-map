@@ -101,6 +101,17 @@ It moves because the mod repaints it in place, about 25 times a second while som
 - `background` set to `transparent` leaves the terminal's own background showing.
 - Set `terminalMap` to `false` to keep only the rows of text.
 
+### Pictures
+
+A terminal that shows pictures gets the map exactly as the app draws it: kitty 0.28 and later, Ghostty, and iTerm2 3.5 and later, the terminals in which Claude Code draws a mod's `Image`. There `renderer/render.mjs` paints the map's own SVG in headless Chromium, animations and all, and the pane shows each frame it paints. The cells stay for every other terminal, and take over at once if anything about the pictures fails.
+
+- It needs Node 22 or later and a Chromium that runs: the first of `chromium`, `chromium-browser`, `google-chrome` on your PATH, or the one `LOT_MAP_CHROMIUM` names.
+- The animations are paused in Chromium and stepped by the renderer: up to 15 frames a second for four seconds after the map changes, 4 for the next sixteen, 2 while a call runs, and one every two seconds after that. On a WSL laptop that came to about a quarter of one core while busy and 6% at rest.
+- A picture of 12 by 24 pixels per cell is sharp on a terminal at normal scaling.
+- Inside tmux, Claude Code draws no pictures unless it is told to with `CLAUDE_CODE_FORCE_TERMINAL_IMAGES=1` and tmux has `allow-passthrough` on; lot-map follows the same rule.
+- Windows Terminal shows no pictures of this kind. On Windows, run kitty inside WSL (`sudo apt install kitty`, then `kitty`), which WSLg shows as an ordinary window.
+- Set `terminalPicture` to `off` to keep the cells in every terminal.
+
 ## Options
 
 The install offers them on a screen. Later, use `/config` in a terminal or `claude plugin configure`, then restart the session.
@@ -120,6 +131,7 @@ The install offers them on a screen. Later, use `/config` in a terminal or `clau
 | `background` | `solid` | the map's own background, or `transparent`, which lets the pane behind it show through. The rim around the labels keeps the background's colour, so on a surface of another shade it shows as a faint halo |
 | `colors` | none | colours of your own, each as `name=#rrggbb`; see [Colours of your own](#colours-of-your-own) |
 | `terminalMap` | `true` | in a terminal, paint the map in cells above the rows; `false` keeps the rows and one line of counts |
+| `terminalPicture` | `auto` | in a terminal that shows pictures, `auto` has headless Chromium paint the map as the app draws it; `off` keeps the cells. See [Pictures](#pictures) |
 | `layout` | `you-top` | where you are on the map: `you-top`, or `you-bottom`, which turns the ring half a turn so that you are at the bottom and the network and the browser at the top |
 
 For example, Russian labels and your own memory server:
@@ -161,7 +173,7 @@ echo '{"theme":"dark","colors":"accent=#7fb4ff,active=#b8d6ff,text=#e6edf7"}' | 
 
 ## What it shows and what it keeps
 
-The mod makes no network requests, reads no files, runs no processes, calls no model and adds nothing to the conversation. Its rows live only for the session. The same on one page: [Privacy](PRIVACY.md).
+The mod makes no network requests, reads no files, runs no processes, calls no model and adds nothing to the conversation. The one exception is [picture mode](#pictures) in a terminal that shows pictures, where it runs a local renderer and writes its drawing and frames to a temporary folder. Its rows live only for the session. The same on one page: [Privacy](PRIVACY.md).
 
 Like any mod that follows tool calls, it is handed every call's whole input, including command lines and the text written to files. It takes names from that and nothing else; the code that does so is `classify` in `hooks/map.ts`. A marketplace added from this repository follows its `main` branch, so an update brings whatever is there: read the diff before updating if that matters to you.
 
@@ -191,7 +203,7 @@ claude plugin test .
 claude plugin validate .
 ```
 
-The terminal's map is painted by `hooks/raster.ts` from the same geometry and timings as the drawing in `hooks/map.ts`.
+The terminal's map is painted by `hooks/raster.ts` from the same geometry and timings as the drawing in `hooks/map.ts`. Its pictures come from `renderer/render.mjs`, which takes `map.svg` and gives back `frame.png`, one line on its output for each: run it by hand with `node renderer/render.mjs` and write a map into the folder its first line names.
 
 Words live in `hooks/text.ts`; a new language is one more table there and one more value of `language` in `.claude-plugin/plugin.json`.
 

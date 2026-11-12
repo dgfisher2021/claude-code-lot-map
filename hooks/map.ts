@@ -47,6 +47,8 @@ export type Setup = {
   layout: 'you-top' | 'you-bottom'
   /** Whether a terminal draws the map in cells above the rows, or the rows alone. */
   terminalMap: boolean
+  /** In a terminal that shows pictures, whether the map is a picture a browser paints (`auto`) or stays in cells (`off`). */
+  terminalPicture: 'auto' | 'off'
 }
 
 const list = (v: unknown): string[] =>
@@ -74,6 +76,7 @@ export function setupFrom(options: Readonly<Record<string, unknown>> = {}): Setu
     colors: colorsFrom(options.colors),
     layout: options.layout === 'you-bottom' ? 'you-bottom' : 'you-top',
     terminalMap: options.terminalMap !== false,
+    terminalPicture: options.terminalPicture === 'off' ? 'off' : 'auto',
   }
 }
 
@@ -758,7 +761,21 @@ function station(s: (typeof STATIONS)[number], i: number, { entries, board, now,
 }
 
 
-export function drawMap(board: Board, now: number, setup: Setup): string {
+/**
+ * The map as one picture of `width` by `height` pixels for a terminal's renderer: centred on its ground, in the dark
+ * palette when the theme is `auto`, since a terminal does not say its colours and a headless browser reports light.
+ */
+export function framedMap(board: Board, now: number, setup: Setup, width: number, height: number): string {
+  const own: Setup = setup.theme === 'auto' ? { ...setup, theme: 'dark' } : setup
+  // Tells the renderer that a call runs, so it keeps the clock hands moving while nothing else changes.
+  const running = motionOf(board, now).anyRunning ? ' data-running="1"' : ''
+  return (
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${Math.round(width)}" height="${Math.round(height)}"${running} style="display:block">` +
+    `<rect width="100%" height="100%" fill="${paletteOf(own).ground}"/>${drawMap(board, now, own, true)}</svg>`
+  )
+}
+
+export function drawMap(board: Board, now: number, setup: Setup, isFilling = false): string {
   const c = paletteOf(setup)
   orient(setup)
   const core: Point = { x: CX, y: CY }
@@ -875,8 +892,9 @@ export function drawMap(board: Board, now: number, setup: Setup): string {
       `<animate attributeName="opacity" values=".6;0" ${leaving}/></circle>`
   }
 
-  // Twice the viewBox, so the picture fills whatever room the pane gives it.
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W * 2}" height="${H * 2}">${setup.theme === 'auto' ? lightRules(setup.colors) : ''}${body}</svg>`
+  // Twice the viewBox, so the picture fills whatever room the pane gives it; or the whole box it is framed in.
+  const size = isFilling ? 'width="100%" height="100%"' : `width="${W * 2}" height="${H * 2}"`
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" ${size}>${setup.theme === 'auto' ? lightRules(setup.colors) : ''}${body}</svg>`
 }
 
 function escapeXml(text: string): string {

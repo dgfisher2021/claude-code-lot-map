@@ -2,12 +2,12 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register, Timer } from 'claude-code'
 
 import type { Board, Entry, StationId, Status } from '../types'
-import { STATIONS, classify, clean, describeNow, drawMap, firstLine, foldRows, formatMs, memoryIds, setupFrom, shortModel, taskNotice, taskOf } from './map'
+import { STATIONS, classify, clean, describeNow, drawMap, firstLine, foldRows, formatMs, framedMap, memoryIds, setupFrom, shortModel, taskNotice, taskOf } from './map'
 import type { Setup } from './map'
-import { MAP_COLUMNS, MAP_MIN_COLUMNS, MAP_ROWS, mapSize, paceOf, paintMap } from './raster'
+import { MAP_COLUMNS, MAP_MIN_COLUMNS, MAP_ROWS, PICTURE_CELL, mapSize, paceOf, paintMap } from './raster'
 
 const PANE = 'lot-map'
-/** The terminal map's Raster, by the key a repaint names it with. */
+/** The terminal map's Raster or Image, by the key a repaint names it with. */
 const MAP = 'map'
 const KEEP = 80
 const CREW = 12
@@ -172,6 +172,96 @@ async function frame($: EngineInterface, setup: Setup): Promise<void> {
   if (reel.shown !== undefined && reel.tick === undefined) soon($, setup, reel.shown === size ? wait : 40)
 }
 
+/**
+ * The terminal's map as pictures. Where the terminal shows an Image, a renderer (renderer/render.mjs) paints the map's
+ * own SVG in headless Chromium and says when each frame is written; the pane shows the newest. Anything that fails
+ * leaves the map in cells.
+ */
+const picture: {
+  /** Whether this terminal shows pictures: unknown until the session starts. */
+  canShow?: boolean
+  /** The renderer's folder, once it is ready: it reads map.svg there and writes frame.png. */
+  dir?: string
+  generation: number
+  isRunning: boolean
+  isStopping: boolean
+  /** The terminal drew the picture's alt instead: cells for the rest of the session. */
+  isRefused: boolean
+  /** Whether the pane now holds the picture, so that a new frame is swapped in place. */
+  isShown: boolean
+  written: string
+} = { generation: 0, isRunning: false, isStopping: false, isRefused: false, isShown: false, written: '' }
+
+/** Whether the terminal draws an Image as a picture, as Claude Code decides it: kitty, Ghostty, iTerm2, or forced. */
+async function showsPictures($: EngineInterface): Promise<boolean> {
+  if ((await $.env.get('CLAUDE_CODE_FORCE_TERMINAL_IMAGES')) === '1') return true
+  if (((await $.env.get('TMUX')) ?? '') !== '') return false
+  const term = (await $.env.get('TERM')) ?? ''
+  const program = (await $.env.get('TERM_PROGRAM')) ?? ''
+  const kitty = (await $.env.get('KITTY_WINDOW_ID')) ?? ''
+  return term === 'xterm-kitty' || term === 'xterm-ghostty' || program === 'ghostty' || program === 'iTerm.app' || kitty !== ''
+}
+
+const frameSource = (dir: string, generation: number) => ({ file: `${dir}/frame.png`, format: 'png' as const, generation })
+
+/** Starts the renderer once; its life is the loop over what it writes, which ends with it or when the pane closes. */
+function startRenderer($: EngineInterface): void {
+  if (picture.isRunning || picture.isRefused) return
+  picture.isRunning = true
+  picture.isStopping = false
+  void (async () => {
+    try {
+      let rest = ''
+      for await (const { stream, text } of $.process.spawn({ argv: ['node', `${$.plugin.root}/renderer/render.mjs`] })) {
+        if (picture.isStopping) break
+        if (stream !== 'stdout') continue
+        rest += text
+        for (let at = rest.indexOf('\n'); at !== -1; at = rest.indexOf('\n')) {
+          await heard($, rest.slice(0, at))
+          rest = rest.slice(at + 1)
+        }
+      }
+    } catch {
+      // No node, no Chromium, no processes here: the map stays in cells.
+    } finally {
+      Object.assign(picture, { isRunning: false, dir: undefined, generation: 0, written: '', isShown: false })
+      await quietly(async () => $.ui.invalidate('ui.render'))
+    }
+  })()
+}
+
+/** One line from the renderer: it is ready, a frame is written, or it cannot run. */
+async function heard($: EngineInterface, line: string): Promise<void> {
+  const [word = '', ...rest] = line.split(' ')
+  const value = rest.join(' ')
+  if (word === 'ready' && value.startsWith('/')) {
+    picture.dir = value
+    await quietly(async () => $.ui.invalidate('ui.render'))
+  } else if (word === 'frame' && picture.dir !== undefined) {
+    picture.generation = Number(value) || picture.generation + 1
+    if (!picture.isShown) {
+      await quietly(async () => $.ui.invalidate('ui.render'))
+      return
+    }
+    const { deny } = await $.ui.blit({ requestId: PANE, key: MAP, source: frameSource(picture.dir, picture.generation) }).catch((failure: unknown) => ({ deny: String(failure) }))
+    // The terminal shows the picture's words instead, or cannot read its file: back to cells for good.
+    if (deny !== undefined && !/mounted/i.test(deny)) {
+      picture.isRefused = true
+      picture.isStopping = true
+      await quietly(async () => $.ui.invalidate('ui.render'))
+    }
+  }
+}
+
+/** Hands the renderer the map as it now stands, sized for the box it fills; nothing when it is unchanged. */
+async function writePicture($: EngineInterface, state: Board, now: number, setup: Setup, size: { columns: number; rows: number }): Promise<void> {
+  if (picture.dir === undefined) return
+  const svg = framedMap(state, now, setup, size.columns * PICTURE_CELL.width, size.rows * PICTURE_CELL.height)
+  if (svg === picture.written) return
+  picture.written = svg
+  await $.fs.write(`${picture.dir}/map.svg`, svg)
+}
+
 /** What a settings hook added to the context: shown as the hook acting and, when it brought records, as memory. */
 async function noteContext($: EngineInterface, context: readonly string[] | undefined, when: string, setup: Setup): Promise<void> {
   const { t } = setup
@@ -211,6 +301,7 @@ export const register: Register = (on, options) => {
 
   on('session.start', async ($, e, next) => {
     await quietly(() => $.command.register({ name: 'lot-map', description: t.command }))
+    picture.canShow = setup.terminalMap && setup.terminalPicture === 'auto' && (await quietly(() => showsPictures($))) === true
     void quietly(() => $.ui.open(opening))
     await quietly(async () => {
       modelKey = `model:${e.cwd}`
@@ -227,7 +318,11 @@ export const register: Register = (on, options) => {
 
   on('ui.close', async ($, e, next) => {
     const result = await next(e)
-    if (e.id === PANE) stopReel()
+    if (e.id === PANE) {
+      stopReel()
+      // The renderer goes with the pane; opening it again starts another.
+      picture.isStopping = true
+    }
     return result
   })
 
@@ -426,12 +521,24 @@ export const register: Register = (on, options) => {
           </Box>
         )
       }
-      const { Raster } = $.ui.resolve(e)
-      reel.painted = paintMap(state, now, setup, size.columns, size.rows)
-      reel.shown = size
-      reel.misses = 0
-      soon($, setup, 40)
-      const map = <Raster key={MAP} columns={size.columns} rows={size.rows} cells={reel.painted} />
+      const { Raster, Image } = $.ui.resolve(e)
+      let map
+      if (picture.canShow === true && !picture.isRefused) {
+        startRenderer($)
+        await quietly(() => writePicture($, state, now, setup, size))
+      }
+      if (picture.canShow === true && !picture.isRefused && picture.dir !== undefined && picture.generation > 0) {
+        stopReel()
+        picture.isShown = true
+        map = <Image key={MAP} source={frameSource(picture.dir, picture.generation)} columns={size.columns} rows={size.rows} alt={describeNow(state, t)} />
+      } else {
+        picture.isShown = false
+        reel.painted = paintMap(state, now, setup, size.columns, size.rows)
+        reel.shown = size
+        reel.misses = 0
+        soon($, setup, 40)
+        map = <Raster key={MAP} columns={size.columns} rows={size.rows} cells={reel.painted} />
+      }
       return size.isBeside ? (
         <Box flexDirection="row">
           {map}

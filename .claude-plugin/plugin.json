@@ -1,6 +1,6 @@
 {
   "name": "lot-map",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "A live map beside the chat: memory, files, shell, web, model, agents, skills and hooks light up as they are used",
   "author": {
     "name": "Aleksei Volodin",
@@ -118,6 +118,16 @@
       "title": "Map in a terminal",
       "default": true,
       "description": "In a terminal, draw the map in coloured cells above the rows. Off, a terminal shows the rows and one line of counts."
+    },
+    "terminalPicture": {
+      "type": "string",
+      "title": "Pictures in a terminal",
+      "options": [
+        "auto",
+        "off"
+      ],
+      "default": "auto",
+      "description": "In a terminal that shows pictures (kitty, Ghostty, iTerm2), auto has a headless Chromium paint the map as the app draws it, and the pane shows each frame. It needs Node and Chromium; without them, and with off, the map stays in cells."
     },
     "layout": {
       "type": "string",

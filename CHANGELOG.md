@@ -2,6 +2,12 @@
 
 What changed in each version of lot-map, newest first. To get a new version, see [Updating](README.md#updating).
 
+## 0.7.0 (2026-11-12)
+
+- Pictures in a terminal that shows them (kitty, Ghostty, iTerm2 3.5 and later): headless Chromium paints the map exactly as the app draws it, and the pane shows each frame. Everywhere else, and whenever a picture is refused, the map stays in cells. See [Pictures](README.md#pictures).
+- New option `terminalPicture`, `auto` by default; `off` keeps the cells in every terminal.
+- Picture mode runs a local renderer (Node and headless Chromium) and writes the drawing and its frames to a temporary folder that goes with the session. [PRIVACY.md](PRIVACY.md) says what it does and does not do.
+
 ## 0.6.0 (2026-11-12)
 
 - The map in a terminal: the pane paints the same map in coloured cells, split in four with block characters, and repaints it in place so that it moves as it does in the app. Docked beside the conversation the map sits above the rows; inline above the prompt it sits at the left with the rows beside it. See [In a terminal](README.md#in-a-terminal).

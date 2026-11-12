@@ -367,6 +367,8 @@ export const MAP_COLUMNS = 60
 export const MAP_ROWS = 22
 /** The narrowest docked pane whose map keeps its labels apart. */
 export const MAP_MIN_COLUMNS = 44
+/** Pixels a picture of the map gets per cell: a little over a common terminal cell, sharp without costing much a frame. */
+export const PICTURE_CELL = { width: 12, height: 24 }
 
 /** Where the map goes in the pane, in cells: above the rows, or beside them. */
 export type MapLayout = { columns: number; rows: number; isBeside: boolean }

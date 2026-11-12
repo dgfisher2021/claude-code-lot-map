@@ -2,7 +2,7 @@
 
 lot-map is a mod for Claude Code that draws a map of the work in a pane beside the chat. It runs inside Claude Code on your computer. There is no lot-map service, no account and no server: nothing the mod sees leaves your machine through it.
 
-This page describes version 0.5.3. It changes only together with the code, and the [changelog](CHANGELOG.md) says when it did.
+This page describes version 0.7.0. It changes only together with the code, and the [changelog](CHANGELOG.md) says when it did.
 
 ## What the mod is handed
 
@@ -31,11 +31,22 @@ To remove what it keeps, uninstall the plugin.
 ## What it does not do
 
 - It makes no network requests and has no telemetry, analytics or crash reports.
-- It reads no files and runs no processes.
+- It reads no files. It runs no processes and writes no files, except in picture mode, below.
 - It calls no model and adds nothing to the conversation.
 - It changes no tool call, result, prompt or context. It sees what your settings hooks decide about a call, hands that decision on as it was, and decides nothing about permissions itself.
 
 The code that takes names from a call is `classify` in [`hooks/map.ts`](hooks/map.ts); the hooks are in [`hooks/register.tsx`](hooks/register.tsx).
+
+## Picture mode
+
+In a terminal that shows pictures (kitty, Ghostty, iTerm2 3.5 and later, or with `CLAUDE_CODE_FORCE_TERMINAL_IMAGES=1`), with `terminalPicture` on `auto`, the default, the map is painted by a browser. While the pane is open:
+
+- The mod starts `node renderer/render.mjs` from its own folder, and that starts headless Chromium: the first of `chromium`, `chromium-browser`, `google-chrome` on your PATH that runs, or `LOT_MAP_CHROMIUM`.
+- The mod writes the map's drawing, the same SVG the app's pane shows (station names, counts and the labels described above), to `map.svg` in a temporary folder of its own, `lot-map-*` in your temporary directory. The renderer writes each frame there as `frame.png`, which the terminal reads to show it.
+- Chromium shows only that drawing, from a `data:` address with nothing outside it, with its background networking, component updates, sync and pings turned off. Its profile lives in the same folder.
+- The renderer, Chromium and the folder go when the pane closes or the session ends. A folder left by a renderer that was killed is removed the next time one starts.
+
+The mod reads five environment variables to tell whether the terminal shows pictures: `TERM`, `TERM_PROGRAM`, `KITTY_WINDOW_ID`, `TMUX` and `CLAUDE_CODE_FORCE_TERMINAL_IMAGES`. With `terminalPicture` on `off`, or in any other terminal, none of this runs.
 
 ## Where the code comes from
 

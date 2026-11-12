@@ -1,3 +1,4 @@
+import type { On } from 'claude-code'
 import { expect, mock, test } from 'claude-code/testing'
 
 import type { Board } from '../types'
@@ -1059,6 +1060,123 @@ test('between drawings a timer paints the next frames into the mounted map, seld
   const before = frames.length
   await clock.advance(1_000)
   expect(frames.length - before).toBeLessThan(6)
+  await ui.unmount()
+})
+
+/** A renderer that says it is ready, then writes the frames it is told to, and stays until `end` is called. */
+function fakeRenderer(on: On, dir = '/tmp/lot-map-test') {
+  const lines: string[] = [`ready ${dir}`]
+  let wake = () => {}
+  let isOver = false
+  const spawned: string[][] = []
+  on('process.spawn', async function* (_, e) {
+    spawned.push([...e.argv])
+    while (!isOver) {
+      const line = lines.shift()
+      if (line !== undefined) yield { stream: 'stdout' as const, text: `${line}\n` }
+      else await new Promise<void>(resolve => (wake = resolve))
+    }
+    return { value: { code: 0, signal: null } }
+  })
+  return {
+    spawned,
+    say: (line: string) => {
+      lines.push(line)
+      wake()
+    },
+    end: () => {
+      isOver = true
+      wake()
+    },
+  }
+}
+
+test('in a terminal that shows pictures the map is the drawing a renderer paints, each new frame swapped in place', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  mock.env(on, { TERM: 'xterm-kitty' })
+  on('tool.call', () => ({ result: {} }))
+  on('ui.open', () => ({ value: { isPlaced: true } }))
+  on('command.register', () => ({ value: { command: 'lot-map' } }))
+  on('session.start', (_, e) => ({ cwd: e.cwd }))
+  const written: { path: string; text: string }[] = []
+  on('fs.write', (_, e) => {
+    written.push({ path: e.path, text: e.text })
+    return { value: undefined }
+  })
+  const swapped: number[] = []
+  on('ui.blit', (_, e) => {
+    if ('source' in e && 'generation' in e.source) swapped.push(e.source.generation ?? 0)
+    return { value: {} }
+  })
+  const renderer = fakeRenderer(on)
+
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  await $.tool.call({ tool: 'Read', file_path: '/a/b/content.py' })
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  await clock.settle()
+  expect(renderer.spawned[0]?.[0]).toBe('node')
+  expect(renderer.spawned[0]?.[1]).toMatch(/renderer\/render\.mjs$/)
+  // Until the first frame the map stays in cells, and the renderer is handed the map at the box's size.
+  expect(await ui.find({ type: 'Raster' })).toBeDefined()
+  expect(written.at(-1)?.path).toBe('/tmp/lot-map-test/map.svg')
+  expect(written.at(-1)?.text).toMatch(/^<svg [^>]*width="720" height="672"/)
+  expect(written.at(-1)?.text).toContain('Files')
+
+  renderer.say('frame 1')
+  await clock.settle()
+  const image = await ui.find({ type: 'Image' })
+  expect(image?.props.source).toEqual({ file: '/tmp/lot-map-test/frame.png', format: 'png', generation: 1 })
+  expect([image?.props.columns, image?.props.rows]).toEqual([60, 28])
+  expect(await ui.find({ type: 'Raster' })).toBeUndefined()
+  expect((await ui.find({ type: 'Text', text: /b\/content\.py/ }))?.text).toContain('Files')
+
+  renderer.say('frame 2')
+  renderer.say('frame 3')
+  await clock.settle()
+  expect(swapped).toEqual([2, 3])
+  renderer.end()
+  await clock.settle()
+  await ui.unmount()
+})
+
+test('a terminal that shows the picture as words gets the map in cells for good, and so does one that shows no pictures', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  mock.env(on, { TERM: 'xterm-kitty' })
+  on('ui.open', () => ({ value: { isPlaced: true } }))
+  on('command.register', () => ({ value: { command: 'lot-map' } }))
+  on('session.start', (_, e) => ({ cwd: e.cwd }))
+  on('fs.write', () => ({ value: undefined }))
+  on('ui.blit', (_, e) => ('source' in e ? { deny: 'the Image draws its alt here: no placeholder images' } : { value: {} }))
+  const renderer = fakeRenderer(on)
+
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  await clock.settle()
+  renderer.say('frame 1')
+  await clock.settle()
+  expect(await ui.find({ type: 'Image' })).toBeDefined()
+  renderer.say('frame 2')
+  await clock.settle()
+  expect(await ui.find({ type: 'Image' })).toBeUndefined()
+  expect(await ui.find({ type: 'Raster' })).toBeDefined()
+  renderer.end()
+  await clock.settle()
+  await ui.unmount()
+})
+
+test('pictures stay off where the terminal shows none or the option says off', { options: { terminalPicture: 'off' } }, async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  mock.env(on, { TERM: 'xterm-kitty' })
+  on('ui.open', () => ({ value: { isPlaced: true } }))
+  on('command.register', () => ({ value: { command: 'lot-map' } }))
+  on('session.start', (_, e) => ({ cwd: e.cwd }))
+  const renderer = fakeRenderer(on)
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  await clock.settle()
+  expect(renderer.spawned).toEqual([])
+  expect(await ui.find({ type: 'Raster' })).toBeDefined()
+  renderer.end()
   await ui.unmount()
 })
 
