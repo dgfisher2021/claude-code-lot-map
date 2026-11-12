@@ -2,7 +2,7 @@
 
 lot-map is a mod for Claude Code that draws a map of the work in a pane beside the chat. It runs inside Claude Code on your computer. There is no lot-map service, no account and no server: nothing the mod sees leaves your machine through it.
 
-This page describes version 0.8.1. It changes only together with the code, and the [changelog](CHANGELOG.md) says when it did.
+This page describes version 0.8.2. It changes only together with the code, and the [changelog](CHANGELOG.md) says when it did.
 
 ## What the mod is handed
 
@@ -52,7 +52,7 @@ The mod reads five environment variables to tell whether the terminal shows pict
 
 Only when you type `/lot-map window`:
 
-- The mod keeps the session's live map, the same drawing as above, in `map.svg` in a folder of its own, `lot-map-live-*` in your temporary directory (`TMPDIR`, else `/tmp`), readable by you alone, with a heartbeat in `alive` every few seconds.
+- The mod keeps the session's live map, the same drawing as above, in `map.svg` in a folder of its own, `lot-map-live-*` in your temporary directory (`TMPDIR`, else `/tmp`), readable by you alone, with the pane's rows (the action now and the last sixteen rows, the same labels) in `feed.json` and a heartbeat in `alive` every few seconds.
 - It runs `sh -c 'command -v node'` and `sh -c 'command -v chromium || command -v google-chrome'` to find Node and Chromium. In WSL (`WSL_DISTRO_NAME` set) it runs `wt.exe -w 0 split-pane ... wsl.exe -d <distro> -- env LOT_MAP_CHROMIUM=<chromium> node renderer/view.mjs <folder>`, which opens a pane in your current Windows Terminal tab; elsewhere it only answers with that last command for you to run.
 - The window runs the renderer of picture mode on that map, at its own size, and writes Sixel to its own pane. It reads keys only to close on `q` or ctrl+c.
 - When the session ends the mod removes the folder (`rm -rf` of that folder alone); a window still open closes when the heartbeat stops. A folder whose heartbeat stopped more than ten minutes ago is removed the next time a renderer starts.

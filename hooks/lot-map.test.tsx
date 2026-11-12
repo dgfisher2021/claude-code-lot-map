@@ -1232,6 +1232,10 @@ test('/lot-map window keeps the live map for a window of its own and opens it be
   expect(maps().length).toBe(1)
   expect(maps()[0]?.text).toMatch(/^<svg [^>]*width="920" height="860"/)
   expect(written.some(w => w.path === `${dir}/alive`)).toBe(true)
+  // The rows under the map go with it, as the pane writes them.
+  const feed = JSON.parse(written.find(w => w.path === `${dir}/feed.json`)?.text ?? '{}')
+  expect(feed.rows).toEqual([{ line: '· Files    b/content.py', tone: 'ok' }])
+  expect(typeof feed.now).toBe('string')
 
   // An unchanged board is not written again; a new call is.
   await clock.advance(1000)

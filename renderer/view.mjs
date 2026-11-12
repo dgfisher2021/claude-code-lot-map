@@ -2,7 +2,8 @@
 // The map in a window of its own, for a terminal that shows Sixel pictures (Windows Terminal 1.22 and later, foot,
 // mlterm, WezTerm and others). Usage: node view.mjs <live folder>
 //
-// lot-map keeps the session's live map in the folder (map.svg) with a heartbeat (alive) while `/lot-map window` is on.
+// lot-map keeps the session's live map in the folder (map.svg), the rows under it (feed.json) and a heartbeat (alive)
+// while `/lot-map window` is on. The rows are drawn as text under the picture, as the pane draws them.
 // This window runs render.mjs at its own size, draws each frame as Sixel, and closes when the heartbeat stops, or on
 // q or ctrl+c.
 
@@ -49,14 +50,26 @@ process.stdin.on('data', data => {
   if (/[q\x03]/.test(text.replace(/\x1b\[[0-9;]*t/g, ''))) quit(0)
 })
 
-/** The picture's size in pixels, the largest the window holds in the map's proportions, and the column it starts at. */
+/** Rows of the feed under the map at most, as in the pane: the action now, then the calls. */
+const FEED_ROWS = 16
+/** Rows the map keeps however short the window: the feed gives way first. */
+const MAP_MIN_ROWS = 12
+
+/**
+ * The layout: the picture's size in pixels, the largest that fits above room for the feed in the map's proportions,
+ * the column it starts at, and the rows the feed has under it.
+ */
 function fit() {
   const cols = out.columns || 80
   const rows = out.rows || 24
-  const scale = Math.min((cols * cell.w) / MAP_W, ((rows - 1) * cell.h) / MAP_H)
+  const feedRoom = Math.max(0, Math.min(FEED_ROWS + 2, rows - 1 - MAP_MIN_ROWS))
+  const mapRows = rows - 1 - feedRoom
+  const scale = Math.min((cols * cell.w) / MAP_W, (mapRows * cell.h) / MAP_H)
   const w = Math.max(60, Math.floor(MAP_W * scale))
   const h = Math.max(56, Math.floor(MAP_H * scale))
-  return { w, h, col: Math.max(0, Math.floor((cols - Math.ceil(w / cell.w)) / 2)), rows }
+  // The feed starts a row below the picture and ends above the hint on the last row.
+  const feedTop = Math.ceil(h / cell.h) + 2
+  return { w, h, col: Math.max(0, Math.floor((cols - Math.ceil(w / cell.w)) / 2)), rows, cols, feedTop, feedRows: Math.max(0, rows - feedTop) }
 }
 
 let size = fit()
@@ -67,15 +80,51 @@ function relayout() {
   hint()
   fedKey = ''
   feed()
+  feedAt = 0
+  rows()
 }
 
 function hint() {
   out.write(`\x1b[${size.rows};1H\x1b[2mq closes this window\x1b[0m`)
 }
 
-/** A line in the middle of the window, until the first picture covers it. */
+/** A line in the middle of the map's room, until the first picture covers it. */
 function say(text) {
-  out.write(`\x1b[${Math.max(1, Math.floor(size.rows / 2))};1H\x1b[2K${text}`)
+  out.write(`\x1b[${Math.max(1, Math.floor(size.feedTop / 2))};1H\x1b[2K${text}`)
+}
+
+// ---- the feed under the map, as the pane writes it ---------------------------------------------
+
+/** Colours of the rows, as the app's dark theme gives them: at work and a change of model in the accent, faults in red. */
+const TONES = { run: '\x1b[38;2;225;172;110m', switch: '\x1b[38;2;225;172;110m', bad: '\x1b[38;2;232;101;79m', ok: '\x1b[2m' }
+let feedAt = 0
+
+/** Cuts a line to the window's width, by characters. */
+const fitLine = text => Array.from(text).slice(0, size.cols).join('')
+
+/** Draws the action now and the rows under it when feed.json has changed, clearing what the last ones left. */
+function rows() {
+  let stat
+  try {
+    stat = statSync(join(live, 'feed.json'))
+  } catch {
+    return
+  }
+  if (stat.mtimeMs === feedAt || size.feedRows === 0) return
+  let feed
+  try {
+    feed = JSON.parse(readFileSync(join(live, 'feed.json'), 'utf8'))
+  } catch {
+    return
+  }
+  feedAt = stat.mtimeMs
+  const lines = [`\x1b[1m${fitLine(String(feed.now ?? ''))}\x1b[0m`]
+  const listed = Array.isArray(feed.rows) ? feed.rows : []
+  if (listed.length === 0) lines.push(`\x1b[2m${fitLine(String(feed.empty ?? ''))}\x1b[0m`)
+  for (const { line, tone } of listed) lines.push(`${TONES[tone] ?? ''}${fitLine(String(line))}\x1b[0m`)
+  let text = ''
+  for (let i = 0; i < size.feedRows; i++) text += `\x1b[${size.feedTop + i};1H\x1b[2K${lines[i] ?? ''}`
+  out.write(text)
 }
 
 out.write('\x1b[?25l\x1b[2J')
@@ -146,6 +195,7 @@ function draw() {
 }
 
 setInterval(feed, 60)
+setInterval(rows, 200)
 setInterval(() => {
   let beat = 0
   try {

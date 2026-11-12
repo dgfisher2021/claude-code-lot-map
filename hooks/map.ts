@@ -927,6 +927,21 @@ export function foldRows(entries: readonly Entry[], max = 16): Row[] {
   return rows
 }
 
+/** A row of the feed as written: at work, finished, gone wrong, or a change of model. */
+export type FeedLine = { line: string; tone: 'run' | 'ok' | 'bad' | 'switch' }
+
+/** The feed's rows as the pane and the map window write them, the station names in a column as wide as the longest. */
+export function feedLines(entries: readonly Entry[], t: Strings): FeedLine[] {
+  const column = Math.max(8, ...Object.values(t.stations).map(name => name.length))
+  return foldRows(entries).map(({ entry, times, tookMs }) => {
+    const isSwitch = entry.mark === 'switch'
+    const mark = isSwitch ? '◆' : entry.status === 'run' ? '●' : entry.status === 'ok' ? '·' : '✕'
+    const took = entry.endedAt === undefined ? t.running : tookMs > 0 ? formatMs(tookMs, t) : ''
+    const line = `${mark} ${t.stations[entry.station].padEnd(column)} ${entry.label}${times > 1 ? `  +${times - 1}` : ''}${took === '' ? '' : `  ${took}`}`
+    return { line, tone: isSwitch ? 'switch' : entry.status === 'run' ? 'run' : entry.status === 'ok' ? 'ok' : 'bad' }
+  })
+}
+
 /**
  * The id of the background task a tool's answer started, if it started one: a shell command sent to the
  * background, a subagent or workflow launched to run on, a monitor.

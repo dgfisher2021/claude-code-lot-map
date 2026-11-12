@@ -2,6 +2,10 @@
 
 What changed in each version of lot-map, newest first. To get a new version, see [Updating](README.md#updating).
 
+## 0.8.2 (2026-11-12)
+
+- The map window shows the rows under the map, as the pane does: the action now, then the last sixteen rows, at work in the accent, faults in red. They take the room under the picture, and in a short window give way before the map.
+
 ## 0.8.1 (2026-11-12)
 
 - Fixed: the map window opened black and closed. A pane Windows Terminal starts through `wsl.exe` has a bare PATH, without `~/.local/bin`, so the renderer found no Chromium, after waiting on the snap `chromium-browser`, whose `--version` never returns on WSL. `/lot-map window` now hands the window the Chromium the session finds, and the renderer also looks in `~/.local/bin` and `~/bin` before `chromium-browser`, waiting at most five seconds on each.

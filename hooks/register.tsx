@@ -2,7 +2,7 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register, Timer } from 'claude-code'
 
 import type { Board, Entry, StationId, Status } from '../types'
-import { STATIONS, classify, clean, describeNow, drawMap, firstLine, foldRows, formatMs, framedMap, memoryIds, setupFrom, shortModel, taskNotice, taskOf } from './map'
+import { STATIONS, classify, clean, describeNow, drawMap, feedLines, firstLine, framedMap, memoryIds, setupFrom, shortModel, taskNotice, taskOf } from './map'
 import type { Setup } from './map'
 import { MAP_COLUMNS, MAP_MIN_COLUMNS, MAP_ROWS, PICTURE_CELL, mapSize, paceOf, paintMap } from './raster'
 
@@ -264,8 +264,8 @@ async function writePicture($: EngineInterface, state: Board, now: number, setup
 
 /**
  * The map in a window of its own, for a terminal that shows Sixel pictures but not a mod's Image, such as Windows
- * Terminal: `/lot-map window` keeps the live map in a folder (map.svg, and a heartbeat in alive) and opens
- * renderer/view.mjs beside the session to draw it.
+ * Terminal: `/lot-map window` keeps the live map in a folder (map.svg, the rows under it in feed.json, and a heartbeat
+ * in alive) and opens renderer/view.mjs beside the session to draw them.
  */
 const sharing: { dir?: string; timer?: Timer; written: string; beat: number } = { written: '', beat: 0 }
 
@@ -280,6 +280,9 @@ async function share($: EngineInterface, setup: Setup): Promise<void> {
     if (seen !== sharing.written) {
       sharing.written = seen
       await $.fs.write(`${dir}/map.svg`, framedMap(state, now, setup, 920, 860))
+      // The rows under the map, as the pane writes them.
+      const feed = { now: describeNow(state, setup.t), rows: feedLines(state.entries, setup.t), empty: setup.t.nothingYet }
+      await $.fs.write(`${dir}/feed.json`, JSON.stringify(feed))
     }
     if (now - sharing.beat >= 3000) {
       sharing.beat = now
@@ -341,8 +344,6 @@ async function noteContext($: EngineInterface, context: readonly string[] | unde
 export const register: Register = (on, options) => {
   const setup = setupFrom(options)
   const { t } = setup
-  // The feed's second column fits the longest station name of the language.
-  const column = Math.max(8, ...Object.values(t.stations).map(name => name.length))
 
   // Calls a settings hook refused, so that the tool's own row reads as blocked and not as an error.
   // Loses nothing across a reload that matters: a reload never lands in the middle of a call.
@@ -553,19 +554,12 @@ export const register: Register = (on, options) => {
     const now = await $.clock.now()
     const { Box, Text } = $.ui.resolve(e)
 
-    const rows = foldRows(state.entries).map(({ entry, times, tookMs }) => {
-      const isSwitch = entry.mark === 'switch'
-      const mark = isSwitch ? '◆' : entry.status === 'run' ? '●' : entry.status === 'ok' ? '·' : '✕'
-      const took = entry.endedAt === undefined ? t.running : tookMs > 0 ? formatMs(tookMs, t) : ''
-      // Theme keys, so the rows read on a light theme as well as on a dark one.
-      const color = isSwitch || entry.status === 'run' ? 'claude' : entry.status === 'ok' ? undefined : 'error'
-      const line = `${mark} ${t.stations[entry.station].padEnd(column)} ${entry.label}${times > 1 ? `  +${times - 1}` : ''}${took === '' ? '' : `  ${took}`}`
-      return (
-        <Text mono size="footnote" color={color} dimColor={entry.status === 'ok' && !isSwitch}>
-          {line}
-        </Text>
-      )
-    })
+    // Theme keys, so the rows read on a light theme as well as on a dark one.
+    const rows = feedLines(state.entries, t).map(({ line, tone }) => (
+      <Text mono size="footnote" color={tone === 'run' || tone === 'switch' ? 'claude' : tone === 'bad' ? 'error' : undefined} dimColor={tone === 'ok'}>
+        {line}
+      </Text>
+    ))
     const feed = rows.length > 0 ? rows : [<Text dimColor>{t.nothingYet}</Text>]
     const current = <Text mono size="footnote">{describeNow(state, t)}</Text>
 
