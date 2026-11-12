@@ -25,6 +25,8 @@ export type Strings = {
   running: string
   nothingYet: string
   noCounts: string
+  /** In a terminal pane too narrow for the map: how wide it would need to be. */
+  tooNarrow: (columns: number) => string
   idle: string
   context: string
   andMore: (n: number) => string
@@ -74,6 +76,7 @@ const en: Strings = {
   running: 'running',
   nothingYet: 'Nothing yet.',
   noCounts: 'No counts yet.',
+  tooNarrow: columns => `Widen the pane to ${columns} columns to see the map.`,
   idle: 'Nothing is running.',
   context: 'context',
   andMore: n => ` and ${n} more`,
@@ -123,6 +126,7 @@ const ru: Strings = {
   running: 'идёт',
   nothingYet: 'Пока ничего не было.',
   noCounts: 'Счётчики пусты.',
+  tooNarrow: columns => `Расширьте панель до ${columns} столбцов, чтобы увидеть карту.`,
   idle: 'Сейчас ничего не выполняется.',
   context: 'контекст',
   andMore: n => ` и ещё ${n}`,
@@ -172,6 +176,7 @@ const es: Strings = {
   running: 'en curso',
   nothingYet: 'Todavía nada.',
   noCounts: 'Aún no hay recuentos.',
+  tooNarrow: columns => `Ensancha el panel a ${columns} columnas para ver el mapa.`,
   idle: 'No hay nada en ejecución.',
   context: 'contexto',
   andMore: n => ` y ${n} más`,
@@ -221,6 +226,7 @@ const fr: Strings = {
   running: 'en cours',
   nothingYet: 'Rien pour le moment.',
   noCounts: 'Aucun compteur pour le moment.',
+  tooNarrow: columns => `Élargissez le panneau à ${columns} colonnes pour voir la carte.`,
   idle: 'Rien en cours.',
   context: 'contexte',
   andMore: n => ` et ${n} de plus`,
@@ -270,6 +276,7 @@ const de: Strings = {
   running: 'läuft',
   nothingYet: 'Noch nichts.',
   noCounts: 'Noch keine Zählerstände.',
+  tooNarrow: columns => `Verbreitern Sie das Feld auf ${columns} Spalten, um die Karte zu sehen.`,
   idle: 'Nichts läuft.',
   context: 'Kontext',
   andMore: n => ` und ${n} weitere`,
@@ -319,6 +326,7 @@ const it: Strings = {
   running: 'in corso',
   nothingYet: 'Ancora niente.',
   noCounts: 'Ancora nessun conteggio.',
+  tooNarrow: columns => `Allarga il pannello a ${columns} colonne per vedere la mappa.`,
   idle: 'Niente in esecuzione.',
   context: 'contesto',
   andMore: n => ` e altri ${n}`,
@@ -369,6 +377,7 @@ const pt: Strings = {
   running: 'em curso',
   nothingYet: 'Ainda nada.',
   noCounts: 'Ainda sem contagens.',
+  tooNarrow: columns => `Alargue o painel para ${columns} colunas para ver o mapa.`,
   idle: 'Nada em execução.',
   context: 'contexto',
   andMore: n => ` e mais ${n}`,

@@ -1,8 +1,9 @@
-import { expect, test } from 'claude-code/testing'
+import { expect, mock, test } from 'claude-code/testing'
 
 import type { Board } from '../types'
 import type { Entry } from '../types'
 import { COLOR_NAMES, TRAIL_FADE_MS, TRAIL_HOLD_MS, classify, clean, drawMap, firstLine, foldRows, formatMs, memoryIds, routeOf, setupFrom, taskNotice, taskOf } from './map'
+import { mapSize, paceOf, paintMap } from './raster'
 import { stringsFor } from './text'
 
 const PANE = {
@@ -873,4 +874,209 @@ test('a typed slash command keeps a background task that is older than the rows 
   const after = await $.ui.mount({ ...PANE, surface: 'terminal' })
   expect(await after.find({ type: 'Text', text: /идёт/ })).toBeUndefined()
   await after.unmount()
+})
+
+// ---- the map in a terminal ----------------------------------------------------------------------
+
+/** A Raster's cells, three words each: the glyph, the foreground and the background. */
+function wordsOf(cells: string): Uint32Array {
+  const digits = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+  const body = cells.replace(/=+$/, '')
+  const bytes = new Uint8Array(Math.floor((body.length * 3) / 4))
+  let acc = 0
+  let bits = 0
+  let o = 0
+  for (const ch of body) {
+    acc = ((acc << 6) | digits.indexOf(ch)) & 0xffffff
+    bits += 6
+    if (bits >= 8) {
+      bits -= 8
+      bytes[o++] = (acc >> bits) & 255
+    }
+  }
+  return new Uint32Array(bytes.buffer)
+}
+
+/** A Raster's glyphs as lines of text, one per row. */
+function linesOf(cells: string, columns: number): string[] {
+  const words = wordsOf(cells)
+  const lines: string[] = []
+  for (let k = 0; k < words.length; k += columns * 3) {
+    let line = ''
+    for (let c = 0; c < columns; c++) line += String.fromCodePoint(words[k + c * 3] ?? 0x3f)
+    lines.push(line)
+  }
+  return lines
+}
+
+const NOW = 1_000_000
+const at = (station: Entry['station'], ago: number, more: Partial<Entry> = {}): Entry => ({
+  id: `${station}${ago}`,
+  station,
+  label: station,
+  from: 'core',
+  startedAt: NOW - ago,
+  endedAt: NOW - ago + 200,
+  status: 'ok',
+  ...more,
+})
+const BUSY: Board = {
+  entries: [
+    at('you', 9000, { from: 'inbound' }),
+    at('memory', 8000, { from: 'inbound' }),
+    at('files', 7000),
+    at('hooks', 4000, { status: 'block' }),
+    at('agents', 3000, { status: 'run', endedAt: undefined }),
+    at('files', 2500, { from: 'agents', agentId: 'x1' }),
+    at('shell', 1800, { status: 'run', endedAt: undefined }),
+    at('shell', 1700, { status: 'run', endedAt: undefined }),
+    at('web', 420),
+  ],
+  counts: { you: 3, model: 14, memory: 5, files: 9, shell: 6, web: 3, agents: 1, hooks: 2 },
+  model: 'claude-opus-5-5',
+  pushed: 2,
+  faults: { hooks: 1 },
+  agents: ['x1'],
+  context: 74,
+  switchedAt: NOW - 1000,
+}
+
+test('the terminal map takes the width of its pane, keeps the ring round, and gives way where it would not read', () => {
+  expect(mapSize(60, 40, 'dock')).toEqual({ columns: 60, rows: 28, isBeside: false })
+  expect(mapSize(60, 30, 'dock')).toEqual({ columns: 60, rows: 22, isBeside: false })
+  expect(mapSize(200, 80, 'dock')).toEqual({ columns: 120, rows: 44, isBeside: false })
+  expect(mapSize(40, 40, 'dock')).toBeUndefined()
+  expect(mapSize(60, 20, 'dock')).toBeUndefined()
+  // Inline above the prompt the pane is wide and short: the map keeps to the left, the rows beside it.
+  expect(mapSize(168, 22, 'inline')).toEqual({ columns: 47, rows: 22, isBeside: true })
+  expect(mapSize(168, 40, 'inline')).toEqual({ columns: 51, rows: 24, isBeside: true })
+  expect(mapSize(168, 17, 'inline')).toBeUndefined()
+  expect(mapSize(70, 22, 'inline')).toBeUndefined()
+})
+
+test("every cell of the terminal map is one narrow glyph, and the terminal's own color is only ever a background", () => {
+  const faults: string[] = []
+  for (const options of [{}, { theme: 'light', layout: 'you-bottom' }, { background: 'transparent', language: 'ru' }, { coreName: '中文🙂ab' }]) {
+    const setup = setupFrom(options)
+    for (const later of [0, 300, 900, 5_000, 70_000]) {
+      const words = wordsOf(paintMap(BUSY, NOW + later, setup, 60, 28))
+      if (words.length !== 60 * 28 * 3) faults.push(`${words.length} words`)
+      for (let k = 0; k < words.length; k += 3) {
+        const [cp = 0, fg = 0, bg = 0] = [words[k], words[k + 1], words[k + 2]]
+        if (cp < 0x20 || (cp >= 0x7f && cp < 0xa0) || cp > 0xffff || (cp >= 0x300 && cp < 0x370) || (cp >= 0x1100 && cp < 0x2010)) faults.push(`glyph ${cp.toString(16)}`)
+        if (fg >>> 24 !== 0) faults.push(`foreground ${fg.toString(16)}`)
+        if (bg >>> 24 > 1) faults.push(`background ${bg.toString(16)}`)
+      }
+    }
+  }
+  expect(faults.slice(0, 5)).toEqual([])
+  const wide = linesOf(paintMap(BUSY, NOW, setupFrom({ coreName: '中文🙂ab' }), 60, 28), 60).join('\n')
+  expect(wide).toContain('···ab')
+  expect(wide).not.toContain('中')
+})
+
+test('the terminal map names each station with its count, the core with its model and context, and a fault in red', () => {
+  const cells = paintMap(BUSY, NOW, setupFrom({ theme: 'dark' }), 60, 28)
+  const text = linesOf(cells, 60).join('\n')
+  for (const label of ['You 3', 'Model 14', 'Memory 3 ↓2', 'Files 9', 'Shell 6', 'Network 3', 'Agents 1', 'Hooks 2', 'Browser', 'Skills', 'CLAUDE', 'opus 5.5', '74%', '×2']) {
+    expect(text).toContain(label)
+  }
+  const words = wordsOf(cells)
+  let isRedOne = false
+  for (let k = 0; k < words.length; k += 3) if (words[k] === 0x31 && words[k + 2] === 0xe8654f) isRedOne = true
+  expect(isRedOne).toBe(true)
+})
+
+test('the terminal map moves while something flies and only breathes when nothing does', () => {
+  const setup = setupFrom({})
+  const quiet: Board = { entries: [at('files', 90_000)], counts: { files: 1 } }
+  expect(paceOf(BUSY, NOW)).toBe(40)
+  expect(paceOf({ ...quiet, entries: [at('shell', 5_000, { status: 'run', endedAt: undefined })] }, NOW)).toBe(90)
+  expect(paceOf(quiet, NOW)).toBe(250)
+  // A pulse in flight is somewhere else a few frames later; a quiet map changes only with its breath.
+  expect(paintMap(BUSY, NOW + 40, setup, 60, 28)).not.toBe(paintMap(BUSY, NOW + 160, setup, 60, 28))
+  expect(paintMap(quiet, NOW, setup, 60, 28)).toBe(paintMap(quiet, NOW + 4_800, setup, 60, 28))
+})
+
+test('in a terminal the map is drawn in cells above the rows, and a narrow pane keeps the rows alone', { options: OWN }, async ($, on) => {
+  on('clock.now', () => ({ value: NOW }))
+  on('tool.call', () => ({ result: {} }))
+  await $.tool.call({ tool: 'Read', file_path: '/a/b/content.py' })
+
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  const map = await ui.find({ type: 'Raster' })
+  expect(map?.props.columns).toBe(60)
+  expect(map?.props.rows).toBe(28)
+  const text = linesOf(String(map?.props.cells), 60).join('\n')
+  expect(text).toContain('Файлы 1')
+  expect(text).toContain('ДОМ')
+  expect((await ui.find({ type: 'Text', text: /b\/content\.py/ }))?.text).toContain('Файлы')
+  await ui.unmount()
+
+  const narrow = await $.ui.mount({ ...PANE, props: { ...PANE.props, bodyColumns: 26 }, surface: 'terminal' })
+  expect(await narrow.find({ type: 'Raster' })).toBeUndefined()
+  expect(await narrow.find({ type: 'Text', text: /Файлы 1/ })).toBeDefined()
+  expect(await narrow.find({ type: 'Text', text: /Расширьте панель до 46 столбцов/ })).toBeDefined()
+  await narrow.unmount()
+
+  const inline = await $.ui.mount({ ...PANE, props: { ...PANE.props, bodyColumns: 168, placement: 'inline', scroll: { offset: 0, bodyRows: 22 } }, surface: 'terminal' })
+  const beside = await inline.find({ type: 'Raster' })
+  expect([beside?.props.columns, beside?.props.rows]).toEqual([47, 22])
+  expect((await inline.find({ type: 'Text', text: /b\/content\.py/ }))?.text).toContain('Файлы')
+  await inline.unmount()
+})
+
+test('with the terminal map turned off a terminal shows the rows and a line of counts', { options: { terminalMap: false } }, async ($, on) => {
+  on('clock.now', () => ({ value: NOW }))
+  on('tool.call', () => ({ result: {} }))
+  await $.tool.call({ tool: 'Read', file_path: '/a/b/content.py' })
+  const ui = await $.ui.mount({ ...PANE, props: { ...PANE.props, bodyColumns: 26 }, surface: 'terminal' })
+  expect(await ui.find({ type: 'Raster' })).toBeUndefined()
+  expect(await ui.find({ type: 'Text', text: /^Files 1$/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /Widen the pane/ })).toBeUndefined()
+  await ui.unmount()
+})
+
+test('between drawings a timer paints the next frames into the mounted map, seldom once nothing flies', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  on('tool.call', () => ({ result: {} }))
+  const frames: string[] = []
+  on('ui.blit', (_, e) => {
+    if ('cells' in e) frames.push(e.cells)
+    return { value: {} }
+  })
+  await $.tool.call({ tool: 'Read', file_path: '/a/b/content.py' })
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  const first = String((await ui.find({ type: 'Raster' }))?.props.cells)
+
+  await clock.advance(400)
+  expect(frames.length).toBeGreaterThan(3)
+  expect(new Set(frames).size).toBe(frames.length)
+  expect(frames).not.toContain(first)
+
+  // Once the pulse has landed and the glow is gone, only the core's breath is left to paint.
+  await clock.advance(5_000)
+  const before = frames.length
+  await clock.advance(1_000)
+  expect(frames.length - before).toBeLessThan(6)
+  await ui.unmount()
+})
+
+test('a map the terminal no longer holds stops asking to be painted', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  on('tool.call', () => ({ result: {} }))
+  let asked = 0
+  on('ui.blit', () => {
+    asked++
+    return { deny: 'nothing of this plugin is mounted there' }
+  })
+  await $.tool.call({ tool: 'Read', file_path: '/a/b/content.py' })
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  await ui.unmount()
+  await clock.advance(30_000)
+  const settled = asked
+  expect(settled).toBeGreaterThan(0)
+  expect(settled).toBeLessThan(25)
+  await clock.advance(30_000)
+  expect(asked).toBe(settled)
 })

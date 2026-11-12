@@ -45,6 +45,8 @@ export type Setup = {
   colors: Partial<Palette>
   /** Who sits at the top of the ring: the person, or the network with the person at the bottom. */
   layout: 'you-top' | 'you-bottom'
+  /** Whether a terminal draws the map in cells above the rows, or the rows alone. */
+  terminalMap: boolean
 }
 
 const list = (v: unknown): string[] =>
@@ -71,6 +73,7 @@ export function setupFrom(options: Readonly<Record<string, unknown>> = {}): Setu
     background: options.background === 'transparent' ? 'transparent' : 'solid',
     colors: colorsFrom(options.colors),
     layout: options.layout === 'you-bottom' ? 'you-bottom' : 'you-top',
+    terminalMap: options.terminalMap !== false,
   }
 }
 
@@ -380,18 +383,18 @@ export function memoryIds(text: string): string[] {
 
 // ---- drawing ----------------------------------------------------------------------------------
 
-const W = 460
-const H = 430
-const CX = 230
-const CY = 212
-const RX = 176
-const RY = 164
-const NODE = 22
-const CORE = 40
+export const W = 460
+export const H = 430
+export const CX = 230
+export const CY = 212
+export const RX = 176
+export const RY = 164
+export const NODE = 22
+export const CORE = 40
 /** Where spokes and pulses meet the core: outside the context ring. */
-const HUB = CORE + 8
+export const HUB = CORE + 8
 
-type Palette = {
+export type Palette = {
   ground: string
   raised: string
   line: string
@@ -441,6 +444,9 @@ const LIGHT: Palette = {
   trail: '#9c978b',
 }
 
+/** The palette a drawing paints with: the theme's, with the person's own colors over it. `auto` starts from the dark one. */
+export const paletteOf = (setup: Setup): Palette => ({ ...(setup.theme === 'light' ? LIGHT : DARK), ...setup.colors })
+
 /**
  * For `auto`: the drawing is made in the dark palette, and these rules repaint it where the surface around it is light.
  * Every color on the map is one of the palette's, written as a plain attribute, so a rule per color reaches all of it;
@@ -488,38 +494,42 @@ function colorsFrom(v: unknown): Partial<Palette> {
 
 const FONT = 'font-family="SF Mono, ui-monospace, Menlo, monospace"'
 
-const PULSE_MS = 800
-const RIPPLE_MS = 450
-const GLOW_MS = 3200
-const ALARM_MS = 6000
-const SWITCH_MS = 8000
-const DONE_MS = 1100
+export const PULSE_MS = 800
+export const RIPPLE_MS = 450
+export const GLOW_MS = 3200
+export const ALARM_MS = 6000
+export const SWITCH_MS = 8000
+export const DONE_MS = 1100
 const TRAIL_STOPS = 7
 /** A leg of the route stays for a while after it was drawn, then fades: the route shows where the work is going, and the spokes keep where it went. */
 export const TRAIL_HOLD_MS = 40_000
 export const TRAIL_FADE_MS = 20_000
 
-type Point = { x: number; y: number }
+export type Point = { x: number; y: number }
 
 /** How many places the ring is turned. The stations keep their order, so the far side of the person is always the network. */
 let shift = 0
+/** Turns the ring for the person's layout: every drawing does this before it places a station. */
+export function orient(setup: Setup): void {
+  shift = setup.layout === 'you-bottom' ? STATIONS.length / 2 : 0
+}
 const turn = (i: number): number => ((i + shift) * 2 * Math.PI) / STATIONS.length
 const at = (a: number, f = 1): Point => ({ x: CX + RX * f * Math.sin(a), y: CY - RY * f * Math.cos(a) })
-const place = (i: number): Point => at(turn(i))
-const indexOf = (id: StationId): number => STATIONS.findIndex(s => s.id === id)
+export const place = (i: number): Point => at(turn(i))
+export const indexOf = (id: StationId): number => STATIONS.findIndex(s => s.id === id)
 
 const n1 = (v: number): string => (Math.round(v * 10) / 10).toString()
 /** A moment on the drawing's own clock, which starts at zero each time it is drawn; a past moment is negative. */
 const clock = (ms: number): string => `${(ms / 1000).toFixed(3)}s`
 
 /** Where a straight line from `from` to `to` meets the circle of radius `r` around `from`. */
-function edge(from: Point, to: Point, r: number): Point {
+export function edge(from: Point, to: Point, r: number): Point {
   const d = Math.hypot(to.x - from.x, to.y - from.y) || 1
   return { x: from.x + ((to.x - from.x) * r) / d, y: from.y + ((to.y - from.y) * r) / d }
 }
 
 /** The same line moved sideways, so that several pulses on one spoke fly side by side. */
-function aside(a: Point, b: Point, off: number): [Point, Point] {
+export function aside(a: Point, b: Point, off: number): [Point, Point] {
   const d = Math.hypot(b.x - a.x, b.y - a.y) || 1
   const dx = (-(b.y - a.y) * off) / d
   const dy = ((b.x - a.x) * off) / d
@@ -564,15 +574,33 @@ function beam(a: Point, b: Point, color: string, age: number, isDashed: boolean)
 /** How far from the core a leg bends, by how many stations apart its ends are: far enough in to clear the labels under the nodes, far enough out to clear the core. */
 const BEND = [0.5, 0.5, 0.4, 0.45, 0.55, 0.75]
 
-/** The way from one station to another: a curve through the room between the core and the ring. */
-function leg(i: number, j: number): { path: string; end: Point } {
+/** The way from one station to another: a curve from `a` to `b` through `bend`, in the room between the core and the ring. */
+export function legPoints(i: number, j: number): { a: Point; bend: Point; b: Point } {
   const n = STATIONS.length
   let steps = (((j - i) % n) + n) % n
   if (steps > n / 2) steps -= n
   const bend = at(turn(i + steps / 2), BEND[Math.abs(steps)] ?? 0.5)
-  const a = edge(place(i), bend, NODE + 4)
-  const b = edge(place(j), bend, NODE + 4)
+  return { a: edge(place(i), bend, NODE + 4), bend, b: edge(place(j), bend, NODE + 4) }
+}
+
+function leg(i: number, j: number): { path: string; end: Point } {
+  const { a, bend, b } = legPoints(i, j)
   return { path: `M${n1(a.x)} ${n1(a.y)}Q${n1(bend.x)} ${n1(bend.y)} ${n1(b.x)} ${n1(b.y)}`, end: b }
+}
+
+/** The legs of the route still on the map: `k` counts from the oldest, and `age` is how long ago the leg was drawn. */
+export function legsOf(entries: readonly Entry[], now: number): { from: StationId; to: StationId; at: number; k: number; count: number; age: number }[] {
+  const stops = routeOf(entries)
+  const legs = []
+  for (let k = 1; k < stops.length; k++) {
+    const from = stops[k - 1]
+    const to = stops[k]
+    if (from === undefined || to === undefined) continue
+    const age = now - to.at
+    if (age >= TRAIL_HOLD_MS + TRAIL_FADE_MS) continue
+    legs.push({ from: from.station, to: to.station, at: to.at, k, count: stops.length, age })
+  }
+  return legs
 }
 
 /** The stations the main loop went through, oldest first, a station visited twice in a row counted once. */
@@ -588,32 +616,72 @@ export function routeOf(entries: readonly Entry[], max = TRAIL_STOPS): { station
 }
 
 function trail(entries: readonly Entry[], now: number, c: Palette): string {
-  const stops = routeOf(entries)
   let out = ''
-  for (let k = 1; k < stops.length; k++) {
-    const from = stops[k - 1]
-    const to = stops[k]
-    if (from === undefined || to === undefined) continue
-    const { path, end } = leg(indexOf(from.station), indexOf(to.station))
-    const isHead = k === stops.length - 1
-    const age = now - to.at
-    if (age >= TRAIL_HOLD_MS + TRAIL_FADE_MS) continue
-    const opacity = n1(0.12 + (0.5 * k) / (stops.length - 1))
+  for (const { from, to, at: toAt, k, count, age } of legsOf(entries, now)) {
+    const { path, end } = leg(indexOf(from), indexOf(to))
+    const isHead = k === count - 1
+    const opacity = n1(0.12 + (0.5 * k) / (count - 1))
     // The fading is written into the drawing, so a leg goes out on time even when nothing redraws the map.
     const fade = `<animate attributeName="opacity" values="${opacity};0" begin="${clock(TRAIL_HOLD_MS - age)}" dur="${clock(TRAIL_FADE_MS)}" fill="freeze"/>`
     // The newest leg draws itself; the rest are already there.
     const drawing = isHead
-      ? ` pathLength="1" stroke-dasharray="1 1" stroke-dashoffset="1"><animate attributeName="stroke-dashoffset" values="1;0" begin="${clock(to.at - now)}" dur=".5s" fill="freeze"/>`
+      ? ` pathLength="1" stroke-dasharray="1 1" stroke-dashoffset="1"><animate attributeName="stroke-dashoffset" values="1;0" begin="${clock(toAt - now)}" dur=".5s" fill="freeze"/>`
       : '>'
     out += `<path d="${path}" fill="none" stroke="${c.trail}" stroke-width="${isHead ? 1.5 : 1.1}" stroke-linecap="round" opacity="${opacity}"${drawing}${fade}</path>`
     if (isHead) {
       out +=
         `<circle cx="${n1(end.x)}" cy="${n1(end.y)}" r="2.4" fill="${c.trail}" opacity="0">` +
-        `<animate attributeName="opacity" values="0;.85" begin="${clock(to.at - now + 400)}" dur=".15s" fill="freeze"/>` +
+        `<animate attributeName="opacity" values="0;.85" begin="${clock(toAt - now + 400)}" dur=".15s" fill="freeze"/>` +
         `<animate attributeName="opacity" values=".85;0" begin="${clock(TRAIL_HOLD_MS - age)}" dur="${clock(TRAIL_FADE_MS)}" fill="freeze"/></circle>`
     }
   }
   return out
+}
+
+/** What a station shows at a moment: what runs there, whether it glows or rings red, and how far its glow has faded. */
+export type StationState = { count: number; running: Entry[]; isLit: boolean; isAlarm: boolean; fade: number; span: number }
+
+export function stationState(id: StationId, entries: readonly Entry[], board: Board, now: number): StationState {
+  const own = entries.filter(e => e.station === id)
+  const running = own.filter(e => e.status === 'run')
+  const latest = own.length > 0 ? own[own.length - 1] : undefined
+  const since = latest === undefined ? Infinity : now - (latest.endedAt ?? latest.startedAt)
+  const alarm = own.filter(e => e.status === 'block' || e.status === 'err').pop()
+  const alarmAge = alarm === undefined ? Infinity : now - (alarm.endedAt ?? alarm.startedAt)
+  const isAlarm = alarmAge < ALARM_MS
+  return {
+    count: board.counts[id] ?? 0,
+    running,
+    isLit: running.length > 0 || since < GLOW_MS,
+    isAlarm,
+    fade: isAlarm ? alarmAge : since,
+    span: isAlarm ? ALARM_MS : GLOW_MS,
+  }
+}
+
+/** What moves on the map at a moment: pulses going out and coming back, beams along the spokes. */
+export function motionOf(board: Board, now: number): { recent: Entry[]; flights: Entry[]; returns: Entry[]; beams: Entry[]; anyRunning: boolean } {
+  const recent = board.entries.slice(-40)
+  return {
+    recent,
+    flights: recent.filter(e => now - e.startedAt < PULSE_MS + RIPPLE_MS).slice(-14),
+    returns: recent.filter(e => e.endedAt !== undefined && e.from !== 'inbound' && now - e.endedAt < PULSE_MS + RIPPLE_MS).slice(-14),
+    beams: recent.filter(e => now - e.startedAt < GLOW_MS / 2).slice(-10),
+    anyRunning: recent.some(e => e.status === 'run'),
+  }
+}
+
+/** The two ends of an entry's spoke: where it starts (the core or the agents station) and its own station. */
+export function endsOf(e: Entry): [Point, Point] {
+  const p = place(indexOf(e.station))
+  const start = e.from === 'agents' ? place(indexOf('agents')) : { x: CX, y: CY }
+  return [edge(start, p, e.from === 'agents' ? NODE : HUB), edge(p, start, NODE)]
+}
+
+/** Pulses that share a spoke and a moment fly in lanes, five apart. */
+export function laneOf(list: readonly Entry[], e: Entry): number {
+  const peers = list.filter(x => x.station === e.station && x.from === e.from)
+  return (peers.indexOf(e) - (peers.length - 1) / 2) * 5
 }
 
 type Scene = { entries: Entry[]; board: Board; now: number; c: Palette; names: Strings['stations'] }
@@ -622,19 +690,9 @@ function station(s: (typeof STATIONS)[number], i: number, { entries, board, now,
   const p = place(i)
   const x = n1(p.x)
   const y = n1(p.y)
-  const count = board.counts[s.id] ?? 0
-  const own = entries.filter(e => e.station === s.id)
-  const running = own.filter(e => e.status === 'run')
-  const latest = own.length > 0 ? own[own.length - 1] : undefined
-  const since = latest === undefined ? Infinity : now - (latest.endedAt ?? latest.startedAt)
-  const alarm = own.filter(e => e.status === 'block' || e.status === 'err').pop()
-  const alarmAge = alarm === undefined ? Infinity : now - (alarm.endedAt ?? alarm.startedAt)
-  const isAlarm = alarmAge < ALARM_MS
-  const isLit = running.length > 0 || since < GLOW_MS
+  const { count, running, isLit, isAlarm, fade, span } = stationState(s.id, entries, board, now)
   const [main, hot] = s.id === 'memory' ? [c.mem, c.memHot] : [c.accent, c.hot]
   const color = isAlarm ? c.red : main
-  const fade = isAlarm ? alarmAge : since
-  const span = isAlarm ? ALARM_MS : GLOW_MS
 
   let under = ''
   if (isLit || isAlarm) {
@@ -701,14 +759,10 @@ function station(s: (typeof STATIONS)[number], i: number, { entries, board, now,
 
 
 export function drawMap(board: Board, now: number, setup: Setup): string {
-  const c: Palette = { ...(setup.theme === 'light' ? LIGHT : DARK), ...setup.colors }
-  shift = setup.layout === 'you-bottom' ? STATIONS.length / 2 : 0
+  const c = paletteOf(setup)
+  orient(setup)
   const core: Point = { x: CX, y: CY }
-  const recent = board.entries.slice(-40)
-  const flights = recent.filter(e => now - e.startedAt < PULSE_MS + RIPPLE_MS).slice(-14)
-  const returns = recent.filter(e => e.endedAt !== undefined && e.from !== 'inbound' && now - e.endedAt < PULSE_MS + RIPPLE_MS).slice(-14)
-  const beams = recent.filter(e => now - e.startedAt < GLOW_MS / 2).slice(-10)
-  const anyRunning = recent.some(e => e.status === 'run')
+  const { recent, flights, returns, beams, anyRunning } = motionOf(board, now)
   const agentsAt = place(indexOf('agents'))
   const isBad = (e: Entry): boolean => e.status === 'block' || e.status === 'err'
   const tone = (e: Entry): [string, string] => (e.station === 'memory' ? [c.mem, c.memHot] : [c.accent, c.hot])
@@ -738,24 +792,12 @@ export function drawMap(board: Board, now: number, setup: Setup): string {
   body += drawn.map(d => d.under).join('')
   body += trail(recent, now, c)
 
-  /** The two ends of an entry's spoke: where it starts (the core or the agents station) and its own station. */
-  const ends = (e: Entry): [Point, Point] => {
-    const p = place(indexOf(e.station))
-    const start = e.from === 'agents' ? agentsAt : core
-    return [edge(start, p, e.from === 'agents' ? NODE : HUB), edge(p, start, NODE)]
-  }
-  /** Pulses that share a spoke and a moment fly in lanes, five apart. */
-  const lane = (list: Entry[], e: Entry): number => {
-    const peers = list.filter(x => x.station === e.station && x.from === e.from)
-    return (peers.indexOf(e) - (peers.length - 1) / 2) * 5
-  }
-
   for (const e of beams) {
-    const [a, b] = ends(e)
+    const [a, b] = endsOf(e)
     body += beam(a, b, isBad(e) ? c.red : tone(e)[0], now - e.startedAt, e.from === 'inbound')
   }
   for (const e of flights) {
-    const [a, b] = aside(...ends(e), lane(flights, e))
+    const [a, b] = aside(...endsOf(e), laneOf(flights, e))
     const age = now - e.startedAt
     const color = e.status === 'block' ? c.red : tone(e)[1]
     if (e.from === 'inbound') {
@@ -765,7 +807,7 @@ export function drawMap(board: Board, now: number, setup: Setup): string {
     }
   }
   for (const e of returns) {
-    const [a, b] = aside(...ends(e), lane(returns, e))
+    const [a, b] = aside(...endsOf(e), laneOf(returns, e))
     body += pulse(b, a, e.status === 'ok' ? c.ash : c.red, now - (e.endedAt as number), 2.6)
   }
 

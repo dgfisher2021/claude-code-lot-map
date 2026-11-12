@@ -1,11 +1,14 @@
 import { atom, read, update } from 'claude-code'
-import type { EngineInterface, Register } from 'claude-code'
+import type { EngineInterface, Register, Timer } from 'claude-code'
 
 import type { Board, Entry, StationId, Status } from '../types'
 import { STATIONS, classify, clean, describeNow, drawMap, firstLine, foldRows, formatMs, memoryIds, setupFrom, shortModel, taskNotice, taskOf } from './map'
 import type { Setup } from './map'
+import { MAP_COLUMNS, MAP_MIN_COLUMNS, MAP_ROWS, mapSize, paceOf, paintMap } from './raster'
 
 const PANE = 'lot-map'
+/** The terminal map's Raster, by the key a repaint names it with. */
+const MAP = 'map'
 const KEEP = 80
 const CREW = 12
 
@@ -122,6 +125,53 @@ async function contextOf($: EngineInterface): Promise<Pick<Board, 'context'>> {
   return typeof percent === 'number' ? { context: percent } : {}
 }
 
+/**
+ * The terminal's map between drawings. A terminal draws no picture that moves by itself, so a timer paints each next
+ * frame into the mounted Raster: often while something flies, seldom while the map only breathes.
+ */
+const reel: { shown?: { columns: number; rows: number }; painted: string; tick?: Timer; isPainting: boolean; misses: number } = {
+  painted: '',
+  isPainting: false,
+  misses: 0,
+}
+
+function stopReel(): void {
+  reel.tick?.cancel()
+  reel.tick = undefined
+  reel.shown = undefined
+}
+
+function soon($: EngineInterface, setup: Setup, ms: number): void {
+  reel.tick?.cancel()
+  reel.tick = reel.shown === undefined ? undefined : $.clock.after(ms, () => void frame($, setup))
+}
+
+async function frame($: EngineInterface, setup: Setup): Promise<void> {
+  reel.tick = undefined
+  const size = reel.shown
+  if (size === undefined || reel.isPainting) return
+  reel.isPainting = true
+  let wait = 250
+  await quietly(async () => {
+    const state = await read($, board)
+    const now = await $.clock.now()
+    const cells = paintMap(state, now, setup, size.columns, size.rows)
+    wait = paceOf(state, now)
+    if (cells === reel.painted) return
+    // Refused is refused, whether the answer says so or the call rejects.
+    const { deny } = await $.ui.blit({ requestId: PANE, key: MAP, cells, columns: size.columns, rows: size.rows }).catch((failure: unknown) => ({ deny: String(failure) }))
+    if (deny === undefined) {
+      reel.painted = cells
+      reel.misses = 0
+    } else if (++reel.misses > 20) {
+      // Not mounted for a while: the pane's next drawing starts the frames again.
+      reel.shown = undefined
+    } else wait = 250
+  })
+  reel.isPainting = false
+  if (reel.shown !== undefined && reel.tick === undefined) soon($, setup, reel.shown === size ? wait : 40)
+}
+
 /** What a settings hook added to the context: shown as the hook acting and, when it brought records, as memory. */
 async function noteContext($: EngineInterface, context: readonly string[] | undefined, when: string, setup: Setup): Promise<void> {
   const { t } = setup
@@ -157,9 +207,11 @@ export const register: Register = (on, options) => {
   let lastModel: string | undefined
   let modelKey = 'model'
 
+  const opening = { id: PANE, title: t.title, ...(setup.terminalMap ? { columns: MAP_COLUMNS, rows: MAP_ROWS } : {}) }
+
   on('session.start', async ($, e, next) => {
     await quietly(() => $.command.register({ name: 'lot-map', description: t.command }))
-    void quietly(() => $.ui.open({ id: PANE, title: t.title }))
+    void quietly(() => $.ui.open(opening))
     await quietly(async () => {
       modelKey = `model:${e.cwd}`
       const kept = await $.store.get(modelKey)
@@ -169,8 +221,14 @@ export const register: Register = (on, options) => {
   })
 
   on('command.run', { command: 'lot-map' }, async $ => {
-    const opened = await $.ui.open({ id: PANE, title: t.title })
+    const opened = await $.ui.open(opening)
     return { text: opened.isPlaced ? t.opened : t.cannotOpen(String(opened.reason)) }
+  })
+
+  on('ui.close', async ($, e, next) => {
+    const result = await next(e)
+    if (e.id === PANE) stopReel()
+    return result
   })
 
   on('turn.start', async ($, e, next) => {
@@ -353,11 +411,39 @@ export const register: Register = (on, options) => {
     const current = <Text mono size="footnote">{describeNow(state, t)}</Text>
 
     if (e.surface === 'terminal') {
-      const tally = STATIONS.filter(s => (state.counts[s.id] ?? 0) > 0).map(s => `${t.stations[s.id]} ${state.counts[s.id]}`).join(' · ')
-      return (
+      const size = setup.terminalMap ? mapSize(e.props.bodyColumns, e.props.scroll.bodyRows, e.props.placement) : undefined
+      if (size === undefined) {
+        stopReel()
+        const tally = STATIONS.filter(s => (state.counts[s.id] ?? 0) > 0).map(s => `${t.stations[s.id]} ${state.counts[s.id]}`).join(' · ')
+        // A dock kept narrow (the person's own width wins over the pane's ask) says how wide the map needs it.
+        const isNarrow = setup.terminalMap && e.props.placement === 'dock' && e.props.bodyColumns < MAP_MIN_COLUMNS
+        return (
+          <Box flexDirection="column">
+            {current}
+            <Text dimColor>{tally === '' ? t.noCounts : tally}</Text>
+            {isNarrow ? <Text dimColor>{t.tooNarrow(MAP_MIN_COLUMNS + 2)}</Text> : null}
+            {feed}
+          </Box>
+        )
+      }
+      const { Raster } = $.ui.resolve(e)
+      reel.painted = paintMap(state, now, setup, size.columns, size.rows)
+      reel.shown = size
+      reel.misses = 0
+      soon($, setup, 40)
+      const map = <Raster key={MAP} columns={size.columns} rows={size.rows} cells={reel.painted} />
+      return size.isBeside ? (
+        <Box flexDirection="row">
+          {map}
+          <Box flexDirection="column" marginLeft={2} flexShrink={1}>
+            {current}
+            {feed}
+          </Box>
+        </Box>
+      ) : (
         <Box flexDirection="column">
+          {map}
           {current}
-          <Text dimColor>{tally === '' ? t.noCounts : tally}</Text>
           {feed}
         </Box>
       )

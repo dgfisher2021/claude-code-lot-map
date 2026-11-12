@@ -2,6 +2,12 @@
 
 What changed in each version of lot-map, newest first. To get a new version, see [Updating](README.md#updating).
 
+## 0.6.0 (2026-11-12)
+
+- The map in a terminal: the pane paints the same map in coloured cells, split in four with block characters, and repaints it in place so that it moves as it does in the app. Docked beside the conversation the map sits above the rows; inline above the prompt it sits at the left with the rows beside it. See [In a terminal](README.md#in-a-terminal).
+- The pane asks for 60 columns when it docks and 22 rows when it opens inline, room for the map's labels.
+- New option `terminalMap`, on by default: off, a terminal shows the rows and one line of counts, as before.
+
 ## 0.5.3 (2026-11-12)
 
 - Portuguese labels: `language` takes `pt`. Contributed by Obsessi0n. (#31)

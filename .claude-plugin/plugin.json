@@ -1,6 +1,6 @@
 {
   "name": "lot-map",
-  "version": "0.5.3",
+  "version": "0.6.0",
   "description": "A live map beside the chat: memory, files, shell, web, model, agents, skills and hooks light up as they are used",
   "author": {
     "name": "Aleksei Volodin",
@@ -112,6 +112,12 @@
       "title": "Colours of your own",
       "default": [],
       "description": "Colours that replace the map's own, each written as name=#rrggbb. Names: background, node, line, spoke, text, label, faint, accent, active, error, memory, memoryActive, route. Set theme to dark or light with them."
+    },
+    "terminalMap": {
+      "type": "boolean",
+      "title": "Map in a terminal",
+      "default": true,
+      "description": "In a terminal, draw the map in coloured cells above the rows. Off, a terminal shows the rows and one line of counts."
     },
     "layout": {
       "type": "string",
