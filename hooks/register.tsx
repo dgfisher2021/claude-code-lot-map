@@ -304,7 +304,13 @@ async function share($: EngineInterface, setup: Setup): Promise<void> {
     const line = describeNow(state, setup.t, now)
     if (isChanged || line.text !== sharing.line) {
       sharing.line = line.text
-      const feed = { now: line.text, nowTone: line.tone, rows: feedLines(state.entries, setup.t, state.agentNames), empty: setup.t.nothingYet }
+      const feed = {
+        now: line.text,
+        nowTone: line.tone,
+        rows: feedLines(state.entries, setup.t, state.agentNames),
+        empty: setup.t.nothingYet,
+        legend: setup.t.legend,
+      }
       await $.fs.write(`${dir}/feed.json`, JSON.stringify(feed))
     }
     if (now - sharing.beat >= 3000) {
@@ -377,6 +383,7 @@ async function showWindow($: EngineInterface, setup: Setup, opening: Opening): P
 
 /** `/lot-map` and `/workmap`: the pane, or in Windows Terminal the window; `window` asks for the window anywhere. */
 async function runCommand($: EngineInterface, args: string, setup: Setup, opening: Opening): Promise<{ text: string }> {
+  if (args.trim() === 'help') return { text: setup.t.legend.join('\n') }
   if (args.trim() === 'window') return { text: (await openWindow($, setup)).text }
   if (windowed.isMap) return { text: await showWindow($, setup, opening) }
   const opened = await $.ui.open(opening)
@@ -428,8 +435,8 @@ export const register: Register = (on, options) => {
 
   on('session.start', async ($, e, next) => {
     // Two names for one command: lot-map, as the plugin is called, and workmap.
-    await quietly(() => $.command.register({ name: 'lot-map', description: t.command, argumentHint: '[window]' }))
-    await quietly(() => $.command.register({ name: 'workmap', description: t.command, argumentHint: '[window]' }))
+    await quietly(() => $.command.register({ name: 'lot-map', description: t.command, argumentHint: '[window | help]' }))
+    await quietly(() => $.command.register({ name: 'workmap', description: t.command, argumentHint: '[window | help]' }))
     picture.canShow = setup.terminalMap && setup.terminalPicture === 'auto' && (await quietly(() => showsPictures($))) === true
     windowed.isAsked = false
     // A -p run or the SDK draws nowhere (surface null): no window.

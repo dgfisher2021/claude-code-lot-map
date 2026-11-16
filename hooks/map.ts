@@ -695,9 +695,9 @@ export function laneOf(list: readonly Entry[], e: Entry): number {
   return (peers.indexOf(e) - (peers.length - 1) / 2) * 5
 }
 
-type Scene = { entries: Entry[]; board: Board; now: number; c: Palette; names: Strings['stations'] }
+type Scene = { entries: Entry[]; board: Board; now: number; c: Palette; names: Strings['stations']; t: Strings }
 
-function station(s: (typeof STATIONS)[number], i: number, { entries, board, now, c, names }: Scene): { under: string; over: string } {
+function station(s: (typeof STATIONS)[number], i: number, { entries, board, now, c, names, t }: Scene): { under: string; over: string } {
   const p = place(i)
   const x = n1(p.x)
   const y = n1(p.y)
@@ -772,7 +772,10 @@ function station(s: (typeof STATIONS)[number], i: number, { entries, board, now,
       `<circle cx="${n1(p.x - corner)}" cy="${n1(p.y + corner)}" r="7.5" fill="none" stroke="${c.red}" stroke-width="1.3"/>` +
       `<text x="${n1(p.x - corner)}" y="${n1(p.y + corner + 3.1)}" text-anchor="middle" ${FONT} font-size="9" font-weight="700" fill="${c.red}">${blocks > 99 ? '99+' : blocks}</text>`
   }
-  return { under, over }
+  // Hovering a station in the app says what its figures are.
+  const figures = [t.callsHere(board.counts[s.id] ?? 0), faults > 0 ? t.errorsHere(faults) : '', blocks > 0 ? t.refusedHere(blocks) : '']
+  const title = `${names[s.id]}: ${figures.filter(f => f !== '').join(' · ')}`
+  return { under, over: `<g><title>${escapeXml(title)}</title>${over}</g>` }
 }
 
 
@@ -819,7 +822,7 @@ export function drawMap(board: Board, now: number, setup: Setup, isFilling = fal
     if (worn > 0) body += `${line} stroke="${s.id === 'memory' ? c.mem : c.accent}" opacity="${n1(worn * 0.55)}"/>`
   })
 
-  const scene: Scene = { entries: recent, board, now, c, names: setup.t.stations }
+  const scene: Scene = { entries: recent, board, now, c, names: setup.t.stations, t: setup.t }
   const drawn = STATIONS.map((s, i) => station(s, i, scene))
   body += drawn.map(d => d.under).join('')
   body += trail(recent, now, c)

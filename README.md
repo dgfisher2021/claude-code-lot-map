@@ -62,6 +62,8 @@ A pulse flies out when something starts and returns when it ends. Refusals and e
 
 ## Reading the map
 
+`/workmap help` (or `/lot-map help`) says what each mark means. In the window, `?` puts that legend where the rows are. In the app, hovering a station names its figures.
+
 - **The route.** A thin line joins the last few stations the main loop went through, in order, and its newest leg draws itself. A leg stays for 40 seconds and then fades over 20, so a minute after the work stops only the spokes are left; their thickness keeps where the work went. Model steps are left out, or every leg would pass through Model.
 - **Worn spokes.** A spoke grows thicker and brighter the more its station is used, so at the end of a session the map shows where the work went.
 - **How long.** Two clock hands grow around a station while a call runs: the inner one goes round in a minute, the outer one in ten.
@@ -123,6 +125,7 @@ In Windows Terminal from WSL the window is the map: the session opens no pane, a
 
 - From WSL in Windows Terminal it splits the current tab (`wt.exe -w 0 split-pane`) and starts the window there. Anywhere else it answers with the line to run in a pane of your own: `node <plugin>/renderer/view.mjs <folder>`.
 - The session keeps its live map and the rows under it in a temporary folder of its own while the window is wanted. The window runs the same renderer as [Pictures](#pictures), at the size of its pane, draws each frame as Sixel, at most ten a second, and under it the action now and the last rows, as the pane does. In a short pane the rows give way before the map does.
+- `?` swaps the rows for the legend, and back.
 - It closes when the session ends, or on `q` or ctrl+c. Closing it leaves the session as it was; `/lot-map window` opens it again. A session switched away from in its tab keeps its window there until it ends or `q`.
 - It needs Node 22 and a Chromium, as pictures do.
 
