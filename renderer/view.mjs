@@ -103,7 +103,14 @@ function say(text) {
 // ---- the feed under the map, as the pane writes it ---------------------------------------------
 
 /** Colours of the rows, as the app's dark theme gives them: at work and a change of model in the accent, faults in red. */
-const TONES = { run: '\x1b[38;2;225;172;110m', switch: '\x1b[38;2;225;172;110m', bad: '\x1b[38;2;232;101;79m', ok: '\x1b[2m' }
+const TONES = {
+  run: '\x1b[38;2;225;172;110m',
+  switch: '\x1b[38;2;225;172;110m',
+  bad: '\x1b[38;2;232;101;79m',
+  // A refusal: a rule at work, in the warning colour rather than the error's.
+  block: '\x1b[38;2;230;150;70m',
+  ok: '\x1b[2m',
+}
 let feedAt = 0
 
 /** Cuts a line to the window's width, by characters. */

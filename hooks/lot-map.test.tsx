@@ -350,7 +350,7 @@ test('a call a settings hook refused reads as blocked, with the hook lit and its
 
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   expect((await ui.find({ type: 'Text', text: /остановил Bash/ }))?.text).toContain('Хуки')
-  expect((await ui.find({ type: 'Text', text: /Показать статус/ }))?.text).toContain('✕')
+  expect((await ui.find({ type: 'Text', text: /Показать статус/ }))?.text).toMatch(/^⊘ /)
   expect(await ui.find({ type: 'Text', text: /JUDGE|sk-private|secret/ })).toBeUndefined()
   await ui.unmount()
 })
@@ -995,6 +995,26 @@ test('the core names the session state on every surface', async ($, on) => {
   for (const language of ['en', 'ru', 'es', 'fr', 'de', 'it', 'pt']) {
     for (const word of Object.values(stringsFor(language).states)) expect(word.length).toBeLessThanOrEqual(14)
   }
+})
+
+test('an error and a refusal at one station keep two badges, and their rows two marks', async ($, on) => {
+  mock.clock(on, { now: NOW })
+  on('turn.start', (_, e) => ({ turnId: e.turnId }) as never)
+  const answers: unknown[] = [{ deny: 'not here' }, { result: {}, isError: true, text: 'Exit code 1' }]
+  on('tool.call', () => (answers.shift() ?? { result: {} }) as never)
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await $.tool.call({ tool: 'Bash', command: 'make clean', description: 'Clear the build' } as never).catch(() => undefined)
+  await $.tool.call({ tool: 'Bash', command: 'make', description: 'Build it' } as never)
+  expect((await ui.find({ type: 'Text', text: /Clear the build/ }))?.text).toMatch(/^⊘ Shell/)
+  expect((await ui.find({ type: 'Text', text: /Build it/ }))?.text).toMatch(/^✕ Shell/)
+  const svg = async () => String((await ui.find({ type: 'Svg' }))?.props.source)
+  // A failure fills its badge; a refusal draws one in outline.
+  expect(await svg()).toMatch(/r="7\.5" fill="#[0-9a-f]{6}"\/>/)
+  expect(await svg()).toMatch(/r="7\.5" fill="none" stroke="#[0-9a-f]{6}"/)
+  // The person's next message clears both.
+  await $.turn.start({ text: 'again', turnId: 't2' } as never)
+  expect(await svg()).not.toMatch(/r="7\.5"/)
+  await ui.unmount()
 })
 
 test('a failed shell row shows its exit code, and nothing of its output', async ($, on) => {
