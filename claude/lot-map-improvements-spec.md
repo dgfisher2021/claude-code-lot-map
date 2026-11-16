@@ -1,6 +1,6 @@
 # lot-map improvements: the map and the task list
 
-Status: proposal, no code. Written 2026-11-16 against lot-map 0.9.0 (fork `main`).
+Status: proposal, no code. Written 2026-11-16 against lot-map 0.9.0 (fork `main`). Updated the same day with small fixes for reading the counts and badges (S1–S6) and with becoming workmap (R1).
 
 ## Goal
 
@@ -229,13 +229,89 @@ Upstream issue #55: an MCP station with a small mark per server that lights when
 - A high-contrast palette preset.
 - Reduced motion, which upstream's `next` branch already has as the `motion` option (#40). This fork's `main` doesn't have it yet.
 
+## Small fixes: reading the counts and badges
+
+The number under a station is a session total, the red badge counts faults since your last message, and `×3` counts calls running at once. None of this is labelled. Any shell command that exits non-zero counts as a fault, and a subagent's failures land on the station of the call that failed, not on Agents.
+
+### S1. A legend on demand (small)
+
+**What:** `?` in the window and `/lot-map help` explain the count under a station, the red badge, `×N`, `+N` and `↓`. In the app, hovering a station shows the same.
+
+### S2. Exit codes in the list (small)
+
+**What:** a failed shell row shows its exit code, for example `✕ Shell  npm test  exit 1`. This tells "grep found nothing" from "it crashed".
+
+**Data:** the exit code in the shell tool's result. It's a number, not content.
+
+### S3. Blocked looks different from failed (small)
+
+**What:**
+
+- A call refused by a hook or a permission prompt gets its own mark (a lock, or an outlined badge) instead of the red count.
+- The row reads `⊘` instead of `✕`.
+
+**Why:** a refusal is a rule working, not something broken.
+
+### S4. A subagent's failures show on the subagent (small)
+
+**What:**
+
+- When a subagent's call fails, its dot at Agents turns red as well as the station of the call.
+- The row carries the subagent's label, for example `↳ explore-auth · Shell ✕ npm test`.
+
+**Why:** today a subagent's failing command looks like the main session's.
+
+### S5. A session total of faults (small)
+
+**What:** the red badge still clears on your next message. The count line keeps a session total beside it, for example `Shell 27 · 4✕`, so the history isn't lost.
+
+### S6. This turn beside the totals (small)
+
+**What:** a faint `+3` beside a station's session count shows what this turn added.
+
+## Becoming workmap: your own plugin
+
+### R1. Rename to workmap and own the repo
+
+**Allowed:** the licence is MIT, copyright Aleksei Volodin. You may rename, change and publish it as your own, as long as `LICENSE` with his notice stays. Add your own copyright line for your changes.
+
+**Step 1, command only (small):**
+
+- Register `/workmap` as a second command name. `/lot-map` keeps working.
+- The plugin stays `lot-map`, and upstream updates keep merging.
+
+**Step 2, full rename (medium):**
+
+- **What changes:** the name appears on 92 lines in 15 files:
+  - the plugin and marketplace names in `.claude-plugin/`, so the install id becomes `workmap@workmap`
+  - the command
+  - the store key (`plugin: 'lot-map'` in `hooks/register.tsx`)
+  - the temporary folders `lot-map-live-*` and `lot-map-*`, and the renderer's sweep that matches them
+  - the variables `LOT_MAP_CHROMIUM` and `LOT_MAP_CELL`
+  - the tests, README, PRIVACY, CONTRIBUTING, SECURITY and the issue templates
+- **Repo:** rename `dgfisher2021/claude-code-lot-map` to `workmap`; GitHub redirects the old address. It stays marked as a fork of `alexeyw/lot-map`. To make it stand alone, either ask GitHub Support to detach it, or create a new repo and push the full history.
+- **Switching over:**
+  1. Uninstall `lot-map@lot-map` and remove its marketplace.
+  2. Add the new marketplace and install `workmap@workmap`.
+  3. Set the options again, since they're stored under the plugin id.
+  4. The last model used in each folder is forgotten once, which is harmless.
+- **Docs:** CONTRIBUTING sends pull requests to upstream's `next`, and the issue templates point upstream. Both get rewritten for your repo.
+
+**Trade-offs:**
+
+- Upstream fixes stop merging cleanly, since every renamed line conflicts. They come in by hand or by cherry-pick.
+- You own the maintenance.
+- Versions can carry on, for example `1.0.0` as the first workmap release.
+
+**Recommendation:** step 1 now. Step 2 when you no longer want upstream's updates, as one pull request: the rename, the docs and a CHANGELOG entry.
+
 ## Order
 
-| When  | Items                                                                                                                                             | Why first                                                                         |
-| ----- | ------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
-| Now   | V1 core state, T3 needs you, T1 plan checklist, T5 background pinned, V9 window layout                                                            | The biggest glance value for the least work; all use data the mod already sees    |
-| Next  | T2 turns, T6 files changed, V2 usage gauges, T4 stuck warnings, V10 every session                                                                 | Answer "what changed" and "what it costs", and serve people running many sessions |
-| Later | V5 timeline, V3 (#80), V4 (#55), V7 subagents, T8 log and filters, T9 recap, T7 error lines, V6 time share, V8 file satellites, V11 accessibility | Larger, or useful in fewer sessions                                               |
+| When  | Items                                                                                                                                                                      | Why first                                                                         |
+| ----- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| Now   | V1 core state, T3 needs you, T1 plan checklist, T5 background pinned, V9 window layout, S1–S4 small fixes, R1 step 1 (`/workmap`)                                          | The biggest glance value for the least work; all use data the mod already sees    |
+| Next  | T2 turns, T6 files changed, V2 usage gauges, T4 stuck warnings, V10 every session, S5–S6                                                                                   | Answer "what changed" and "what it costs", and serve people running many sessions |
+| Later | V5 timeline, V3 (#80), V4 (#55), V7 subagents, T8 log and filters, T9 recap, T7 error lines, V6 time share, V8 file satellites, V11 accessibility, R1 step 2 (full rename) | Larger, or useful in fewer sessions                                               |
 
 ## Data sources
 
@@ -261,3 +337,4 @@ Upstream issue #55: an MCP station with a small mark per server that lights when
 2. Every session at a glance (V10): one window for all sessions, or keep a window per session and add the overview as a key?
 3. Recap (T9): only on request, or every time a session ends?
 4. Which of these go upstream to `alexeyw/lot-map`, whose pull requests go to `next`, and which stay in this fork?
+5. The full rename to workmap (R1 step 2): when, and do you still want upstream's updates after it?
