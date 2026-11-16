@@ -2,6 +2,10 @@
 
 What changed in each version of lot-map, newest first. To get a new version, see [Updating](README.md#updating).
 
+## 0.10.0 (2026-11-16)
+
+- `/workmap` is a second name for `/lot-map`: the same pane or window, and `/workmap window` as `/lot-map window`.
+
 ## 0.9.1 (2026-11-16)
 
 - Fixed: the map window grew by a whole screen at each resize. Windows Terminal answers a clear of the screen (`ESC [ 2 J`) by moving the screen, pictures and all, into the scrollback. The window now draws in the alternate screen, which keeps no scrollback, clears in place, and gives the pane back as it was when it closes.

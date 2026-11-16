@@ -1271,6 +1271,26 @@ test('outside Windows Terminal /lot-map window says how to open the window by ha
   await $.session.end({ reason: 'other' } as never)
 })
 
+test('/workmap does what /lot-map does', async ($, on) => {
+  mock.clock(on, { now: NOW })
+  mock.env(on, { TMPDIR: '/tmp' })
+  const runs = fakeHost(on)
+  on('fs.write', () => ({ value: undefined }))
+  const names: string[] = []
+  on('command.register', (_, e) => {
+    names.push(e.name)
+    return { value: { command: e.name } }
+  })
+  on('ui.open', () => ({ value: { isPlaced: true } }))
+  on('session.start', (_, e) => ({ cwd: e.cwd }))
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  expect(names).toEqual(['lot-map', 'workmap'])
+  expect((await $.command.run({ command: 'workmap', args: '' } as never)).text).toBe('Work map opened.')
+  expect((await $.command.run({ command: 'workmap', args: 'window' } as never)).text).toMatch(/^Run this in a pane of a terminal that shows Sixel pictures: /)
+  expect(runs.some(argv => argv[0] === 'wt.exe')).toBe(false)
+  await $.session.end({ reason: 'other' } as never)
+})
+
 /** A session in Windows Terminal from WSL, as one in the background sees it: the profile is set, the tab is not. */
 const IN_WINDOWS_TERMINAL = { WSL_DISTRO_NAME: 'Ubuntu', WT_PROFILE_ID: '{51855cb2}', TMPDIR: '/tmp' }
 
