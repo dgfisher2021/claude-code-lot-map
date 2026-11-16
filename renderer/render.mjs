@@ -194,7 +194,9 @@ async function step() {
   const started = Date.now()
   if (shownAt !== 0 && !isClosing) {
     await send('Runtime.evaluate', { expression: STEP }, page).catch(() => {})
-    const shot = await send('Page.captureScreenshot', { format: 'png', optimizeForSpeed: true }, page).catch(() => undefined)
+    // The picture is cut to the map's own size: after a resize Chromium can go on capturing the viewport it had.
+    const clip = size.width > 0 ? { clip: { x: 0, y: 0, width: size.width, height: size.height, scale: 1 }, captureBeyondViewport: true } : {}
+    const shot = await send('Page.captureScreenshot', { format: 'png', optimizeForSpeed: true, ...clip }, page).catch(() => undefined)
     if (shot?.data && !isClosing) {
       writeFileSync(`${framePath}.tmp`, Buffer.from(shot.data, 'base64'))
       renameSync(`${framePath}.tmp`, framePath)

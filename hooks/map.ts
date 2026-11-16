@@ -53,6 +53,8 @@ export type Setup = {
   terminalWindow: 'auto' | 'off'
   /** Whether a wait on the person and a finished turn raise a notification. */
   notify: boolean
+  /** The rows the map window keeps for the list under the map: 3 to 30. */
+  windowRows: number
 }
 
 const list = (v: unknown): string[] =>
@@ -83,6 +85,7 @@ export function setupFrom(options: Readonly<Record<string, unknown>> = {}): Setu
     terminalPicture: options.terminalPicture === 'off' ? 'off' : 'auto',
     terminalWindow: options.terminalWindow === 'off' ? 'off' : 'auto',
     notify: options.notify === true,
+    windowRows: Math.min(30, Math.max(3, Math.round(Number(options.windowRows ?? 10)) || 10)),
   }
 }
 

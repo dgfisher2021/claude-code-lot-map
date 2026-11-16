@@ -5,6 +5,11 @@ What changed in each version of lot-map, newest first. To get a new version, see
 ## 0.10.0 (2026-11-16)
 
 - `/workmap` is a second name for `/lot-map`: the same pane or window, and `/workmap window` as `/lot-map window`.
+- The map window gives the map its room first:
+  - The map is as large as the pane's width allows while the list keeps `windowRows` rows, a new option, 10 by default.
+  - The map never has fewer than 12 rows. In a 53x31 split it grew from 12 rows to 19.
+  - `m` goes round the map with the list, the map alone, and the list alone.
+- Fixed: after a resize the picture could keep its old size until the map next changed, since Chromium went on capturing the viewport it had. The renderer now captures the map's own size every time, in the window and in picture mode alike.
 - One word under the centre says what the session is doing: thinking, running, needs you, compacting, done or idle. In the cells it sits under the model's name.
 - Needs you:
   - While Claude asks you a question or puts a plan to you, the top line reads `Needs you:`, counting the time in the warning colour.

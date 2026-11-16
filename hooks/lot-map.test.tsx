@@ -6,6 +6,7 @@ import type { Entry } from '../types'
 import { COLOR_NAMES, TRAIL_FADE_MS, TRAIL_HOLD_MS, classify, clean, drawMap, firstLine, foldRows, formatMs, memoryIds, routeOf, setupFrom, stateOf, taskNotice, taskOf } from './map'
 import { mapSize, paceOf, paintMap } from './raster'
 import { stringsFor } from './text'
+import { layout } from '../renderer/layout.mjs'
 
 const PANE = {
   plugin: 'lot-map',
@@ -1583,6 +1584,27 @@ test('each station carries a title for hovering: its calls, its errors and its r
   expect(svg.match(/<title>/g)?.length).toBe(10)
   expect(svg).toContain('<title>Shell: 6 calls this session · 2 refused</title>')
   expect(svg).toContain('<title>Hooks: 2 calls this session · 1 error since your last message</title>')
+})
+
+test('the window gives the map its room before the list, down to twelve rows', () => {
+  const cell = { w: 10, h: 20 }
+  // The split beside a session in a window 31 rows tall: the map took 12 rows before, the list 18.
+  expect(layout({ cols: 53, rows: 31, cell, listRows: 10, view: 'both' })).toMatchObject({ mapRows: 19, listTop: 21, listRows: 10 })
+  // A tall pane: the map as wide as the pane, the list under it.
+  const tall = layout({ cols: 90, rows: 50, cell, listRows: 10, view: 'both' })
+  expect(tall.w).toBeLessThanOrEqual(900)
+  expect(tall.listRows).toBe(10)
+  // A short one: the map keeps twelve rows, and the list what is left.
+  expect(layout({ cols: 53, rows: 20, cell, listRows: 10, view: 'both' })).toMatchObject({ mapRows: 12, listTop: 14, listRows: 6 })
+  expect(layout({ cols: 53, rows: 13, cell, listRows: 10, view: 'both' }).listRows).toBe(0)
+})
+
+test('the window shows the map alone, or the list alone', () => {
+  const cell = { w: 10, h: 20 }
+  const map = layout({ cols: 53, rows: 31, cell, listRows: 10, view: 'map' })
+  expect(map.mapRows).toBeGreaterThan(19)
+  expect(map.listRows).toBe(0)
+  expect(layout({ cols: 53, rows: 31, cell, listRows: 10, view: 'list' })).toMatchObject({ w: 0, h: 0, mapRows: 0, listTop: 1, listRows: 30 })
 })
 
 /** A session in Windows Terminal from WSL, as one in the background sees it: the profile is set, the tab is not. */

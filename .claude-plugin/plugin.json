@@ -145,6 +145,12 @@
       "default": false,
       "description": "Raise a notification when Claude asks you a question or puts a plan to you, and when a turn ends. Useful for sessions running in the background."
     },
+    "windowRows": {
+      "type": "number",
+      "title": "Rows under the map in its window",
+      "default": 10,
+      "description": "The rows the map window keeps for the list under the map (the action now, Claude's plan, background work, the calls), from 3 to 30. The map takes the rest, as large as the window's width allows, and never fewer than 12 rows."
+    },
     "layout": {
       "type": "string",
       "title": "Layout",
