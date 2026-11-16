@@ -340,13 +340,24 @@ async function windowIsTheMap($: EngineInterface, setup: Setup): Promise<boolean
  */
 const windowed = { isMap: false, isAsked: false }
 
+/** What opens the pane. */
+type Opening = Parameters<EngineInterface['ui']['open']>[0]
+
 /** Opens the window, or the pane where the window cannot open. */
-async function showWindow($: EngineInterface, setup: Setup, opening: Parameters<EngineInterface['ui']['open']>[0]): Promise<string> {
+async function showWindow($: EngineInterface, setup: Setup, opening: Opening): Promise<string> {
   windowed.isAsked = true
   const opened = await openWindow($, setup)
   if (opened.isOpen) return opened.text
   const placed = await $.ui.open(opening)
   return placed.isPlaced ? setup.t.opened : setup.t.cannotOpen(String(placed.reason))
+}
+
+/** `/lot-map` and `/workmap`: the pane, or in Windows Terminal the window; `window` asks for the window anywhere. */
+async function runCommand($: EngineInterface, args: string, setup: Setup, opening: Opening): Promise<{ text: string }> {
+  if (args.trim() === 'window') return { text: (await openWindow($, setup)).text }
+  if (windowed.isMap) return { text: await showWindow($, setup, opening) }
+  const opened = await $.ui.open(opening)
+  return { text: opened.isPlaced ? setup.t.opened : setup.t.cannotOpen(String(opened.reason)) }
 }
 
 /** Stops keeping the live map and removes its folder; a window still open sees its heartbeat go and closes. */
@@ -393,7 +404,9 @@ export const register: Register = (on, options) => {
   const opening = { id: PANE, title: t.title, ...(setup.terminalMap ? { columns: MAP_COLUMNS, rows: MAP_ROWS } : {}) }
 
   on('session.start', async ($, e, next) => {
+    // Two names for one command: lot-map, as the plugin is called, and workmap.
     await quietly(() => $.command.register({ name: 'lot-map', description: t.command, argumentHint: '[window]' }))
+    await quietly(() => $.command.register({ name: 'workmap', description: t.command, argumentHint: '[window]' }))
     picture.canShow = setup.terminalMap && setup.terminalPicture === 'auto' && (await quietly(() => showsPictures($))) === true
     windowed.isAsked = false
     // A -p run or the SDK draws nowhere (surface null): no window.
@@ -407,12 +420,8 @@ export const register: Register = (on, options) => {
     return next(e)
   })
 
-  on('command.run', { command: 'lot-map' }, async ($, e) => {
-    if (e.args.trim() === 'window') return { text: (await openWindow($, setup)).text }
-    if (windowed.isMap) return { text: await showWindow($, setup, opening) }
-    const opened = await $.ui.open(opening)
-    return { text: opened.isPlaced ? t.opened : t.cannotOpen(String(opened.reason)) }
-  })
+  on('command.run', { command: 'lot-map' }, ($, e) => runCommand($, e.args, setup, opening))
+  on('command.run', { command: 'workmap' }, ($, e) => runCommand($, e.args, setup, opening))
 
   on('session.end', async ($, e, next) => {
     const result = await next(e)
