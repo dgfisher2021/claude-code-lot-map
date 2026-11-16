@@ -33,8 +33,10 @@ export type Board = {
   step?: number
   /** How many of the memory station's count a hook brought unasked. */
   pushed?: number
-  /** Errors and refusals per station since the person's last message. */
+  /** Errors per station since the person's last message. */
   faults?: Partial<Record<StationId, number>>
+  /** Calls refused per station (by a hook or a permission prompt) since the person's last message. */
+  blocks?: Partial<Record<StationId, number>>
   /** Subagents whose loops are still going. */
   agents?: string[]
   /** How full the context window is, 0 to 100. */

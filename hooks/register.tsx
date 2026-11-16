@@ -47,9 +47,11 @@ const kept = (entries: Entry[]): Entry[] => {
   return from <= 0 ? entries : entries.filter((e, i) => i >= from || (e.status === 'run' && e.task !== undefined))
 }
 
-const isFault = (status: Status): boolean => status === 'err' || status === 'block'
+const oneMore = (counts: Board['faults'], station: StationId): Board['faults'] => ({ ...counts, [station]: (counts?.[station] ?? 0) + 1 })
 
-const oneMore = (faults: Board['faults'], station: StationId): Board['faults'] => ({ ...faults, [station]: (faults?.[station] ?? 0) + 1 })
+/** A call that ended badly counts on its station: an error with the faults, a refusal with the blocks. */
+const tally = (b: Board, station: StationId, status: Status): Pick<Board, 'faults' | 'blocks'> =>
+  status === 'err' ? { faults: oneMore(b.faults, station) } : status === 'block' ? { blocks: oneMore(b.blocks, station) } : {}
 
 async function begin($: EngineInterface, start: Start): Promise<string | undefined> {
   return quietly(async () => {
@@ -74,7 +76,7 @@ async function begin($: EngineInterface, start: Start): Promise<string | undefin
       // What a hook brought to memory unasked is counted apart from what was asked for.
       ...(entry.station === 'memory' && entry.from === 'inbound' && !start.uncounted ? { pushed: (b.pushed ?? 0) + 1 } : {}),
       // An interrupted turn lands on the person's own station and is no fault of anything.
-      ...(isFault(entry.status) && entry.station !== 'you' ? { faults: oneMore(b.faults, entry.station) } : {}),
+      ...(entry.station !== 'you' ? tally(b, entry.station, entry.status) : {}),
       ...(entry.agentId !== undefined && !(b.agents ?? []).includes(entry.agentId)
         ? { agents: [...(b.agents ?? []), entry.agentId].slice(-CREW) }
         : {}),
@@ -93,7 +95,7 @@ async function finish($: EngineInterface, id: string | undefined, status: Status
         ...b,
         ...patch,
         entries: b.entries.map(e => (e === open ? { ...e, status, endedAt: now, ...(exit === undefined ? {} : { exit }) } : e)),
-        ...(open !== undefined && isFault(status) ? { faults: oneMore(b.faults, open.station) } : {}),
+        ...(open !== undefined ? tally(b, open.station, status) : {}),
       }
     })
   })
@@ -115,7 +117,7 @@ async function settle($: EngineInterface, task: string, status: Status): Promise
       return {
         ...b,
         entries: b.entries.map(e => (e === open ? { ...e, status, endedAt: now } : e)),
-        ...(isFault(status) ? { faults: oneMore(b.faults, open.station) } : {}),
+        ...tally(b, open.station, status),
       }
     })
   })
@@ -462,7 +464,14 @@ export const register: Register = (on, options) => {
       if (notice.status !== undefined) await settle($, notice.id, notice.status)
     } else if (e.agentId === undefined && e.text !== '') {
       // A new message clears what went wrong on the way to the last answer, and the session thinks again.
-      await quietly(() => update($, board, b => ({ ...b, ...(b.faults === undefined ? {} : { faults: {} }), phase: 'thinking' as const })))
+      await quietly(() =>
+        update($, board, b => ({
+          ...b,
+          ...(b.faults === undefined ? {} : { faults: {} }),
+          ...(b.blocks === undefined ? {} : { blocks: {} }),
+          phase: 'thinking' as const,
+        })),
+      )
       await begin($, { station: 'you', label: t.newMessage, from: 'inbound', status: 'ok' })
       if (windowed.isMap && !windowed.isAsked) void quietly(() => showWindow($, setup, opening))
     }
@@ -635,7 +644,12 @@ export const register: Register = (on, options) => {
 
     // Theme keys, so the rows read on a light theme as well as on a dark one.
     const rows = feedLines(state.entries, t).map(({ line, tone }) => (
-      <Text mono size="footnote" color={tone === 'run' || tone === 'switch' ? 'claude' : tone === 'bad' ? 'error' : undefined} dimColor={tone === 'ok'}>
+      <Text
+        mono
+        size="footnote"
+        color={tone === 'run' || tone === 'switch' ? 'claude' : tone === 'bad' ? 'error' : tone === 'block' ? 'warning' : undefined}
+        dimColor={tone === 'ok'}
+      >
         {line}
       </Text>
     ))

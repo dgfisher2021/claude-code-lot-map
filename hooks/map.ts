@@ -765,6 +765,13 @@ function station(s: (typeof STATIONS)[number], i: number, { entries, board, now,
       `<circle cx="${n1(p.x - corner)}" cy="${n1(p.y - corner)}" r="7.5" fill="${c.red}"/>` +
       `<text x="${n1(p.x - corner)}" y="${n1(p.y - corner + 3.1)}" text-anchor="middle" ${FONT} font-size="9" font-weight="700" fill="${c.ground}">${faults > 99 ? '99+' : faults}</text>`
   }
+  // Bottom left, in outline: calls refused there, a rule working rather than something broken.
+  const blocks = board.blocks?.[s.id] ?? 0
+  if (blocks > 0) {
+    over +=
+      `<circle cx="${n1(p.x - corner)}" cy="${n1(p.y + corner)}" r="7.5" fill="none" stroke="${c.red}" stroke-width="1.3"/>` +
+      `<text x="${n1(p.x - corner)}" y="${n1(p.y + corner + 3.1)}" text-anchor="middle" ${FONT} font-size="9" font-weight="700" fill="${c.red}">${blocks > 99 ? '99+' : blocks}</text>`
+  }
   return { under, over }
 }
 
@@ -943,18 +950,18 @@ export function foldRows(entries: readonly Entry[], max = 16): Row[] {
 }
 
 /** A row of the feed as written: at work, finished, gone wrong, or a change of model. */
-export type FeedLine = { line: string; tone: 'run' | 'ok' | 'bad' | 'switch' }
+export type FeedLine = { line: string; tone: 'run' | 'ok' | 'bad' | 'block' | 'switch' }
 
 /** The feed's rows as the pane and the map window write them, the station names in a column as wide as the longest. */
 export function feedLines(entries: readonly Entry[], t: Strings): FeedLine[] {
   const column = Math.max(8, ...Object.values(t.stations).map(name => name.length))
   return foldRows(entries).map(({ entry, times, tookMs }) => {
     const isSwitch = entry.mark === 'switch'
-    const mark = isSwitch ? '◆' : entry.status === 'run' ? '●' : entry.status === 'ok' ? '·' : '✕'
+    const mark = isSwitch ? '◆' : entry.status === 'run' ? '●' : entry.status === 'ok' ? '·' : entry.status === 'block' ? '⊘' : '✕'
     const took = entry.endedAt === undefined ? t.running : tookMs > 0 ? formatMs(tookMs, t) : ''
     const exit = entry.exit === undefined ? '' : `  ${t.exitCode(entry.exit)}`
     const line = `${mark} ${t.stations[entry.station].padEnd(column)} ${entry.label}${times > 1 ? `  +${times - 1}` : ''}${exit}${took === '' ? '' : `  ${took}`}`
-    return { line, tone: isSwitch ? 'switch' : entry.status === 'run' ? 'run' : entry.status === 'ok' ? 'ok' : 'bad' }
+    return { line, tone: isSwitch ? 'switch' : entry.status === 'run' ? 'run' : entry.status === 'ok' ? 'ok' : entry.status === 'block' ? 'block' : 'bad' }
   })
 }
 

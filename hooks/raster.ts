@@ -553,6 +553,18 @@ export function paintMap(board: Board, now: number, setup: Setup, columns: numbe
       const text = faults > 99 ? '99+' : String(faults)
       words.push({ col: Math.round(colOf(p.x - NODE * 0.74)) - text.length + 1, row: top, parts: [{ text, fg: c.ground }], bg: c.red })
     }
+    // Calls refused there, red on the ground, left of the faults: a node has no room under it before its name.
+    const blocks = board.blocks?.[st.id] ?? 0
+    if (blocks > 0) {
+      const text = blocks > 99 ? '99+' : String(blocks)
+      const beside = faults > 0 ? (faults > 99 ? 4 : String(faults).length + 1) : 0
+      words.push({
+        col: Math.round(colOf(p.x - NODE * 0.74)) - text.length + 1 - beside,
+        row: top,
+        parts: [{ text, fg: c.red }],
+        ...(rim !== undefined ? { bg: rim } : {}),
+      })
+    }
   })
 
   // Each subagent still at work circles the agents station.
