@@ -1017,6 +1017,32 @@ test('an error and a refusal at one station keep two badges, and their rows two 
   await ui.unmount()
 })
 
+test("a subagent's failed call marks its own dot and names it in the row", async ($, on) => {
+  mock.clock(on, { now: NOW })
+  on('agent.spawn', () => ({ model: 'claude-haiku-5-5', agentId: 'a1' }) as never)
+  const failures: Record<string, unknown> = { Bash: { result: {}, isError: true, text: 'Exit code 1' } }
+  on('tool.call', (_, e) => (failures[e.tool] ?? { result: {} }) as never)
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await $.agent.spawn({ prompt: 'Find the auth code.', description: 'explore auth' } as never)
+  await $.tool.call({ tool: 'Read', file_path: '/a/b/auth.py', agentId: 'a1' } as never)
+  await $.tool.call({ tool: 'Bash', command: 'npm test', description: 'Run the tests', agentId: 'a1' } as never)
+  expect((await ui.find({ type: 'Text', text: /Run the tests/ }))?.text).toMatch(/^✕ Shell +↳ explore auth · Run the tests {2}exit 1/)
+  expect((await ui.find({ type: 'Text', text: /auth\.py/ }))?.text).toMatch(/^· Files +↳ explore auth · b\/auth\.py/)
+  // Its dot at Agents turns red.
+  expect(String((await ui.find({ type: 'Svg' }))?.props.source)).toMatch(/<circle [^>]*r="3" fill="#e8654f"\/>/)
+  await ui.unmount()
+})
+
+test('a subagent never seen at agent.spawn still marks its dot, and its rows carry no name', async ($, on) => {
+  mock.clock(on, { now: NOW })
+  on('tool.call', () => ({ result: {}, isError: true, text: 'Exit code 3' }) as never)
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await $.tool.call({ tool: 'Bash', command: 'make', description: 'Build it', agentId: 'w7' } as never)
+  expect((await ui.find({ type: 'Text', text: /Build it/ }))?.text).toMatch(/^✕ Shell +Build it {2}exit 3/)
+  expect(String((await ui.find({ type: 'Svg' }))?.props.source)).toMatch(/<circle [^>]*r="3" fill="#e8654f"\/>/)
+  await ui.unmount()
+})
+
 test('a failed shell row shows its exit code, and nothing of its output', async ($, on) => {
   mock.clock(on, { now: NOW })
   const failures: Record<string, unknown> = { Bash: { result: {}, isError: true, text: 'Exit code 2\nsecret line' } }

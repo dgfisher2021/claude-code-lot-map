@@ -49,9 +49,15 @@ const kept = (entries: Entry[]): Entry[] => {
 
 const oneMore = (counts: Board['faults'], station: StationId): Board['faults'] => ({ ...counts, [station]: (counts?.[station] ?? 0) + 1 })
 
-/** A call that ended badly counts on its station: an error with the faults, a refusal with the blocks. */
-const tally = (b: Board, station: StationId, status: Status): Pick<Board, 'faults' | 'blocks'> =>
-  status === 'err' ? { faults: oneMore(b.faults, station) } : status === 'block' ? { blocks: oneMore(b.blocks, station) } : {}
+/**
+ * A call that ended badly counts on its station, an error with the faults and a refusal with the blocks, and marks the
+ * subagent that made it.
+ */
+function tally(b: Board, station: StationId, status: Status, agentId?: string): Pick<Board, 'faults' | 'blocks' | 'agentFaults'> {
+  if (status !== 'err' && status !== 'block') return {}
+  const agentFaults = agentId === undefined || (b.agentFaults ?? []).includes(agentId) ? {} : { agentFaults: [...(b.agentFaults ?? []), agentId].slice(-12) }
+  return { ...(status === 'err' ? { faults: oneMore(b.faults, station) } : { blocks: oneMore(b.blocks, station) }), ...agentFaults }
+}
 
 async function begin($: EngineInterface, start: Start): Promise<string | undefined> {
   return quietly(async () => {
@@ -76,7 +82,7 @@ async function begin($: EngineInterface, start: Start): Promise<string | undefin
       // What a hook brought to memory unasked is counted apart from what was asked for.
       ...(entry.station === 'memory' && entry.from === 'inbound' && !start.uncounted ? { pushed: (b.pushed ?? 0) + 1 } : {}),
       // An interrupted turn lands on the person's own station and is no fault of anything.
-      ...(entry.station !== 'you' ? tally(b, entry.station, entry.status) : {}),
+      ...(entry.station !== 'you' ? tally(b, entry.station, entry.status, entry.agentId) : {}),
       ...(entry.agentId !== undefined && !(b.agents ?? []).includes(entry.agentId)
         ? { agents: [...(b.agents ?? []), entry.agentId].slice(-CREW) }
         : {}),
@@ -95,7 +101,7 @@ async function finish($: EngineInterface, id: string | undefined, status: Status
         ...b,
         ...patch,
         entries: b.entries.map(e => (e === open ? { ...e, status, endedAt: now, ...(exit === undefined ? {} : { exit }) } : e)),
-        ...(open !== undefined ? tally(b, open.station, status) : {}),
+        ...(open !== undefined ? tally(b, open.station, status, open.agentId) : {}),
       }
     })
   })
@@ -117,7 +123,7 @@ async function settle($: EngineInterface, task: string, status: Status): Promise
       return {
         ...b,
         entries: b.entries.map(e => (e === open ? { ...e, status, endedAt: now } : e)),
-        ...tally(b, open.station, status),
+        ...tally(b, open.station, status, open.agentId),
       }
     })
   })
@@ -298,7 +304,7 @@ async function share($: EngineInterface, setup: Setup): Promise<void> {
     const line = describeNow(state, setup.t, now)
     if (isChanged || line.text !== sharing.line) {
       sharing.line = line.text
-      const feed = { now: line.text, nowTone: line.tone, rows: feedLines(state.entries, setup.t), empty: setup.t.nothingYet }
+      const feed = { now: line.text, nowTone: line.tone, rows: feedLines(state.entries, setup.t, state.agentNames), empty: setup.t.nothingYet }
       await $.fs.write(`${dir}/feed.json`, JSON.stringify(feed))
     }
     if (now - sharing.beat >= 3000) {
@@ -455,6 +461,19 @@ export const register: Register = (on, options) => {
       picture.isStopping = true
     }
     return result
+  })
+
+  // A subagent's name is the short description it was started with: its rows carry it.
+  on('agent.spawn', async ($, e, next) => {
+    const spawned = await next(e)
+    const agentId = spawned.agentId
+    const name = clean(e.description ?? '').slice(0, 24)
+    if (agentId !== undefined && name !== '') {
+      await quietly(() =>
+        update($, board, b => ({ ...b, agentNames: Object.fromEntries([...Object.entries(b.agentNames ?? {}), [agentId, name]].slice(-12)) })),
+      )
+    }
+    return spawned
   })
 
   on('turn.start', async ($, e, next) => {
@@ -643,7 +662,7 @@ export const register: Register = (on, options) => {
     const { Box, Text } = $.ui.resolve(e)
 
     // Theme keys, so the rows read on a light theme as well as on a dark one.
-    const rows = feedLines(state.entries, t).map(({ line, tone }) => (
+    const rows = feedLines(state.entries, t, state.agentNames).map(({ line, tone }) => (
       <Text
         mono
         size="footnote"
