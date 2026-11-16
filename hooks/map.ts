@@ -1,6 +1,6 @@
 // What the map knows: which station an action belongs to, what to call it, and how to draw the board.
 // Nothing here touches the engine.
-import type { Board, Entry, StationId, Status } from '../types'
+import type { Board, Entry, PlanItem, StationId, Status } from '../types'
 import { stringsFor } from './text'
 import type { Strings } from './text'
 
@@ -976,8 +976,88 @@ export function pinnedLines(entries: readonly Entry[], now: number, t: Strings):
     .map(e => ({ line: `↻ ${t.stations[e.station].padEnd(column)} ${e.label}  ${formatClock(now - e.startedAt, t)}`, tone: 'run' as const }))
 }
 
-/** A row of the feed as written: at work, finished, gone wrong, or a change of model. */
-export type FeedLine = { line: string; tone: 'run' | 'ok' | 'bad' | 'block' | 'switch' }
+/** The tools with which Claude keeps its own plan: their calls are no work done on a task. */
+export const PLAN_TOOLS: ReadonlySet<string> = new Set(['TaskCreate', 'TaskUpdate', 'TaskList', 'TaskGet', 'TodoWrite'])
+
+/** A task's subject as Claude wrote it, cleaned and cut to sixty characters, a character never split. */
+function subjectOf(value: unknown): string {
+  const characters = Array.from(clean(String(value ?? ''), 4000))
+  return characters.length > 60 ? `${characters.slice(0, 59).join('')}…` : characters.join('')
+}
+
+const planStatusOf = (value: unknown): PlanItem['status'] | undefined =>
+  value === 'pending' || value === 'in_progress' || value === 'completed' ? value : undefined
+
+/**
+ * Claude's plan after one of its task tools answered: a task created, one changed or deleted, or the whole list written
+ * anew. Undefined for any other tool, and for an answer that changes nothing, such as an update to a task never seen.
+ */
+export function planAfter(
+  plan: readonly PlanItem[] = [],
+  tool: string,
+  input: Record<string, unknown>,
+  result: unknown,
+  text: string,
+  now: number,
+): PlanItem[] | undefined {
+  if (tool === 'TaskCreate') {
+    const task = typeof result === 'object' && result !== null ? (result as { task?: { id?: unknown } }).task : undefined
+    const id = typeof task?.id === 'string' ? task.id : /Task #(\w+)/.exec(text)?.[1]
+    const subject = subjectOf(input.subject)
+    if (id === undefined || subject === '' || plan.some(p => p.id === id)) return undefined
+    return [...plan, { id, subject, status: 'pending', calls: 0 }]
+  }
+  if (tool === 'TaskUpdate') {
+    const id = String(input.taskId ?? '')
+    if (!plan.some(p => p.id === id)) return undefined
+    if (input.status === 'deleted') return plan.filter(p => p.id !== id)
+    const status = planStatusOf(input.status)
+    const subject = input.subject === undefined ? '' : subjectOf(input.subject)
+    return plan.map(p =>
+      p.id !== id
+        ? p
+        : {
+            ...p,
+            ...(subject !== '' ? { subject } : {}),
+            ...(status !== undefined ? { status } : {}),
+            ...(status === 'in_progress' && p.startedAt === undefined ? { startedAt: now } : {}),
+            ...(status === 'completed' ? { endedAt: now } : {}),
+          },
+    )
+  }
+  if (tool === 'TodoWrite') {
+    // The whole list, written anew: a task kept under the same subject keeps the work counted against it.
+    const todos = Array.isArray(input.todos) ? (input.todos as { content?: unknown; status?: unknown }[]) : []
+    return todos.flatMap((todo, i) => {
+      const subject = subjectOf(todo.content)
+      const kept = plan.find(p => p.subject === subject)
+      return subject === '' ? [] : [{ ...kept, id: `t${i}`, subject, status: planStatusOf(todo.status) ?? 'pending', calls: kept?.calls ?? 0 }]
+    })
+  }
+  return undefined
+}
+
+/** Claude's plan over the rows: how far along, the last two tasks finished, the ones in progress, the next two. */
+export function planLines(plan: readonly PlanItem[] = [], t: Strings): FeedLine[] {
+  if (plan.length === 0) return []
+  const done = plan.filter(p => p.status === 'completed')
+  const filled = Math.round((done.length / plan.length) * 10)
+  const lines: FeedLine[] = [{ line: `${t.planHeader(done.length, plan.length)} ${'█'.repeat(filled)}${'░'.repeat(10 - filled)}`, tone: 'plain' }]
+  for (const p of done.slice(-2)) {
+    const took = p.startedAt !== undefined && p.endedAt !== undefined ? formatMs(p.endedAt - p.startedAt, t) : ''
+    const details = [p.calls > 0 ? t.planCalls(p.calls) : '', took].filter(d => d !== '')
+    lines.push({ line: [`✓ ${p.subject}`, ...details].join(' · '), tone: 'ok' })
+  }
+  for (const p of plan.filter(p => p.status === 'in_progress')) lines.push({ line: `◐ ${p.subject}`, tone: 'run', isBold: true })
+  const pending = plan.filter(p => p.status === 'pending')
+  for (const p of pending.slice(0, 2)) lines.push({ line: `○ ${p.subject}`, tone: 'plain' })
+  const hidden = Math.max(0, done.length - 2) + Math.max(0, pending.length - 2)
+  if (hidden > 0) lines.push({ line: t.andMore(hidden).trim(), tone: 'ok' })
+  return lines
+}
+
+/** A row of the feed as written: at work, finished, gone wrong, refused, a change of model, or plain words. */
+export type FeedLine = { line: string; tone: 'run' | 'ok' | 'bad' | 'block' | 'switch' | 'plain'; isBold?: true }
 
 /** The feed's rows as the pane and the map window write them, the station names in a column as wide as the longest. */
 export function feedLines(entries: readonly Entry[], t: Strings, agentNames: Readonly<Record<string, string>> = {}): FeedLine[] {

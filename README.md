@@ -67,6 +67,12 @@ A pulse flies out when something starts and returns when it ends. Refusals and e
 - **The route.** A thin line joins the last few stations the main loop went through, in order, and its newest leg draws itself. A leg stays for 40 seconds and then fades over 20, so a minute after the work stops only the spokes are left; their thickness keeps where the work went. Model steps are left out, or every leg would pass through Model.
 - **Worn spokes.** A spoke grows thicker and brighter the more its station is used, so at the end of a session the map shows where the work went.
 - **How long.** Two clock hands grow around a station while a call runs: the inner one goes round in a minute, the outer one in ten.
+- **Claude's plan.** When Claude keeps a task list (TaskCreate and TaskUpdate, or TodoWrite), it shows under the top line as a checklist:
+  - progress, such as `Plan 3/7 ████░░░░░░`
+  - the last two tasks done, with the calls and time each took
+  - the task in progress, in bold
+  - the next two
+  - every other call counts as work on the task in progress
 - **Background work.** A command sent to the background, a monitor, a background subagent or a workflow stays lit on its station after the turn that started it is over, with the clock hands growing, until the task reports that it ended. Under the top line it stays pinned, the newest five, with its time so far (`↻ Shell  Build the site  2 min 10 s`), instead of scrolling away among the rows. A task that failed leaves the red dot. The report itself is not shown as a message of yours.
 - **Several at once.** Calls that start together fly side by side, and the station carries their number, such as `×3`.
 - **What went wrong.** A red dot with a count stays on a station from an error until your next message. A call refused there, by a hook or a permission prompt, counts apart in an outlined badge at the station's lower left (in the cells, in red beside the dot): a rule at work rather than something broken.
@@ -208,6 +214,7 @@ A label holds a name, never content:
 - a memory call: the tool's name and a record number or short identifier, never the text or the query;
 - a memory command: its name, and the word after it only if you listed that word in `memorySubcommands`;
 - a subagent: the short description it was started with;
+- a task of Claude's plan: its subject as Claude wrote it, cut to sixty characters, never its description;
 - a background task's report: that the task ended and whether it failed, never its summary or its output;
 - a hook's refusal: the name of the tool it stopped. Its first line shows only with `hookReasons` on, because a refusal may quote what the hook found.
 

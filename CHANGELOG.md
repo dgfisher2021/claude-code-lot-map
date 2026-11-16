@@ -12,6 +12,11 @@ What changed in each version of lot-map, newest first. To get a new version, see
   - `ExitPlanMode` now lands on You, not Shell.
   - New option `notify`, off by default, raises a notification for each.
 - A failed shell command's row shows its exit code, such as `exit 1`, and nothing of its output.
+- Claude's plan as a checklist under the top line, when it keeps one (TaskCreate and TaskUpdate, or TodoWrite):
+  - progress, and the last two tasks done with the calls and time each took
+  - the task in progress, in bold
+  - the next two
+  - every other call counts as work on the task in progress
 - Background work stays pinned under the top line with its time so far, instead of scrolling away among the rows.
 - A legend:
   - `/workmap help` says what each mark means, in the session's language.

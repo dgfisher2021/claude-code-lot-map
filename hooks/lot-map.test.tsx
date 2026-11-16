@@ -1018,6 +1018,82 @@ test('an error and a refusal at one station keep two badges, and their rows two 
   await ui.unmount()
 })
 
+/** Answers TaskCreate as Claude Code does, numbering the tasks; refuses or fails any tool listed in `bad`. */
+function fakeTasks(on: On, bad: Record<string, unknown> = {}): void {
+  let made = 0
+  on('tool.call', (_, e) => {
+    if (bad[e.tool] !== undefined) return bad[e.tool] as never
+    if (e.tool !== 'TaskCreate') return { result: {} } as never
+    made++
+    return { result: { task: { id: String(made) } }, text: `Task #${made} created successfully` } as never
+  })
+}
+
+test('the plan shows as a checklist with progress, and work counts against the task in progress', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  fakeTasks(on)
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  for (const subject of ['Fix sizing', 'Add the legend', 'Write the docs']) await $.tool.call({ tool: 'TaskCreate', subject, description: 'x' } as never)
+  await $.tool.call({ tool: 'TaskUpdate', taskId: '1', status: 'in_progress' } as never)
+  await $.tool.call({ tool: 'Read', file_path: '/a/b/c.ts' } as never)
+  await clock.advance(2000)
+  await $.tool.call({ tool: 'Grep', pattern: 'x' } as never)
+  await $.tool.call({ tool: 'TaskUpdate', taskId: '1', status: 'completed' } as never)
+  await $.tool.call({ tool: 'TaskUpdate', taskId: '2', status: 'in_progress' } as never)
+  const text = async (pattern: RegExp) => (await ui.find({ type: 'Text', text: pattern }))?.text
+  expect(await text(/^Plan /)).toBe('Plan 1/3 ███░░░░░░░')
+  expect(await text(/Fix sizing/)).toBe('✓ Fix sizing · 2 calls · 2.0 s')
+  expect(await text(/Add the legend/)).toBe('◐ Add the legend')
+  expect(await text(/Write the docs/)).toBe('○ Write the docs')
+  await ui.unmount()
+})
+
+test('TodoWrite replaces the plan', async ($, on) => {
+  mock.clock(on, { now: NOW })
+  fakeTasks(on)
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await $.tool.call({ tool: 'TaskCreate', subject: 'Old', description: 'x' } as never)
+  const todos = [
+    { content: 'One', status: 'completed', activeForm: 'Doing one' },
+    { content: 'Two', status: 'in_progress', activeForm: 'Doing two' },
+    { content: 'Three', status: 'pending', activeForm: 'Doing three' },
+  ]
+  await $.tool.call({ tool: 'TodoWrite', todos } as never)
+  expect((await ui.find({ type: 'Text', text: /^Plan / }))?.text).toMatch(/^Plan 1\/3 /)
+  expect((await ui.find({ type: 'Text', text: /Two/ }))?.text).toBe('◐ Two')
+  expect(await ui.find({ type: 'Text', text: /Old/ })).toBeUndefined()
+  await ui.unmount()
+})
+
+test('a plan survives tools that misbehave, and an empty one shows nothing', async ($, on) => {
+  mock.clock(on, { now: NOW })
+  fakeTasks(on, { TaskGet: { result: {}, isError: true, text: 'No such task' } })
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await $.tool.call({ tool: 'TaskUpdate', taskId: 'zz', status: 'completed' } as never)
+  expect(await ui.find({ type: 'Text', text: /^Plan / })).toBeUndefined()
+  await $.tool.call({ tool: 'TaskCreate', subject: 'Real', description: 'x' } as never)
+  await $.tool.call({ tool: 'TaskUpdate', taskId: 'zz', status: 'completed' } as never)
+  await $.tool.call({ tool: 'TaskGet', taskId: '1' } as never)
+  expect((await ui.find({ type: 'Text', text: /^Plan / }))?.text).toMatch(/^Plan 0\/1 /)
+  await $.tool.call({ tool: 'TaskUpdate', taskId: '1', status: 'deleted' } as never)
+  expect(await ui.find({ type: 'Text', text: /^Plan / })).toBeUndefined()
+  await $.tool.call({ tool: 'TodoWrite', todos: [] } as never)
+  expect(await ui.find({ type: 'Text', text: /^Plan / })).toBeUndefined()
+  await ui.unmount()
+})
+
+test('a long subject with emoji and CJK is cut to 60 characters and kept clean', async ($, on) => {
+  mock.clock(on, { now: NOW })
+  fakeTasks(on)
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await $.tool.call({ tool: 'TaskCreate', subject: `修正🙂\u0007${'界'.repeat(200)}`, description: 'x' } as never)
+  const line = (await ui.find({ type: 'Text', text: /^○ 修正/ }))?.text ?? ''
+  expect(line).toMatch(/^○ 修正🙂 界界/)
+  expect(Array.from(line.slice(2)).length).toBeLessThanOrEqual(60)
+  expect(line).not.toMatch(/[\u0000-\u001f]/)
+  await ui.unmount()
+})
+
 test('background work stays pinned with its time while later rows scroll by', async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
   on('tool.call', (_, e) => (e.tool === 'Bash' ? { result: { backgroundTaskId: 'b9' } } : { result: {} }) as never)
