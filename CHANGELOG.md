@@ -2,6 +2,11 @@
 
 What changed in each version of lot-map, newest first. To get a new version, see [Updating](README.md#updating).
 
+## 0.9.1 (2026-11-16)
+
+- Fixed: the map window grew by a whole screen at each resize. Windows Terminal answers a clear of the screen (`ESC [ 2 J`) by moving the screen, pictures and all, into the scrollback. The window now draws in the alternate screen, which keeps no scrollback, clears in place, and gives the pane back as it was when it closes.
+- Fixed: after a resize a frame painted at the old size could be drawn over the rows. The window now draws only frames of its current size.
+
 ## 0.9.0 (2026-11-16)
 
 - In Windows Terminal from WSL the map is [a window of its own](README.md#a-window-of-its-own), in place of the pane: the picture, as the app draws it, with the rows under it. It opens the first time you write in a session, when its tab is the one in front, since a session can start in the background. `/lot-map` opens it again after `q`, and no second one while it shows. Where it cannot open, the pane opens instead; kitty keeps its pane.

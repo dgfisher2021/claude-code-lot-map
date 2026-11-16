@@ -75,9 +75,15 @@ function fit() {
 
 let size = fit()
 
+/**
+ * Clears the screen in place. Windows Terminal answers ED 2 (ESC [ 2 J) by moving the screen, pictures and all, into
+ * the scrollback, so a window cleared that way grew by a screen at each resize.
+ */
+const CLEAR = '\x1b[H\x1b[J'
+
 function relayout() {
   size = fit()
-  out.write('\x1b[2J')
+  out.write(CLEAR)
   hint()
   fedKey = ''
   feed()
@@ -128,7 +134,8 @@ function rows() {
   out.write(text)
 }
 
-out.write('\x1b[?25l\x1b[2J')
+// The alternate screen keeps no scrollback, and leaving it gives the pane back as it was.
+out.write(`\x1b[?1049h\x1b[?25l${CLEAR}`)
 hint()
 say('Starting the map…')
 if (asked) out.write('\x1b[16t')
@@ -173,7 +180,7 @@ createInterface({ input: renderer.stdout }).on('line', line => {
 let failed = ''
 renderer.on('exit', () => {
   if (isQuitting) return
-  out.write('\x1b[2J')
+  out.write(CLEAR)
   say(`The map cannot be drawn: ${failed || 'its renderer stopped'}.`)
   out.write(`\x1b[${size.rows};1H\x1b[2mpress q to close this window\x1b[0m`)
 })
@@ -187,7 +194,10 @@ function draw() {
     return
   }
   try {
-    const picture = sixel(decodePng(readFileSync(join(rdir, 'frame.png'))))
+    const png = decodePng(readFileSync(join(rdir, 'frame.png')))
+    // A frame painted for the size before a resize would spill over the rows: one at the new size comes next.
+    if (png.width !== size.w || png.height !== size.h) return
+    const picture = sixel(png)
     lastDraw = Date.now()
     out.write(`\x1b[1;${size.col + 1}H${picture}`)
   } catch {
@@ -221,7 +231,7 @@ function quit(code) {
   if (isQuitting) return
   isQuitting = true
   renderer.kill('SIGTERM')
-  out.write('\x1b[2J\x1b[H\x1b[?25h')
+  out.write(`${CLEAR}\x1b[?1049l\x1b[?25h`)
   process.stdin.setRawMode?.(false)
   setTimeout(() => process.exit(code), 100)
 }
