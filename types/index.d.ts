@@ -20,6 +20,8 @@ export type Entry = {
   task?: string
   /** A moment the map marks: the model changed, or the answer is ready. */
   mark?: 'switch' | 'done'
+  /** The call waits on the person: a question for them, a plan for their approval. */
+  waits?: true
 }
 
 export type Board = {

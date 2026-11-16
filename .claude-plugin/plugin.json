@@ -139,6 +139,12 @@
       "default": "auto",
       "description": "In Windows Terminal from WSL, auto makes the map a window of its own in place of the pane: the picture, as the app draws it, with the rows under it, opened beside the session the first time you write in it. Off keeps the pane, in cells."
     },
+    "notify": {
+      "type": "boolean",
+      "title": "Notify when Claude needs you",
+      "default": false,
+      "description": "Raise a notification when Claude asks you a question or puts a plan to you, and when a turn ends. Useful for sessions running in the background."
+    },
     "layout": {
       "type": "string",
       "title": "Layout",

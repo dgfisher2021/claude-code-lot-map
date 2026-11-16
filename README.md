@@ -75,7 +75,7 @@ A pulse flies out when something starts and returns when it ends. Refusals and e
 - **Subagents.** Each one still at work circles the Agents station as a small dot, and its calls start from there.
 - **The answer.** One wide ring leaves the centre when the answer is ready.
 
-Below the map are the current action with the context percentage, and the last 16 rows: `●` running, `·` done, `✕` failed or blocked, `◆` a change of model. Finished calls that follow one another at one station fold into one row, marked `+2` for the two it stands for besides the one named.
+Below the map is the current action with the context percentage. While Claude waits on you, with a question or a plan for your approval, that line reads `Needs you:` and what for, counting the time in the warning colour. Once the answer is ready it reads `Done … ago · your turn`. A permission prompt isn't shown: Claude Code tells a mod when it might ask, not when you answer. Under it are the last 16 rows: `●` running, `·` done, `✕` failed or blocked, `◆` a change of model. Finished calls that follow one another at one station fold into one row, marked `+2` for the two it stands for besides the one named.
 
 | At work | Subagents | A hook refuses |
 | --- | --- | --- |
@@ -147,6 +147,7 @@ The install offers them on a screen. Later, use `/config` in a terminal or `clau
 | `terminalMap` | `true` | in a terminal, paint the map in cells above the rows; `false` keeps the rows and one line of counts |
 | `terminalPicture` | `auto` | in a terminal that shows pictures, `auto` has headless Chromium paint the map as the app draws it; `off` keeps the cells. See [Pictures](#pictures) |
 | `terminalWindow` | `auto` | in Windows Terminal from WSL, `auto` makes the map [a window of its own](#a-window-of-its-own) in place of the pane; `off` keeps the pane |
+| `notify` | `false` | raise a notification when Claude asks you a question or puts a plan to you, and when a turn ends: useful for sessions in the background |
 | `layout` | `you-top` | where you are on the map: `you-top`, or `you-bottom`, which turns the ring half a turn so that you are at the bottom and the network and the browser at the top |
 
 For example, Russian labels and your own memory server:

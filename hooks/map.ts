@@ -51,6 +51,8 @@ export type Setup = {
   terminalPicture: 'auto' | 'off'
   /** In Windows Terminal from WSL, whether the map is a window of its own in place of the pane (`auto`) or the pane (`off`). */
   terminalWindow: 'auto' | 'off'
+  /** Whether a wait on the person and a finished turn raise a notification. */
+  notify: boolean
 }
 
 const list = (v: unknown): string[] =>
@@ -80,6 +82,7 @@ export function setupFrom(options: Readonly<Record<string, unknown>> = {}): Setu
     terminalMap: options.terminalMap !== false,
     terminalPicture: options.terminalPicture === 'off' ? 'off' : 'auto',
     terminalWindow: options.terminalWindow === 'off' ? 'off' : 'auto',
+    notify: options.notify === true,
   }
 }
 
@@ -345,6 +348,8 @@ export function classify(tool: string, input: Record<string, unknown>, setup: Se
       return { station: 'skills', label: t.loadingTools }
     case 'AskUserQuestion':
       return { station: 'you', label: t.questionForYou }
+    case 'ExitPlanMode':
+      return { station: 'you', label: t.planForYou }
     case 'SendUserFile':
       return { station: 'you', label: t.fileForYou }
   }
@@ -980,17 +985,44 @@ export function taskNotice(text: string): { id: string; status?: Status } | unde
 /** What the session is doing, as the word under the core says it. */
 export type SessionState = keyof Strings['states']
 
-/** The session's state: a compaction first, then a call at work, then where the turn stands. Background work is not the turn's. */
+/**
+ * The session's state: a wait on the person first, then a compaction, then a call at work, then where the turn stands.
+ * Background work is not the turn's.
+ */
 export function stateOf(board: Board): SessionState {
+  if (board.entries.some(e => e.status === 'run' && e.waits === true)) return 'waiting'
   if (board.phase === 'compacting') return 'compacting'
   if (board.entries.some(e => e.status === 'run' && e.task === undefined && e.station !== 'model' && e.station !== 'you')) return 'running'
   return board.phase ?? 'idle'
 }
 
-export function describeNow(board: Board, t: Strings): string {
-  const running = board.entries.filter(e => e.status === 'run')
+/**
+ * The line over the rows, how it reads (waiting on the person, the answer given, or plain), and in how many
+ * milliseconds its words change by themselves, when they count time.
+ */
+export type NowLine = { text: string; tone: 'wait' | 'done' | 'plain'; next?: number }
+
+/** What the session does now: what it waits on the person for and how long, since when the answer is ready, or what runs. */
+export function describeNow(board: Board, t: Strings, now: number): NowLine {
   const context = board.context === undefined ? '' : ` · ${t.context} ${Math.round(board.context)}%`
+  const state = stateOf(board)
+  const wait = state === 'waiting' ? board.entries.find(e => e.status === 'run' && e.waits === true) : undefined
+  if (wait !== undefined) {
+    // A wait counts in seconds.
+    const s = Math.max(0, Math.floor((now - wait.startedAt) / 1000))
+    const since = s < 60 ? t.seconds(String(s)) : t.minutes(Math.floor(s / 60), s % 60)
+    return { text: `${t.waitingFor(wait.label, since)}${context}`, tone: 'wait', next: 1000 - ((now - wait.startedAt) % 1000) }
+  }
+  const answer = state === 'done' ? board.entries.findLast(e => e.mark === 'done') : undefined
+  if (answer !== undefined) {
+    // The time since the answer counts in seconds for a minute, then in whole minutes.
+    const ms = Math.max(0, now - answer.startedAt)
+    const s = Math.max(1, Math.floor(ms / 1000))
+    const since = s < 60 ? t.seconds(String(s)) : t.wholeMinutes(Math.floor(s / 60))
+    return { text: `${t.yourTurn(since)}${context}`, tone: 'done', next: s < 60 ? 1000 - (ms % 1000) : 60_000 - (ms % 60_000) }
+  }
+  const running = board.entries.filter(e => e.status === 'run')
   const top = running[running.length - 1]
-  if (top === undefined) return `${t.idle}${context}`
-  return `${t.stations[top.station]}: ${top.label}${running.length > 1 ? t.andMore(running.length - 1) : ''}${context}`
+  if (top === undefined) return { text: `${t.idle}${context}`, tone: 'plain' }
+  return { text: `${t.stations[top.station]}: ${top.label}${running.length > 1 ? t.andMore(running.length - 1) : ''}${context}`, tone: 'plain' }
 }

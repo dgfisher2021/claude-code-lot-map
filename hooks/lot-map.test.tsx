@@ -997,6 +997,86 @@ test('the core names the session state on every surface', async ($, on) => {
   }
 })
 
+/** A tool that answers only when `release` is called. */
+function heldTool(on: On): { release: () => void } {
+  const held = { release: () => {} }
+  on('tool.call', () => new Promise(resolve => (held.release = () => resolve({ result: {} }))) as never)
+  return held
+}
+
+test('a question or a plan for the person makes the session wait on them, and the top line says for how long', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  const held = heldTool(on)
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  const asking = $.tool.call({ tool: 'AskUserQuestion', questions: [] } as never)
+  await clock.settle()
+  await clock.advance(65_000)
+  expect((await ui.find({ type: 'Text', text: /^Needs you: / }))?.text).toMatch(/^Needs you: question for you · 1 min 5 s/)
+  expect(String((await ui.find({ type: 'Svg' }))?.props.source)).toContain('>needs you<')
+  held.release()
+  await asking
+  await clock.settle()
+  expect(await ui.find({ type: 'Text', text: /^Needs you: / })).toBeUndefined()
+
+  // A plan waiting for approval is the person's too, not a shell command.
+  const planning = $.tool.call({ tool: 'ExitPlanMode', plan: 'x' } as never)
+  await clock.settle()
+  expect((await ui.find({ type: 'Text', text: /^Needs you: / }))?.text).toMatch(/^Needs you: plan for your approval/)
+  held.release()
+  await planning
+  await ui.unmount()
+})
+
+test('a finished turn reads as your turn', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  on('turn.start', (_, e) => ({ turnId: e.turnId }) as never)
+  on('turn.complete', () => ({ text: '' }))
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await $.turn.start({ text: 'hello', turnId: 't1' } as never)
+  await $.turn.complete({ answer: '', durationMs: 1, isAborted: false, turnId: 't1', reason: 'answer' } as never)
+  await clock.advance(30_000)
+  expect((await ui.find({ type: 'Text', text: /your turn/ }))?.text).toMatch(/^Done 30 s ago · your turn/)
+  // Past a minute it counts whole minutes.
+  await clock.advance(95_000)
+  expect((await ui.find({ type: 'Text', text: /your turn/ }))?.text).toMatch(/^Done 2 min ago · your turn/)
+  await ui.unmount()
+})
+
+test('with notify on, a wait and a finished turn each notify once; with it off, never', { options: { notify: true } }, async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  const notes: string[] = []
+  on('ui.notify', (_, e) => {
+    notes.push(e.text)
+    return { value: { isSent: true, channel: 'client' } } as never
+  })
+  on('turn.start', (_, e) => ({ turnId: e.turnId }) as never)
+  on('turn.complete', () => ({ text: '' }))
+  const held = heldTool(on)
+  await $.turn.start({ text: 'hello', turnId: 't1' } as never)
+  const asking = $.tool.call({ tool: 'AskUserQuestion', questions: [] } as never)
+  await clock.settle()
+  held.release()
+  await asking
+  await $.turn.complete({ answer: '', durationMs: 1, isAborted: false, turnId: 't1', reason: 'answer' } as never)
+  await clock.settle()
+  expect(notes).toEqual(['Needs you: question for you', 'Done: your turn'])
+})
+
+test('with notify off nothing is notified', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  let notified = 0
+  on('ui.notify', () => {
+    notified++
+    return { value: { isSent: true, channel: 'client' } } as never
+  })
+  on('turn.start', (_, e) => ({ turnId: e.turnId }) as never)
+  on('turn.complete', () => ({ text: '' }))
+  await $.turn.start({ text: 'hello', turnId: 't1' } as never)
+  await $.turn.complete({ answer: '', durationMs: 1, isAborted: false, turnId: 't1', reason: 'answer' } as never)
+  await clock.settle()
+  expect(notified).toBe(0)
+})
+
 test("every cell of the terminal map is one narrow glyph, and the terminal's own color is only ever a background", () => {
   const faults: string[] = []
   for (const options of [{}, { theme: 'light', layout: 'you-bottom' }, { background: 'transparent', language: 'ru' }, { coreName: '中文🙂ab' }]) {
