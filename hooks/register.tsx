@@ -12,7 +12,10 @@ import {
   firstLine,
   framedMap,
   memoryIds,
+  PLAN_TOOLS,
   pinnedLines,
+  planAfter,
+  planLines,
   setupFrom,
   shortModel,
   taskNotice,
@@ -324,6 +327,7 @@ async function share($: EngineInterface, setup: Setup): Promise<void> {
       const feed = {
         now: line.text,
         nowTone: line.tone,
+        plan: planLines(state.plan, setup.t),
         pinned,
         rows: feedLines(state.entries, setup.t, state.agentNames),
         empty: setup.t.nothingYet,
@@ -598,9 +602,28 @@ export const register: Register = (on, options) => {
         ...(waits ? { waits: true as const } : {}),
       })
     })
+    // A call other than the plan's own counts as work on the task in progress, a subagent's as well.
+    if (!PLAN_TOOLS.has(String(e.tool))) {
+      await quietly(() =>
+        update($, board, b => {
+          const at = (b.plan ?? []).findIndex(p => p.status === 'in_progress')
+          return at < 0 ? b : { ...b, plan: (b.plan ?? []).map((p, i) => (i === at ? { ...p, calls: p.calls + 1 } : p)) }
+        }),
+      )
+    }
     try {
       const ran = await next(e)
       const wasRefused = ran.deny !== undefined || (e.tool_use_id !== undefined && refused.delete(e.tool_use_id))
+      // Claude's own plan, as the main loop's task tools set it.
+      if (e.agentId === undefined && !wasRefused && ran.isError !== true && PLAN_TOOLS.has(String(e.tool))) {
+        await quietly(async () => {
+          const now = await $.clock.now()
+          await update($, board, b => {
+            const plan = planAfter(b.plan, String(e.tool), e as unknown as Record<string, unknown>, ran.result, String(ran.text ?? ''), now)
+            return plan === undefined ? b : { ...b, plan }
+          })
+        })
+      }
       const task = wasRefused || ran.isError === true ? undefined : taskOf(ran.result)
       if (task !== undefined) {
         await background($, id, task)
@@ -709,6 +732,11 @@ export const register: Register = (on, options) => {
         <Text mono size="footnote" color={line.tone === 'wait' ? 'warning' : line.tone === 'done' ? 'success' : undefined} bold={line.tone === 'wait'}>
           {line.text}
         </Text>
+        {planLines(state.plan, t).map(p => (
+          <Text mono size="footnote" color={p.tone === 'run' ? 'claude' : undefined} dimColor={p.tone === 'ok'} bold={p.isBold === true}>
+            {p.line}
+          </Text>
+        ))}
         {pinned.map(p => (
           <Text mono size="footnote" color="claude">
             {p.line}

@@ -26,6 +26,17 @@ export type Entry = {
   exit?: number
 }
 
+/** A task of Claude's own plan: its subject as Claude wrote it, cut short, and the work done while it was in progress. */
+export type PlanItem = {
+  id: string
+  subject: string
+  status: 'pending' | 'in_progress' | 'completed'
+  /** Calls made while it was the task in progress. */
+  calls: number
+  startedAt?: number
+  endedAt?: number
+}
+
 export type Board = {
   entries: Entry[]
   counts: Partial<Record<StationId, number>>
@@ -49,6 +60,8 @@ export type Board = {
   switchedAt?: number
   /** Where the main loop's turn stands: thinking from the person's message, done at its end, compacting meanwhile. */
   phase?: 'thinking' | 'compacting' | 'done'
+  /** Claude's own plan, as its task tools set it. */
+  plan?: PlanItem[]
 }
 
 declare module 'claude-code' {

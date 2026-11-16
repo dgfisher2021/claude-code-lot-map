@@ -63,6 +63,9 @@ export type Strings = {
   wholeMinutes: (m: number) => string
   /** A failed shell command's exit code, in its row. */
   exitCode: (n: number) => string
+  /** Claude's plan over the rows: how many of how many tasks are done, and the calls a finished task took. */
+  planHeader: (done: number, total: number) => string
+  planCalls: (n: number) => string
 }
 
 const en: Strings = {
@@ -118,6 +121,8 @@ const en: Strings = {
   callsHere: n => `${n} ${n === 1 ? 'call' : 'calls'} this session`,
   errorsHere: n => `${n} ${n === 1 ? 'error' : 'errors'} since your last message`,
   refusedHere: n => `${n} refused`,
+  planHeader: (done, total) => `Plan ${done}/${total}`,
+  planCalls: n => `${n} ${n === 1 ? 'call' : 'calls'}`,
   context: 'context',
   andMore: n => ` and ${n} more`,
   webSearch: 'web search',
@@ -192,6 +197,8 @@ const ru: Strings = {
   callsHere: n => `вызовов за сессию: ${n}`,
   errorsHere: n => `ошибок с последнего сообщения: ${n}`,
   refusedHere: n => `отклонено: ${n}`,
+  planHeader: (done, total) => `План ${done}/${total}`,
+  planCalls: n => `вызовов: ${n}`,
   context: 'контекст',
   andMore: n => ` и ещё ${n}`,
   webSearch: 'поиск в сети',
@@ -266,6 +273,8 @@ const es: Strings = {
   callsHere: n => `${n} llamadas en esta sesión`,
   errorsHere: n => `${n} errores desde tu último mensaje`,
   refusedHere: n => `${n} rechazadas`,
+  planHeader: (done, total) => `Plan ${done}/${total}`,
+  planCalls: n => `${n} llamadas`,
   context: 'contexto',
   andMore: n => ` y ${n} más`,
   webSearch: 'búsqueda web',
@@ -340,6 +349,8 @@ const fr: Strings = {
   callsHere: n => `${n} appels pendant la session`,
   errorsHere: n => `${n} erreurs depuis votre dernier message`,
   refusedHere: n => `${n} refusés`,
+  planHeader: (done, total) => `Plan ${done}/${total}`,
+  planCalls: n => `${n} appels`,
   context: 'contexte',
   andMore: n => ` et ${n} de plus`,
   webSearch: 'recherche web',
@@ -414,6 +425,8 @@ const de: Strings = {
   callsHere: n => `${n} Aufrufe in dieser Sitzung`,
   errorsHere: n => `${n} Fehler seit deiner letzten Nachricht`,
   refusedHere: n => `${n} abgelehnt`,
+  planHeader: (done, total) => `Plan ${done}/${total}`,
+  planCalls: n => `${n} Aufrufe`,
   context: 'Kontext',
   andMore: n => ` und ${n} weitere`,
   webSearch: 'Websuche',
@@ -488,6 +501,8 @@ const it: Strings = {
   callsHere: n => `${n} chiamate nella sessione`,
   errorsHere: n => `${n} errori dal tuo ultimo messaggio`,
   refusedHere: n => `${n} rifiutate`,
+  planHeader: (done, total) => `Piano ${done}/${total}`,
+  planCalls: n => `${n} chiamate`,
   context: 'contesto',
   andMore: n => ` e altri ${n}`,
   webSearch: 'ricerca web',
@@ -563,6 +578,8 @@ const pt: Strings = {
   callsHere: n => `${n} chamadas nesta sessão`,
   errorsHere: n => `${n} erros desde a tua última mensagem`,
   refusedHere: n => `${n} recusadas`,
+  planHeader: (done, total) => `Plano ${done}/${total}`,
+  planCalls: n => `${n} chamadas`,
   context: 'contexto',
   andMore: n => ` e mais ${n}`,
   webSearch: 'pesquisa na web',
