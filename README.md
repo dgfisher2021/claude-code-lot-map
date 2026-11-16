@@ -22,7 +22,7 @@ claude plugin install lot-map --marketplace alexeyw/lot-map
 
 In the desktop app: click **+** next to the prompt box, then **Plugins**, **Add marketplace** with `alexeyw/lot-map`, then **Add plugin**.
 
-The pane opens by itself when a session starts. In a terminal it needs at least 144 columns; otherwise type `/lot-map`. A terminal draws the same map in coloured cells, moving as it does in the app: see [In a terminal](#in-a-terminal). Built and tested on Claude Code 2.1.321 on macOS; users report it working on Windows as well. The terminal map is tested on 2.1.322.
+The pane opens by itself when a session starts; in Windows Terminal from WSL the map is [a window of its own](#a-window-of-its-own) instead. In a terminal the pane needs at least 144 columns; otherwise type `/lot-map`. A terminal draws the same map in coloured cells, moving as it does in the app: see [In a terminal](#in-a-terminal). Built and tested on Claude Code 2.1.321 on macOS; users report it working on Windows as well. The terminal map is tested on 2.1.322.
 
 ## Updating
 
@@ -116,9 +116,11 @@ A terminal that shows pictures gets the map exactly as the app draws it: kitty 0
 
 `/lot-map window` shows the map, as the app draws it, in a pane of its own beside the session, for a terminal that shows Sixel pictures but not a mod's: Windows Terminal 1.22 and later, foot, mlterm, WezTerm.
 
+In Windows Terminal from WSL the window is the map: the session opens no pane, and the window opens the first time you write in the session, when its tab is the one in front. A session can start in the background, so it does not open at the start. `/lot-map` opens it again after `q`, and opens no second one while it shows. Where it cannot open, the pane opens instead. A terminal that shows pictures (kitty) keeps its pane. Set `terminalWindow` to `off` to keep the pane.
+
 - From WSL in Windows Terminal it splits the current tab (`wt.exe -w 0 split-pane`) and starts the window there. Anywhere else it answers with the line to run in a pane of your own: `node <plugin>/renderer/view.mjs <folder>`.
 - The session keeps its live map and the rows under it in a temporary folder of its own while the window is wanted. The window runs the same renderer as [Pictures](#pictures), at the size of its pane, draws each frame as Sixel, at most ten a second, and under it the action now and the last rows, as the pane does. In a short pane the rows give way before the map does.
-- It closes when the session ends, or on `q` or ctrl+c. Closing it leaves the session as it was; `/lot-map window` opens it again.
+- It closes when the session ends, or on `q` or ctrl+c. Closing it leaves the session as it was; `/lot-map window` opens it again. A session switched away from in its tab keeps its window there until it ends or `q`.
 - It needs Node 22 and a Chromium, as pictures do.
 
 ## Options
@@ -141,6 +143,7 @@ The install offers them on a screen. Later, use `/config` in a terminal or `clau
 | `colors` | none | colours of your own, each as `name=#rrggbb`; see [Colours of your own](#colours-of-your-own) |
 | `terminalMap` | `true` | in a terminal, paint the map in cells above the rows; `false` keeps the rows and one line of counts |
 | `terminalPicture` | `auto` | in a terminal that shows pictures, `auto` has headless Chromium paint the map as the app draws it; `off` keeps the cells. See [Pictures](#pictures) |
+| `terminalWindow` | `auto` | in Windows Terminal from WSL, `auto` makes the map [a window of its own](#a-window-of-its-own) in place of the pane; `off` keeps the pane |
 | `layout` | `you-top` | where you are on the map: `you-top`, or `you-bottom`, which turns the ring half a turn so that you are at the bottom and the network and the browser at the top |
 
 For example, Russian labels and your own memory server:
@@ -188,7 +191,7 @@ Like any mod that follows tool calls, it is handed every call's whole input, inc
 
 It asks Claude Code for one thing: how full the context window is, after each model step. Between sessions it keeps one thing, the name of the model last used in each folder, so that it can show a change. Each is stored under the folder's full path, in Claude Code's own store for the plugin.
 
-What its hooks do. The mod listens to the session's start, prompts, turns, model steps, tool calls, skills, compaction, and to three events of settings hooks: `PreToolUse`, where it sees whether a hook refused the call, asked for permission or took a moment, and `UserPromptSubmit` and `SessionStart`, where it sees the context a hook added. Each of its hooks passes the event on as it came and returns what came back as it was: it changes no input, no result, no context and no permission decision, and makes none of its own. Its one command, `/lot-map`, opens the pane; `/lot-map window` opens [a window of its own](#a-window-of-its-own).
+What its hooks do. The mod listens to the session's start, prompts, turns, model steps, tool calls, skills, compaction, and to three events of settings hooks: `PreToolUse`, where it sees whether a hook refused the call, asked for permission or took a moment, and `UserPromptSubmit` and `SessionStart`, where it sees the context a hook added. Each of its hooks passes the event on as it came and returns what came back as it was: it changes no input, no result, no context and no permission decision, and makes none of its own. Its one command, `/lot-map`, opens the pane, or in Windows Terminal from WSL the window; `/lot-map window` opens [a window of its own](#a-window-of-its-own).
 
 A label holds a name, never content:
 

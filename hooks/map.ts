@@ -49,6 +49,8 @@ export type Setup = {
   terminalMap: boolean
   /** In a terminal that shows pictures, whether the map is a picture a browser paints (`auto`) or stays in cells (`off`). */
   terminalPicture: 'auto' | 'off'
+  /** In Windows Terminal from WSL, whether the map is a window of its own in place of the pane (`auto`) or the pane (`off`). */
+  terminalWindow: 'auto' | 'off'
 }
 
 const list = (v: unknown): string[] =>
@@ -77,6 +79,7 @@ export function setupFrom(options: Readonly<Record<string, unknown>> = {}): Setu
     layout: options.layout === 'you-bottom' ? 'you-bottom' : 'you-top',
     terminalMap: options.terminalMap !== false,
     terminalPicture: options.terminalPicture === 'off' ? 'off' : 'auto',
+    terminalWindow: options.terminalWindow === 'off' ? 'off' : 'auto',
   }
 }
 

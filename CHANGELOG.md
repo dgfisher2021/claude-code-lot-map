@@ -2,6 +2,11 @@
 
 What changed in each version of lot-map, newest first. To get a new version, see [Updating](README.md#updating).
 
+## 0.9.0 (2026-11-16)
+
+- In Windows Terminal from WSL the map is [a window of its own](README.md#a-window-of-its-own), in place of the pane: the picture, as the app draws it, with the rows under it. It opens the first time you write in a session, when its tab is the one in front, since a session can start in the background. `/lot-map` opens it again after `q`, and no second one while it shows. Where it cannot open, the pane opens instead; kitty keeps its pane.
+- New option `terminalWindow`, `auto` by default; `off` keeps the pane.
+
 ## 0.8.3 (2026-11-16)
 
 - Fixed: a docked pane under 28 rows dropped the map and kept only the rows, as in a terminal window about 31 rows tall. It held eight rows for the feed even when that left the map too short. Now the rows give way first: the map stays while its 20 rows fit, and the rows take what is left.

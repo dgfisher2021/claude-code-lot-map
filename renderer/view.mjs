@@ -3,7 +3,8 @@
 // mlterm, WezTerm and others). Usage: node view.mjs <live folder>
 //
 // lot-map keeps the session's live map in the folder (map.svg), the rows under it (feed.json) and a heartbeat (alive)
-// while `/lot-map window` is on. The rows are drawn as text under the picture, as the pane draws them.
+// while `/lot-map window` is on. The rows are drawn as text under the picture, as the pane draws them. The window
+// marks itself shown (shown) while it runs, so the session opens no second one.
 // This window runs render.mjs at its own size, draws each frame as Sixel, and closes when the heartbeat stops, or on
 // q or ctrl+c.
 
@@ -194,6 +195,14 @@ function draw() {
   }
 }
 
+/** Marks the window shown, so that the session opens no second one beside it. */
+function markShown() {
+  try {
+    writeFileSync(join(live, 'shown'), String(Date.now()))
+  } catch {}
+}
+
+markShown()
 setInterval(feed, 60)
 setInterval(rows, 200)
 setInterval(() => {
@@ -204,7 +213,7 @@ setInterval(() => {
   if (Date.now() - beat > STALE_MS) {
     rmSync(live, { recursive: true, force: true })
     quit(0)
-  }
+  } else markShown()
 }, 2000)
 
 let isQuitting = false

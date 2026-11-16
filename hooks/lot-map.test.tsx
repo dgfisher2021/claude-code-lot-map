@@ -1271,6 +1271,108 @@ test('outside Windows Terminal /lot-map window says how to open the window by ha
   await $.session.end({ reason: 'other' } as never)
 })
 
+/** A session in Windows Terminal from WSL, as one in the background sees it: the profile is set, the tab is not. */
+const IN_WINDOWS_TERMINAL = { WSL_DISTRO_NAME: 'Ubuntu', WT_PROFILE_ID: '{51855cb2}', TMPDIR: '/tmp' }
+
+/** Answers the session's start, its turns and the pane, and keeps the id of each pane opened. */
+function fakeSession(on: On): string[] {
+  const panes: string[] = []
+  on('ui.open', (_, e) => {
+    panes.push(e.id)
+    return { value: { isPlaced: true } }
+  })
+  on('command.register', () => ({ value: { command: 'lot-map' } }))
+  on('session.start', (_, e) => ({ cwd: e.cwd }))
+  on('turn.start', (_, e) => ({ turnId: e.turnId }) as never)
+  return panes
+}
+
+test('in Windows Terminal the map is a window: no pane, and the window opens beside the session when the person first writes', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  mock.env(on, IN_WINDOWS_TERMINAL)
+  const runs = fakeHost(on)
+  const splits = () => runs.filter(argv => argv[0] === 'wt.exe')
+  on('fs.write', () => ({ value: undefined }))
+  // The window's own heartbeat, while it shows the map.
+  let shownAt: number | undefined
+  on('fs.stat', (_, e) => (e.path.endsWith('/shown') && shownAt !== undefined ? { value: { kind: 'file', size: 13, mtimeMs: shownAt, isLink: false } } : { deny: 'ENOENT' }))
+  const panes = fakeSession(on)
+
+  // A session can start with no one looking, as one in the background does: nothing opens yet.
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  await clock.settle()
+  expect(panes).toEqual([])
+  expect(splits()).toEqual([])
+
+  // The person writes: their tab is the one in front, and the window splits it, once.
+  await $.turn.start({ text: 'hello', turnId: 't1' } as never)
+  await clock.settle()
+  expect(splits().length).toBe(1)
+  await $.turn.start({ text: 'and again', turnId: 't2' } as never)
+  await clock.settle()
+  expect(splits().length).toBe(1)
+
+  // /lot-map opens the window, not the pane, and no second one while the first shows the map.
+  shownAt = clock.now()
+  expect((await $.command.run({ command: 'lot-map', args: '' } as never)).text).toBe('The map window is already open beside this one.')
+  expect(splits().length).toBe(1)
+  // Closed with q, its heartbeat stops: /lot-map opens it again.
+  shownAt = clock.now() - 60_000
+  expect((await $.command.run({ command: 'lot-map', args: '' } as never)).text).toBe('Map window opened beside this one.')
+  expect(splits().length).toBe(2)
+  expect(panes).toEqual([])
+  await $.session.end({ reason: 'other' } as never)
+})
+
+test('with terminalWindow off Windows Terminal keeps the pane', { options: { terminalWindow: 'off' } }, async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  mock.env(on, IN_WINDOWS_TERMINAL)
+  const runs = fakeHost(on)
+  on('fs.write', () => ({ value: undefined }))
+  const panes = fakeSession(on)
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  await $.turn.start({ text: 'hello', turnId: 't1' } as never)
+  await clock.settle()
+  expect(panes).toEqual(['lot-map'])
+  expect(runs.some(argv => argv[0] === 'wt.exe')).toBe(false)
+  await $.session.end({ reason: 'other' } as never)
+})
+
+test('when the window cannot open the pane opens instead', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  mock.env(on, IN_WINDOWS_TERMINAL)
+  const runs: string[][] = []
+  on('session.end', () => ({ sessionId: 'test' }))
+  on('process.run', (_, e) => {
+    runs.push([...e.argv])
+    return { value: { exitCode: e.argv[0] === 'wt.exe' ? 1 : 0, stdout: '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
+  })
+  on('fs.write', () => ({ value: undefined }))
+  const panes = fakeSession(on)
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  expect(panes).toEqual([])
+  await $.turn.start({ text: 'hello', turnId: 't1' } as never)
+  await clock.settle()
+  expect(runs.some(argv => argv[0] === 'wt.exe')).toBe(true)
+  expect(panes).toEqual(['lot-map'])
+  await $.session.end({ reason: 'other' } as never)
+})
+
+test('a terminal that shows pictures keeps its pane, from WSL as well', async ($, on) => {
+  mock.clock(on, { now: NOW })
+  mock.env(on, { ...IN_WINDOWS_TERMINAL, TERM: 'xterm-kitty' })
+  const runs = fakeHost(on)
+  on('fs.write', () => ({ value: undefined }))
+  const panes = fakeSession(on)
+  const renderer = fakeRenderer(on)
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  await $.turn.start({ text: 'hello', turnId: 't1' } as never)
+  expect(panes).toEqual(['lot-map'])
+  expect(runs.some(argv => argv[0] === 'wt.exe')).toBe(false)
+  renderer.end()
+  await $.session.end({ reason: 'other' } as never)
+})
+
 test('a map the terminal no longer holds stops asking to be painted', async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
   on('tool.call', () => ({ result: {} }))
