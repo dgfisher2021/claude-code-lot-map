@@ -954,13 +954,36 @@ export function foldRows(entries: readonly Entry[], max = 16): Row[] {
   return rows
 }
 
+/** The width of the rows' station column: the longest station name of the language, eight at least. */
+const columnOf = (t: Strings): number => Math.max(8, ...Object.values(t.stations).map(name => name.length))
+
+/** A call that started work in the background, and that work goes on. */
+const isPinned = (e: Entry): boolean => e.status === 'run' && e.task !== undefined
+
+/** A time that counts on its own, to the second: a wait on the person, work in the background. */
+export function formatClock(ms: number, t: Strings): string {
+  const s = Math.max(0, Math.floor(ms / 1000))
+  return s < 60 ? t.seconds(String(s)) : t.minutes(Math.floor(s / 60), s % 60)
+}
+
+/** Work sent to the background and still going, pinned above the rows: the newest five, each with its time so far. */
+export function pinnedLines(entries: readonly Entry[], now: number, t: Strings): FeedLine[] {
+  const column = columnOf(t)
+  return entries
+    .filter(isPinned)
+    .reverse()
+    .slice(0, 5)
+    .map(e => ({ line: `↻ ${t.stations[e.station].padEnd(column)} ${e.label}  ${formatClock(now - e.startedAt, t)}`, tone: 'run' as const }))
+}
+
 /** A row of the feed as written: at work, finished, gone wrong, or a change of model. */
 export type FeedLine = { line: string; tone: 'run' | 'ok' | 'bad' | 'block' | 'switch' }
 
 /** The feed's rows as the pane and the map window write them, the station names in a column as wide as the longest. */
 export function feedLines(entries: readonly Entry[], t: Strings, agentNames: Readonly<Record<string, string>> = {}): FeedLine[] {
-  const column = Math.max(8, ...Object.values(t.stations).map(name => name.length))
-  return foldRows(entries).map(({ entry, times, tookMs }) => {
+  const column = columnOf(t)
+  // Work still going in the background is pinned above the rows, not listed among them.
+  return foldRows(entries.filter(e => !isPinned(e))).map(({ entry, times, tookMs }) => {
     const isSwitch = entry.mark === 'switch'
     const mark = isSwitch ? '◆' : entry.status === 'run' ? '●' : entry.status === 'ok' ? '·' : entry.status === 'block' ? '⊘' : '✕'
     const took = entry.endedAt === undefined ? t.running : tookMs > 0 ? formatMs(tookMs, t) : ''
@@ -1025,9 +1048,7 @@ export function describeNow(board: Board, t: Strings, now: number): NowLine {
   const wait = state === 'waiting' ? board.entries.find(e => e.status === 'run' && e.waits === true) : undefined
   if (wait !== undefined) {
     // A wait counts in seconds.
-    const s = Math.max(0, Math.floor((now - wait.startedAt) / 1000))
-    const since = s < 60 ? t.seconds(String(s)) : t.minutes(Math.floor(s / 60), s % 60)
-    return { text: `${t.waitingFor(wait.label, since)}${context}`, tone: 'wait', next: 1000 - ((now - wait.startedAt) % 1000) }
+    return { text: `${t.waitingFor(wait.label, formatClock(now - wait.startedAt, t))}${context}`, tone: 'wait', next: 1000 - ((now - wait.startedAt) % 1000) }
   }
   const answer = state === 'done' ? board.entries.findLast(e => e.mark === 'done') : undefined
   if (answer !== undefined) {

@@ -813,7 +813,8 @@ test('a command sent to the background stays on the map until its task reports b
 
   const seen = async (): Promise<{ running: boolean; text: string }> => {
     const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
-    const running = (await ui.find({ type: 'Text', text: /Ждать сборку/ })) !== undefined && (await ui.find({ type: 'Text', text: /идёт/ })) !== undefined
+    // Work in the background is pinned above the rows while it goes on.
+    const running = (await ui.find({ type: 'Text', text: /^↻ .*Ждать сборку/ })) !== undefined
     const source = String((await ui.find({ type: 'Svg' }))?.props.source)
     await ui.unmount()
     return { running, text: source }
@@ -1014,6 +1015,23 @@ test('an error and a refusal at one station keep two badges, and their rows two 
   // The person's next message clears both.
   await $.turn.start({ text: 'again', turnId: 't2' } as never)
   expect(await svg()).not.toMatch(/r="7\.5"/)
+  await ui.unmount()
+})
+
+test('background work stays pinned with its time while later rows scroll by', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  on('tool.call', (_, e) => (e.tool === 'Bash' ? { result: { backgroundTaskId: 'b9' } } : { result: {} }) as never)
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await $.tool.call({ tool: 'Bash', command: 'npm run build', description: 'Build the site', run_in_background: true } as never)
+  // Twenty calls on two stations, so that none of them fold into another.
+  for (let i = 0; i < 10; i++) {
+    await $.tool.call({ tool: 'Read', file_path: `/a/b/f${i}.ts` } as never)
+    await $.tool.call({ tool: 'WebSearch', query: `q${i}` } as never)
+  }
+  await clock.advance(20_000)
+  expect((await ui.find({ type: 'Text', text: /^↻ / }))?.text).toMatch(/^↻ Shell +Build the site {2}20 s$/)
+  // It is pinned, not listed a second time among the rows.
+  expect(await ui.find({ type: 'Text', text: /^● .*Build the site/ })).toBeUndefined()
   await ui.unmount()
 })
 

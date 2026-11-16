@@ -12,6 +12,7 @@ What changed in each version of lot-map, newest first. To get a new version, see
   - `ExitPlanMode` now lands on You, not Shell.
   - New option `notify`, off by default, raises a notification for each.
 - A failed shell command's row shows its exit code, such as `exit 1`, and nothing of its output.
+- Background work stays pinned under the top line with its time so far, instead of scrolling away among the rows.
 - A legend:
   - `/workmap help` says what each mark means, in the session's language.
   - `?` in the window puts it where the rows are.
