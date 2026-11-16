@@ -997,6 +997,23 @@ test('the core names the session state on every surface', async ($, on) => {
   }
 })
 
+test('a failed shell row shows its exit code, and nothing of its output', async ($, on) => {
+  mock.clock(on, { now: NOW })
+  const failures: Record<string, unknown> = { Bash: { result: {}, isError: true, text: 'Exit code 2\nsecret line' } }
+  on('tool.call', (_, e) => (failures[e.tool] ?? { result: {}, isError: true, text: 'File does not exist.' }) as never)
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await $.tool.call({ tool: 'Bash', command: 'npm test', description: 'Run the tests' } as never)
+  // A command that works on files alone lands on Files, and its exit code shows there too.
+  await $.tool.call({ tool: 'Bash', command: 'grep -r needle .', description: 'Look for the needle' } as never)
+  await $.tool.call({ tool: 'Read', file_path: '/a/b/c.py' } as never)
+  const shell = (await ui.find({ type: 'Text', text: /Run the tests/ }))?.text ?? ''
+  expect(shell).toMatch(/^✕ Shell +Run the tests {2}exit 2/)
+  expect(shell).not.toContain('secret')
+  expect((await ui.find({ type: 'Text', text: /Look for the needle/ }))?.text).toMatch(/^✕ Files +Look for the needle {2}exit 2/)
+  expect((await ui.find({ type: 'Text', text: /b\/c\.py/ }))?.text).not.toContain('exit')
+  await ui.unmount()
+})
+
 /** A tool that answers only when `release` is called. */
 function heldTool(on: On): { release: () => void } {
   const held = { release: () => {} }
