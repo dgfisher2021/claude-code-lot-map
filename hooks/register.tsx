@@ -83,7 +83,7 @@ async function begin($: EngineInterface, start: Start): Promise<string | undefin
   })
 }
 
-async function finish($: EngineInterface, id: string | undefined, status: Status, patch?: Pick<Board, 'context'>): Promise<void> {
+async function finish($: EngineInterface, id: string | undefined, status: Status, patch?: Pick<Board, 'context'>, exit?: number): Promise<void> {
   if (id === undefined) return
   await quietly(async () => {
     const now = await $.clock.now()
@@ -92,7 +92,7 @@ async function finish($: EngineInterface, id: string | undefined, status: Status
       return {
         ...b,
         ...patch,
-        entries: b.entries.map(e => (e === open ? { ...e, status, endedAt: now } : e)),
+        entries: b.entries.map(e => (e === open ? { ...e, status, endedAt: now, ...(exit === undefined ? {} : { exit }) } : e)),
         ...(open !== undefined && isFault(status) ? { faults: oneMore(b.faults, open.station) } : {}),
       }
     })
@@ -553,7 +553,10 @@ export const register: Register = (on, options) => {
         await background($, id, task)
         return ran
       }
-      await finish($, id, wasRefused ? 'block' : ran.isError === true ? 'err' : 'ok')
+      // A failed shell command keeps its exit code, read off the first line of its answer, and nothing else of it.
+      const isShell = ['Bash', 'PowerShell'].includes(String(e.tool))
+      const code = isShell && !wasRefused && ran.isError === true ? /^(?:Error: )?Exit code (\d{1,3})\b/.exec(String(ran.text ?? ''))?.[1] : undefined
+      await finish($, id, wasRefused ? 'block' : ran.isError === true ? 'err' : 'ok', undefined, code === undefined ? undefined : Number(code))
       return ran
     } catch (failure) {
       await finish($, id, 'err')

@@ -11,6 +11,7 @@ What changed in each version of lot-map, newest first. To get a new version, see
   - After the answer it reads `Done … ago · your turn`.
   - `ExitPlanMode` now lands on You, not Shell.
   - New option `notify`, off by default, raises a notification for each.
+- A failed shell command's row shows its exit code, such as `exit 1`, and nothing of its output.
 
 ## 0.9.1 (2026-11-16)
 

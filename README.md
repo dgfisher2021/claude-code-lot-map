@@ -75,7 +75,7 @@ A pulse flies out when something starts and returns when it ends. Refusals and e
 - **Subagents.** Each one still at work circles the Agents station as a small dot, and its calls start from there.
 - **The answer.** One wide ring leaves the centre when the answer is ready.
 
-Below the map is the current action with the context percentage. While Claude waits on you, with a question or a plan for your approval, that line reads `Needs you:` and what for, counting the time in the warning colour. Once the answer is ready it reads `Done … ago · your turn`. A permission prompt isn't shown: Claude Code tells a mod when it might ask, not when you answer. Under it are the last 16 rows: `●` running, `·` done, `✕` failed or blocked, `◆` a change of model. Finished calls that follow one another at one station fold into one row, marked `+2` for the two it stands for besides the one named.
+Below the map is the current action with the context percentage. While Claude waits on you, with a question or a plan for your approval, that line reads `Needs you:` and what for, counting the time in the warning colour. Once the answer is ready it reads `Done … ago · your turn`. A permission prompt isn't shown: Claude Code tells a mod when it might ask, not when you answer. Under it are the last 16 rows: `●` running, `·` done, `✕` failed or blocked, `◆` a change of model. A failed shell command shows its exit code, such as `exit 1`: a `grep` that finds nothing, a `diff` that finds differences and a failed test run all count as failures. Finished calls that follow one another at one station fold into one row, marked `+2` for the two it stands for besides the one named.
 
 | At work | Subagents | A hook refuses |
 | --- | --- | --- |
@@ -201,7 +201,7 @@ A label holds a name, never content:
 
 - a file: the last two parts of its path;
 - a web address: the host alone, without a login, password, path or query; an address that can be read two ways shows only its scheme;
-- a shell command: the short description Claude wrote for it, or the command's name, never the command line. The description is the model's own words, and the mod shows them as written;
+- a shell command: the short description Claude wrote for it, or the command's name, never the command line. The description is the model's own words, and the mod shows them as written. A failed one also shows its exit code, read from the first line of its answer, never its output;
 - a memory call: the tool's name and a record number or short identifier, never the text or the query;
 - a memory command: its name, and the word after it only if you listed that word in `memorySubcommands`;
 - a subagent: the short description it was started with;

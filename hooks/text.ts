@@ -55,6 +55,8 @@ export type Strings = {
   minutes: (m: number, s: number) => string
   /** A time since, once it passes a minute: whole minutes. */
   wholeMinutes: (m: number) => string
+  /** A failed shell command's exit code, in its row. */
+  exitCode: (n: number) => string
 }
 
 const en: Strings = {
@@ -115,6 +117,7 @@ const en: Strings = {
   seconds: s => `${s} s`,
   minutes: (m, s) => `${m} min ${s} s`,
   wholeMinutes: m => `${m} min`,
+  exitCode: n => `exit ${n}`,
 }
 
 const ru: Strings = {
@@ -175,6 +178,7 @@ const ru: Strings = {
   seconds: s => `${s} с`,
   minutes: (m, s) => `${m} мин ${s} с`,
   wholeMinutes: m => `${m} мин`,
+  exitCode: n => `код ${n}`,
 }
 
 const es: Strings = {
@@ -235,6 +239,7 @@ const es: Strings = {
   seconds: s => `${s} s`,
   minutes: (m, s) => `${m} min ${s} s`,
   wholeMinutes: m => `${m} min`,
+  exitCode: n => `exit ${n}`,
 }
 
 const fr: Strings = {
@@ -295,6 +300,7 @@ const fr: Strings = {
   seconds: s => `${s.replace('.', ',')} s`,
   minutes: (m, s) => `${m} min ${s} s`,
   wholeMinutes: m => `${m} min`,
+  exitCode: n => `exit ${n}`,
 }
 
 const de: Strings = {
@@ -355,6 +361,7 @@ const de: Strings = {
   seconds: s => `${s.replace('.', ',')} s`,
   minutes: (m, s) => `${m} Min. ${s} s`,
   wholeMinutes: m => `${m} Min.`,
+  exitCode: n => `Code ${n}`,
 }
 
 const it: Strings = {
@@ -415,6 +422,7 @@ const it: Strings = {
   seconds: s => `${s.replace('.', ',')} s`,
   minutes: (m, s) => `${m} min ${s} s`,
   wholeMinutes: m => `${m} min`,
+  exitCode: n => `exit ${n}`,
 }
 
 // European Portuguese.
@@ -476,6 +484,7 @@ const pt: Strings = {
   seconds: s => `${s.replace('.', ',')} s`,
   minutes: (m, s) => `${m} min ${s} s`,
   wholeMinutes: m => `${m} min`,
+  exitCode: n => `exit ${n}`,
 }
 
 const TABLES = new Map<unknown, Strings>([['en', en], ['ru', ru], ['es', es], ['fr', fr], ['de', de], ['it', it], ['pt', pt]])
