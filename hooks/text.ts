@@ -27,8 +27,9 @@ export type Strings = {
   noCounts: string
   /** In a terminal pane too narrow for the map: how wide it would need to be. */
   tooNarrow: (columns: number) => string
-  /** After `/lot-map window`: the map opened in a pane of its own, or how to open it by hand. */
+  /** After `/lot-map window`: the map opened in a pane of its own, already open, or how to open it by hand. */
   windowOpened: string
+  windowOpen: string
   windowByHand: (command: string) => string
   idle: string
   context: string
@@ -81,6 +82,7 @@ const en: Strings = {
   noCounts: 'No counts yet.',
   tooNarrow: columns => `Widen the pane to ${columns} columns to see the map.`,
   windowOpened: 'Map window opened beside this one.',
+  windowOpen: 'The map window is already open beside this one.',
   windowByHand: command => `Run this in a pane of a terminal that shows Sixel pictures: ${command}`,
   idle: 'Nothing is running.',
   context: 'context',
@@ -133,6 +135,7 @@ const ru: Strings = {
   noCounts: 'Счётчики пусты.',
   tooNarrow: columns => `Расширьте панель до ${columns} столбцов, чтобы увидеть карту.`,
   windowOpened: 'Окно с картой открыто рядом.',
+  windowOpen: 'Окно с картой уже открыто рядом.',
   windowByHand: command => `Запустите это в панели терминала, который показывает картинки Sixel: ${command}`,
   idle: 'Сейчас ничего не выполняется.',
   context: 'контекст',
@@ -185,6 +188,7 @@ const es: Strings = {
   noCounts: 'Aún no hay recuentos.',
   tooNarrow: columns => `Ensancha el panel a ${columns} columnas para ver el mapa.`,
   windowOpened: 'Ventana del mapa abierta al lado.',
+  windowOpen: 'La ventana del mapa ya está abierta al lado.',
   windowByHand: command => `Ejecuta esto en un panel de una terminal que muestre imágenes Sixel: ${command}`,
   idle: 'No hay nada en ejecución.',
   context: 'contexto',
@@ -237,6 +241,7 @@ const fr: Strings = {
   noCounts: 'Aucun compteur pour le moment.',
   tooNarrow: columns => `Élargissez le panneau à ${columns} colonnes pour voir la carte.`,
   windowOpened: 'Fenêtre de la carte ouverte à côté.',
+  windowOpen: 'La fenêtre de la carte est déjà ouverte à côté.',
   windowByHand: command => `Lancez ceci dans un volet d'un terminal qui affiche les images Sixel : ${command}`,
   idle: 'Rien en cours.',
   context: 'contexte',
@@ -289,6 +294,7 @@ const de: Strings = {
   noCounts: 'Noch keine Zählerstände.',
   tooNarrow: columns => `Verbreitern Sie das Feld auf ${columns} Spalten, um die Karte zu sehen.`,
   windowOpened: 'Kartenfenster daneben geöffnet.',
+  windowOpen: 'Das Kartenfenster ist daneben schon geöffnet.',
   windowByHand: command => `Führen Sie dies in einem Bereich eines Terminals aus, das Sixel-Bilder zeigt: ${command}`,
   idle: 'Nichts läuft.',
   context: 'Kontext',
@@ -341,6 +347,7 @@ const it: Strings = {
   noCounts: 'Ancora nessun conteggio.',
   tooNarrow: columns => `Allarga il pannello a ${columns} colonne per vedere la mappa.`,
   windowOpened: 'Finestra della mappa aperta accanto.',
+  windowOpen: 'La finestra della mappa è già aperta accanto.',
   windowByHand: command => `Esegui questo in un riquadro di un terminale che mostra immagini Sixel: ${command}`,
   idle: 'Niente in esecuzione.',
   context: 'contesto',
@@ -394,6 +401,7 @@ const pt: Strings = {
   noCounts: 'Ainda sem contagens.',
   tooNarrow: columns => `Alargue o painel para ${columns} colunas para ver o mapa.`,
   windowOpened: 'Janela do mapa aberta ao lado.',
+  windowOpen: 'A janela do mapa já está aberta ao lado.',
   windowByHand: command => `Execute isto num painel de um terminal que mostre imagens Sixel: ${command}`,
   idle: 'Nada em execução.',
   context: 'contexto',

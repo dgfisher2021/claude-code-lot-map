@@ -291,9 +291,18 @@ async function share($: EngineInterface, setup: Setup): Promise<void> {
   })
 }
 
-/** Starts keeping the live map and opens the window beside this one in Windows Terminal; elsewhere, says how to open it. */
-async function openWindow($: EngineInterface, setup: Setup): Promise<string> {
-  if (sharing.dir === undefined) {
+/** How recently the window must have marked itself shown (it does every two seconds) to count as open. */
+const SHOWN_MS = 6000
+
+/**
+ * Starts keeping the live map and opens the window beside this one in Windows Terminal, unless one already shows it;
+ * elsewhere, says how to open it.
+ */
+async function openWindow($: EngineInterface, setup: Setup): Promise<{ isOpen: boolean; text: string }> {
+  if (sharing.dir !== undefined) {
+    const shown = await quietly(() => $.fs.stat(`${sharing.dir}/shown`))
+    if (shown !== undefined && (await $.clock.now()) - shown.mtimeMs < SHOWN_MS) return { isOpen: true, text: setup.t.windowOpen }
+  } else {
     const tmp = ((await $.env.get('TMPDIR')) ?? '') || '/tmp'
     sharing.dir = `${tmp}/lot-map-live-${Math.random().toString(36).slice(2, 10)}`
     await share($, setup)
@@ -308,9 +317,36 @@ async function openWindow($: EngineInterface, setup: Setup): Promise<string> {
   const distro = (await $.env.get('WSL_DISTRO_NAME')) ?? ''
   if (distro !== '') {
     const opened = await quietly(() => $.process.run(['wt.exe', '-w', '0', 'split-pane', '--vertical', '--size', '0.45', 'wsl.exe', '-d', distro, '--', ...command]))
-    if (opened?.exitCode === 0) return setup.t.windowOpened
+    if (opened?.exitCode === 0) return { isOpen: true, text: setup.t.windowOpened }
   }
-  return setup.t.windowByHand(command.join(' '))
+  return { isOpen: false, text: setup.t.windowByHand(command.join(' ')) }
+}
+
+/**
+ * Whether the map is the window and not the pane: in Windows Terminal from WSL, where the pane can draw it only in
+ * cells. A session in the background has the profile's id though not the tab's.
+ */
+async function windowIsTheMap($: EngineInterface, setup: Setup): Promise<boolean> {
+  if (!setup.terminalMap || setup.terminalWindow === 'off' || picture.canShow === true) return false
+  const distro = (await $.env.get('WSL_DISTRO_NAME')) ?? ''
+  const tab = (await $.env.get('WT_SESSION')) ?? ''
+  const profile = (await $.env.get('WT_PROFILE_ID')) ?? ''
+  return distro !== '' && (tab !== '' || profile !== '')
+}
+
+/**
+ * In Windows Terminal the map is a window in place of the pane, opened the first time the person writes: a session can
+ * start in the background, and only then is its tab sure to be the one in front, the one the window splits.
+ */
+const windowed = { isMap: false, isAsked: false }
+
+/** Opens the window, or the pane where the window cannot open. */
+async function showWindow($: EngineInterface, setup: Setup, opening: Parameters<EngineInterface['ui']['open']>[0]): Promise<string> {
+  windowed.isAsked = true
+  const opened = await openWindow($, setup)
+  if (opened.isOpen) return opened.text
+  const placed = await $.ui.open(opening)
+  return placed.isPlaced ? setup.t.opened : setup.t.cannotOpen(String(placed.reason))
 }
 
 /** Stops keeping the live map and removes its folder; a window still open sees its heartbeat go and closes. */
@@ -359,7 +395,10 @@ export const register: Register = (on, options) => {
   on('session.start', async ($, e, next) => {
     await quietly(() => $.command.register({ name: 'lot-map', description: t.command, argumentHint: '[window]' }))
     picture.canShow = setup.terminalMap && setup.terminalPicture === 'auto' && (await quietly(() => showsPictures($))) === true
-    void quietly(() => $.ui.open(opening))
+    windowed.isAsked = false
+    // A -p run or the SDK draws nowhere (surface null): no window.
+    windowed.isMap = e.surface === 'terminal' && (await quietly(() => windowIsTheMap($, setup))) === true
+    if (!windowed.isMap) void quietly(() => $.ui.open(opening))
     await quietly(async () => {
       modelKey = `model:${e.cwd}`
       const kept = await $.store.get(modelKey)
@@ -369,7 +408,8 @@ export const register: Register = (on, options) => {
   })
 
   on('command.run', { command: 'lot-map' }, async ($, e) => {
-    if (e.args.trim() === 'window') return { text: await openWindow($, setup) }
+    if (e.args.trim() === 'window') return { text: (await openWindow($, setup)).text }
+    if (windowed.isMap) return { text: await showWindow($, setup, opening) }
     const opened = await $.ui.open(opening)
     return { text: opened.isPlaced ? t.opened : t.cannotOpen(String(opened.reason)) }
   })
@@ -400,6 +440,7 @@ export const register: Register = (on, options) => {
       // A new message clears what went wrong on the way to the last answer.
       await quietly(() => update($, board, b => (b.faults === undefined ? b : { ...b, faults: {} })))
       await begin($, { station: 'you', label: t.newMessage, from: 'inbound', status: 'ok' })
+      if (windowed.isMap && !windowed.isAsked) void quietly(() => showWindow($, setup, opening))
     }
     return next(e)
   })

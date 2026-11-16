@@ -50,11 +50,11 @@ The mod reads five environment variables to tell whether the terminal shows pict
 
 ## The map window
 
-Only when you type `/lot-map window`:
+Only when you type `/lot-map window`, or in Windows Terminal from WSL (`WSL_DISTRO_NAME` set, and `WT_SESSION` or `WT_PROFILE_ID`) the first time you write in a session, unless `terminalWindow` is `off`:
 
 - The mod keeps the session's live map, the same drawing as above, in `map.svg` in a folder of its own, `lot-map-live-*` in your temporary directory (`TMPDIR`, else `/tmp`), readable by you alone, with the pane's rows (the action now and the last sixteen rows, the same labels) in `feed.json` and a heartbeat in `alive` every few seconds.
 - It runs `sh -c 'command -v node'` and `sh -c 'command -v chromium || command -v google-chrome'` to find Node and Chromium. In WSL (`WSL_DISTRO_NAME` set) it runs `wt.exe -w 0 split-pane ... wsl.exe -d <distro> -- env LOT_MAP_CHROMIUM=<chromium> node renderer/view.mjs <folder>`, which opens a pane in your current Windows Terminal tab; elsewhere it only answers with that last command for you to run.
-- The window runs the renderer of picture mode on that map, at its own size, and writes Sixel to its own pane. It reads keys only to close on `q` or ctrl+c.
+- The window runs the renderer of picture mode on that map, at its own size, and writes Sixel to its own pane. It reads keys only to close on `q` or ctrl+c. While it runs it writes the time to `shown` in that folder every two seconds, and the mod reads that file's age so as not to open a second window.
 - When the session ends the mod removes the folder (`rm -rf` of that folder alone); a window still open closes when the heartbeat stops. A folder whose heartbeat stopped more than ten minutes ago is removed the next time a renderer starts.
 
 ## Where the code comes from
