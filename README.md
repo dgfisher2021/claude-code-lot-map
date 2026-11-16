@@ -131,6 +131,8 @@ In Windows Terminal from WSL the window is the map: the session opens no pane, a
 
 - From WSL in Windows Terminal it splits the current tab (`wt.exe -w 0 split-pane`) and starts the window there. Anywhere else it answers with the line to run in a pane of your own: `node <plugin>/renderer/view.mjs <folder>`.
 - The session keeps its live map and the rows under it in a temporary folder of its own while the window is wanted. The window runs the same renderer as [Pictures](#pictures), at the size of its pane, draws each frame as Sixel, at most ten a second, and under it the action now and the last rows, as the pane does. In a short pane the rows give way before the map does.
+- The map takes the room first: as large as the pane's width allows while the list under it keeps `windowRows` rows (10 by default), and never fewer than 12 rows in a short pane.
+- `m` goes round the map with the list, the map alone, and the list alone.
 - `?` swaps the rows for the legend, and back.
 - It closes when the session ends, or on `q` or ctrl+c. Closing it leaves the session as it was; `/lot-map window` opens it again. A session switched away from in its tab keeps its window there until it ends or `q`.
 - It needs Node 22 and a Chromium, as pictures do.
@@ -156,6 +158,7 @@ The install offers them on a screen. Later, use `/config` in a terminal or `clau
 | `terminalMap` | `true` | in a terminal, paint the map in cells above the rows; `false` keeps the rows and one line of counts |
 | `terminalPicture` | `auto` | in a terminal that shows pictures, `auto` has headless Chromium paint the map as the app draws it; `off` keeps the cells. See [Pictures](#pictures) |
 | `terminalWindow` | `auto` | in Windows Terminal from WSL, `auto` makes the map [a window of its own](#a-window-of-its-own) in place of the pane; `off` keeps the pane |
+| `windowRows` | `10` | the rows [the map window](#a-window-of-its-own) keeps for the list under the map, 3 to 30; the map takes the rest |
 | `notify` | `false` | raise a notification when Claude asks you a question or puts a plan to you, and when a turn ends: useful for sessions in the background |
 | `layout` | `you-top` | where you are on the map: `you-top`, or `you-bottom`, which turns the ring half a turn so that you are at the bottom and the network and the browser at the top |
 

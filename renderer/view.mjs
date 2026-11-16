@@ -15,11 +15,11 @@ import { createInterface } from 'node:readline'
 import { fileURLToPath } from 'node:url'
 import { inflateSync } from 'node:zlib'
 
+import { layout } from './layout.mjs'
+
 const live = process.argv[2]
 const here = dirname(fileURLToPath(import.meta.url))
 const out = process.stdout
-/** The map's own proportions. */
-const [MAP_W, MAP_H] = [460, 430]
 /** At most this many pictures a second go to the terminal, and none while it still reads the last. */
 const MAX_FPS = 10
 /** The session is gone when its heartbeat is this old. */
@@ -48,7 +48,8 @@ process.stdin.on('data', data => {
     cell = { w: Number(reply[2]), h: Number(reply[1]) }
     relayout()
   }
-  const keys = text.replace(/\x1b\[[0-9;]*t/g, '')
+  // Keys, with every escape sequence the terminal sends taken out first.
+  const keys = text.replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g, '')
   if (/[q\x03]/.test(keys)) quit(0)
   // ? swaps the rows for the legend, and back.
   if (keys.includes('?')) {
@@ -56,28 +57,24 @@ process.stdin.on('data', data => {
     feedAt = 0
     rows()
   }
+  // m goes round the map with the list, the map alone, and the list alone.
+  if (keys.includes('m')) {
+    view = view === 'both' ? 'map' : view === 'map' ? 'list' : 'both'
+    relayout()
+  }
 })
 
-/** Rows of the feed under the map at most, as in the pane: the action now, then the calls. */
-const FEED_ROWS = 16
-/** Rows the map keeps however short the window: the feed gives way first. */
-const MAP_MIN_ROWS = 12
+/** The rows the list keeps under the map: the session's `windowRows`, once feed.json says it. */
+let listMin = 10
+/** What the window shows: the map with the list under it, the map alone, or the list alone. `m` goes round them. */
+let view = 'both'
 
-/**
- * The layout: the picture's size in pixels, the largest that fits above room for the feed in the map's proportions,
- * the column it starts at, and the rows the feed has under it.
- */
+/** The layout for the window as it is now (layout.mjs), with its size in cells and where the feed's rows go. */
 function fit() {
   const cols = out.columns || 80
   const rows = out.rows || 24
-  const feedRoom = Math.max(0, Math.min(FEED_ROWS + 2, rows - 1 - MAP_MIN_ROWS))
-  const mapRows = rows - 1 - feedRoom
-  const scale = Math.min((cols * cell.w) / MAP_W, (mapRows * cell.h) / MAP_H)
-  const w = Math.max(60, Math.floor(MAP_W * scale))
-  const h = Math.max(56, Math.floor(MAP_H * scale))
-  // The feed starts a row below the picture and ends above the hint on the last row.
-  const feedTop = Math.ceil(h / cell.h) + 2
-  return { w, h, col: Math.max(0, Math.floor((cols - Math.ceil(w / cell.w)) / 2)), rows, cols, feedTop, feedRows: Math.max(0, rows - feedTop) }
+  const at = layout({ cols, rows, cell, listRows: listMin, view })
+  return { ...at, rows, cols, feedTop: at.listTop, feedRows: at.listRows }
 }
 
 let size = fit()
@@ -99,7 +96,7 @@ function relayout() {
 }
 
 function hint() {
-  out.write(`\x1b[${size.rows};1H\x1b[2K\x1b[2mq closes · ? legend\x1b[0m`)
+  out.write(`\x1b[${size.rows};1H\x1b[2K\x1b[2mq closes · ? legend · m map/list\x1b[0m`)
 }
 
 /** A line in the middle of the map's room, until the first picture covers it. */
@@ -158,6 +155,13 @@ function rows() {
     return
   }
   feedAt = stat.mtimeMs
+  // The rows the session's windowRows has the list keep: a change lays the window out again.
+  const wanted = Math.round(Number(feed.windowRows))
+  if (Number.isFinite(wanted) && wanted !== listMin) {
+    listMin = wanted
+    relayout()
+    return
+  }
   // The top line: a wait on the person in the accent, a finished turn in green.
   const nowTone = { wait: '\x1b[1;38;2;225;172;110m', done: '\x1b[1;38;2;143;191;127m' }[feed.nowTone] ?? '\x1b[1m'
   const lines = [`${nowTone}${fitLine(String(feed.now ?? ''))}\x1b[0m`]
@@ -193,7 +197,8 @@ let fedKey = ''
 
 /** Copies the live map to the renderer at this window's size, when either has changed. */
 function feed() {
-  if (rdir === undefined) return
+  // The list alone needs no picture.
+  if (rdir === undefined || size.w === 0) return
   let stat
   try {
     stat = statSync(join(live, 'map.svg'))

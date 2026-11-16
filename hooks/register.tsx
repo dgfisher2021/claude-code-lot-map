@@ -332,6 +332,7 @@ async function share($: EngineInterface, setup: Setup): Promise<void> {
         rows: feedLines(state.entries, setup.t, state.agentNames),
         empty: setup.t.nothingYet,
         legend: setup.t.legend,
+        windowRows: setup.windowRows,
       }
       await $.fs.write(`${dir}/feed.json`, JSON.stringify(feed))
     }
