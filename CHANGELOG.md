@@ -2,6 +2,10 @@
 
 What changed in each version of lot-map, newest first. To get a new version, see [Updating](README.md#updating).
 
+## 0.8.3 (2026-11-16)
+
+- Fixed: a docked pane under 28 rows dropped the map and kept only the rows, as in a terminal window about 31 rows tall. It held eight rows for the feed even when that left the map too short. Now the rows give way first: the map stays while its 20 rows fit, and the rows take what is left.
+
 ## 0.8.2 (2026-11-12)
 
 - The map window shows the rows under the map, as the pane does: the action now, then the last sixteen rows, at work in the accent, faults in red. They take the room under the picture, and in a short window give way before the map.

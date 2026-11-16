@@ -376,12 +376,15 @@ export type MapLayout = { columns: number; rows: number; isBeside: boolean }
 /**
  * The map's place in a pane, keeping the ring round on cells twice as tall as wide. Docked beside the conversation the
  * pane is narrow and tall, so the map takes its width with the rows under it; inline above the prompt it is wide and
- * short, so the map takes its height with the rows beside it. Undefined where the map would be too small for its labels.
+ * short, so the map takes its height with the rows beside it. In a short dock the rows under the map give way before
+ * the map does. Undefined where the map would be too small for its labels.
  */
 export function mapSize(bodyColumns: number, bodyRows: number, placement: 'dock' | 'inline'): MapLayout | undefined {
   if (placement === 'dock') {
     const columns = Math.min(Math.floor(bodyColumns), 120)
-    const rows = Math.min(Math.round((columns * PX * H) / (W * PY)), bodyRows - 8, 44)
+    // Eight rows for the feed while the map keeps its 20, then fewer.
+    const room = Math.max(bodyRows - 8, Math.min(bodyRows, 20))
+    const rows = Math.min(Math.round((columns * PX * H) / (W * PY)), room, 44)
     return columns >= MAP_MIN_COLUMNS && rows >= 20 ? { columns, rows, isBeside: false } : undefined
   }
   const rows = Math.min(Math.floor(bodyRows), 24)
