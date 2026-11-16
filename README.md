@@ -94,7 +94,7 @@ Docked beside the conversation (the fullscreen layout) the map sits above the ro
 
 It moves because the mod repaints it in place, about 25 times a second while something flies, 11 while something runs, and 4 while the map only breathes. A frame that would look the same is not sent. A frame takes a few milliseconds.
 
-- The pane asks for 60 columns when it docks and 22 rows when it opens inline. Below 44 columns, or 20 rows for the map, the pane keeps the rows of text and one line of counts, as before.
+- The pane asks for 60 columns when it docks and 22 rows when it opens inline. In a short dock the rows under the map give way before the map does. Below 44 columns, or 20 rows for the map, the pane keeps the rows of text and one line of counts, as before.
 - A docked pane keeps the width you last dragged it to, and that wins over what the pane asks for. When it is too narrow for the map, the pane says how wide to make it: drag its edge.
 - It needs a terminal with 24-bit colour: Windows Terminal, iTerm2, kitty, WezTerm, Ghostty, GNOME Terminal and most others have it. Where block characters show gaps between them, turn on the terminal's own drawing of box and block characters if it has one.
 - `theme` set to `auto` paints dark in a terminal, which does not say what colour it is: on a light terminal set `theme` to `light`.

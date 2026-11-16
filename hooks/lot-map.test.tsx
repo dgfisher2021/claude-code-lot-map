@@ -947,7 +947,10 @@ test('the terminal map takes the width of its pane, keeps the ring round, and gi
   expect(mapSize(60, 30, 'dock')).toEqual({ columns: 60, rows: 22, isBeside: false })
   expect(mapSize(200, 80, 'dock')).toEqual({ columns: 120, rows: 44, isBeside: false })
   expect(mapSize(40, 40, 'dock')).toBeUndefined()
-  expect(mapSize(60, 20, 'dock')).toBeUndefined()
+  // A short dock keeps the map: the rows under it give way first.
+  expect(mapSize(60, 24, 'dock')).toEqual({ columns: 60, rows: 20, isBeside: false })
+  expect(mapSize(60, 20, 'dock')).toEqual({ columns: 60, rows: 20, isBeside: false })
+  expect(mapSize(60, 19, 'dock')).toBeUndefined()
   // Inline above the prompt the pane is wide and short: the map keeps to the left, the rows beside it.
   expect(mapSize(168, 22, 'inline')).toEqual({ columns: 47, rows: 22, isBeside: true })
   expect(mapSize(168, 40, 'inline')).toEqual({ columns: 51, rows: 24, isBeside: true })
