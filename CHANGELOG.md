@@ -5,6 +5,7 @@ What changed in each version of lot-map, newest first. To get a new version, see
 ## 0.10.0 (2026-11-16)
 
 - `/workmap` is a second name for `/lot-map`: the same pane or window, and `/workmap window` as `/lot-map window`.
+- One word under the centre says what the session is doing: thinking, running, needs you, compacting, done or idle. In the cells it sits under the model's name.
 
 ## 0.9.1 (2026-11-16)
 

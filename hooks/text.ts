@@ -32,6 +32,8 @@ export type Strings = {
   windowOpen: string
   windowByHand: (command: string) => string
   idle: string
+  /** The word under the core: what the session is doing. Fourteen characters at most. */
+  states: { idle: string; thinking: string; running: string; waiting: string; compacting: string; done: string }
   context: string
   andMore: (n: number) => string
   webSearch: string
@@ -85,6 +87,7 @@ const en: Strings = {
   windowOpen: 'The map window is already open beside this one.',
   windowByHand: command => `Run this in a pane of a terminal that shows Sixel pictures: ${command}`,
   idle: 'Nothing is running.',
+  states: { idle: 'idle', thinking: 'thinking', running: 'running', waiting: 'needs you', compacting: 'compacting', done: 'done' },
   context: 'context',
   andMore: n => ` and ${n} more`,
   webSearch: 'web search',
@@ -138,6 +141,7 @@ const ru: Strings = {
   windowOpen: 'Окно с картой уже открыто рядом.',
   windowByHand: command => `Запустите это в панели терминала, который показывает картинки Sixel: ${command}`,
   idle: 'Сейчас ничего не выполняется.',
+  states: { idle: 'ожидание', thinking: 'думает', running: 'работает', waiting: 'ждёт вас', compacting: 'сжимает', done: 'готово' },
   context: 'контекст',
   andMore: n => ` и ещё ${n}`,
   webSearch: 'поиск в сети',
@@ -191,6 +195,7 @@ const es: Strings = {
   windowOpen: 'La ventana del mapa ya está abierta al lado.',
   windowByHand: command => `Ejecuta esto en un panel de una terminal que muestre imágenes Sixel: ${command}`,
   idle: 'No hay nada en ejecución.',
+  states: { idle: 'inactivo', thinking: 'pensando', running: 'trabajando', waiting: 'te espera', compacting: 'compactando', done: 'listo' },
   context: 'contexto',
   andMore: n => ` y ${n} más`,
   webSearch: 'búsqueda web',
@@ -244,6 +249,7 @@ const fr: Strings = {
   windowOpen: 'La fenêtre de la carte est déjà ouverte à côté.',
   windowByHand: command => `Lancez ceci dans un volet d'un terminal qui affiche les images Sixel : ${command}`,
   idle: 'Rien en cours.',
+  states: { idle: 'inactif', thinking: 'réfléchit', running: 'travaille', waiting: 'vous attend', compacting: 'compacte', done: 'terminé' },
   context: 'contexte',
   andMore: n => ` et ${n} de plus`,
   webSearch: 'recherche web',
@@ -297,6 +303,7 @@ const de: Strings = {
   windowOpen: 'Das Kartenfenster ist daneben schon geöffnet.',
   windowByHand: command => `Führen Sie dies in einem Bereich eines Terminals aus, das Sixel-Bilder zeigt: ${command}`,
   idle: 'Nichts läuft.',
+  states: { idle: 'untätig', thinking: 'denkt nach', running: 'arbeitet', waiting: 'wartet auf Sie', compacting: 'verdichtet', done: 'fertig' },
   context: 'Kontext',
   andMore: n => ` und ${n} weitere`,
   webSearch: 'Websuche',
@@ -350,6 +357,7 @@ const it: Strings = {
   windowOpen: 'La finestra della mappa è già aperta accanto.',
   windowByHand: command => `Esegui questo in un riquadro di un terminale che mostra immagini Sixel: ${command}`,
   idle: 'Niente in esecuzione.',
+  states: { idle: 'inattivo', thinking: 'pensa', running: 'lavora', waiting: 'ti aspetta', compacting: 'compatta', done: 'fatto' },
   context: 'contesto',
   andMore: n => ` e altri ${n}`,
   webSearch: 'ricerca web',
@@ -404,6 +412,7 @@ const pt: Strings = {
   windowOpen: 'A janela do mapa já está aberta ao lado.',
   windowByHand: command => `Execute isto num painel de um terminal que mostre imagens Sixel: ${command}`,
   idle: 'Nada em execução.',
+  states: { idle: 'parado', thinking: 'a pensar', running: 'a trabalhar', waiting: 'à sua espera', compacting: 'a compactar', done: 'pronto' },
   context: 'contexto',
   andMore: n => ` e mais ${n}`,
   webSearch: 'pesquisa na web',

@@ -872,6 +872,13 @@ export function drawMap(board: Board, now: number, setup: Setup, isFilling = fal
     body += `<text x="${CX}" y="${CY + 17}" text-anchor="middle" ${FONT} font-size="9" fill="${isSwitching ? c.hot : c.ash}">${escapeXml(shortModel(board.model))}</text>`
   }
 
+  // Under the core, one word for what the session is doing.
+  const state = stateOf(board)
+  const stateColor = { idle: c.dim, thinking: c.bone, running: c.hot, waiting: c.accent, compacting: c.mem, done: c.ash }[state]
+  const blink =
+    state === 'waiting' ? `<animate attributeName="opacity" values="1;.45;1" begin="${clock(-(now % 1200))}" dur="1.2s" repeatCount="indefinite"/>` : ''
+  body += `<text x="${CX}" y="${CY + CORE + 17}" text-anchor="middle" ${FONT} font-size="9" paint-order="stroke" stroke="${c.ground}" stroke-width="3.5" stroke-linejoin="round" fill="${stateColor}">${blink}${escapeXml(setup.t.states[state])}</text>`
+
   // A changed model rings at the core and at its station for a few seconds.
   if (isSwitching) {
     const model = place(indexOf('model'))
@@ -968,6 +975,16 @@ export function taskNotice(text: string): { id: string; status?: Status } | unde
   const word = /<status>(\w+)<\/status>/.exec(text)?.[1]
   if (word === undefined) return { id }
   return { id, status: word === 'failed' ? 'err' : 'ok' }
+}
+
+/** What the session is doing, as the word under the core says it. */
+export type SessionState = keyof Strings['states']
+
+/** The session's state: a compaction first, then a call at work, then where the turn stands. Background work is not the turn's. */
+export function stateOf(board: Board): SessionState {
+  if (board.phase === 'compacting') return 'compacting'
+  if (board.entries.some(e => e.status === 'run' && e.task === undefined && e.station !== 'model' && e.station !== 'you')) return 'running'
+  return board.phase ?? 'idle'
 }
 
 export function describeNow(board: Board, t: Strings): string {

@@ -29,6 +29,7 @@ import {
   paletteOf,
   place,
   shortModel,
+  stateOf,
   stationState,
 } from './map'
 import type { Palette, Point, Setup } from './map'
@@ -590,6 +591,14 @@ export function paintMap(board: Board, now: number, setup: Setup, columns: numbe
   const isSwitching = switchAge >= 0 && switchAge < SWITCH_MS
   say(middle, setup.core, c.bone)
   if (board.model !== undefined) say(middle + 1, shortModel(board.model), isSwitching ? c.hot : c.ash)
+  // Under them, one word for what the session is doing; a wait for the person blinks.
+  const state = stateOf(board)
+  const isDim = state === 'waiting' && Math.floor(now / 600) % 2 === 1
+  say(
+    middle + 2,
+    setup.t.states[state],
+    { idle: c.dim, thinking: c.bone, running: c.hot, waiting: isDim ? c.dim : c.accent, compacting: c.mem, done: c.ash }[state],
+  )
 
   // A changed model rings at the core and at its station for a few seconds.
   if (isSwitching) {

@@ -69,6 +69,7 @@ A pulse flies out when something starts and returns when it ends. Refusals and e
 - **Several at once.** Calls that start together fly side by side, and the station carries their number, such as `×3`.
 - **What went wrong.** A red dot with a count stays on a station from an error or a refusal until your next message.
 - **Memory.** It has a colour of its own. A solid pulse is a memory Claude asked for; a hollow one on a dashed line is what a hook brought unasked. Under the station, the plain number counts the first and `↓` the second.
+- **What the session is doing.** One word under the centre: `thinking` from your message, `running` while a call works, `needs you` (blinking) while Claude waits on you, `compacting`, `done` when the answer is ready, and `idle` before the first message. Background work doesn't count as running.
 - **The context window.** The ring around the centre fills as the session goes, with the percentage above the name. It turns amber at 70% and red at 90%.
 - **A change of model.** The centre and the Model station ring for a few seconds, and the feed gets a row such as `opus 5.5 → fable 5.2`. This also happens when a session starts on a different model from the last session in the same folder.
 - **Subagents.** Each one still at work circles the Agents station as a small dot, and its calls start from there.

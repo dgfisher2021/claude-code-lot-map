@@ -3,7 +3,7 @@ import { expect, mock, test } from 'claude-code/testing'
 
 import type { Board } from '../types'
 import type { Entry } from '../types'
-import { COLOR_NAMES, TRAIL_FADE_MS, TRAIL_HOLD_MS, classify, clean, drawMap, firstLine, foldRows, formatMs, memoryIds, routeOf, setupFrom, taskNotice, taskOf } from './map'
+import { COLOR_NAMES, TRAIL_FADE_MS, TRAIL_HOLD_MS, classify, clean, drawMap, firstLine, foldRows, formatMs, memoryIds, routeOf, setupFrom, stateOf, taskNotice, taskOf } from './map'
 import { mapSize, paceOf, paintMap } from './raster'
 import { stringsFor } from './text'
 
@@ -956,6 +956,45 @@ test('the terminal map takes the width of its pane, keeps the ring round, and gi
   expect(mapSize(168, 40, 'inline')).toEqual({ columns: 51, rows: 24, isBeside: true })
   expect(mapSize(168, 17, 'inline')).toBeUndefined()
   expect(mapSize(70, 22, 'inline')).toBeUndefined()
+})
+
+test('stateOf reads idle, thinking, running, compacting and done in that precedence', () => {
+  const shell: Entry = { id: 'e1', station: 'shell', label: 'make', from: 'core', startedAt: NOW, status: 'run' }
+  const step: Entry = { id: 'e2', station: 'model', label: 'opus 5.5 · step 1', from: 'core', startedAt: NOW, status: 'run' }
+  const quiet: Board = { entries: [], counts: {} }
+  expect(stateOf(quiet)).toBe('idle')
+  expect(stateOf({ ...quiet, phase: 'thinking', entries: [step] })).toBe('thinking')
+  expect(stateOf({ ...quiet, phase: 'done', entries: [shell] })).toBe('running')
+  expect(stateOf({ ...quiet, phase: 'compacting', entries: [shell] })).toBe('compacting')
+  // Work left running in the background is no work of the turn.
+  expect(stateOf({ ...quiet, phase: 'done', entries: [{ ...shell, task: 'b1' }] })).toBe('done')
+})
+
+test('the core names the session state on every surface', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  on('turn.start', (_, e) => ({ turnId: e.turnId }) as never)
+  on('turn.complete', () => ({ text: '' }))
+  const t = stringsFor('en')
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  const svg = async () => String((await ui.find({ type: 'Svg' }))?.props.source)
+  expect(await svg()).toContain(`>${t.states.idle}<`)
+  await $.turn.start({ text: 'hello', turnId: 't1' } as never)
+  await clock.settle()
+  expect(await svg()).toContain(`>${t.states.thinking}<`)
+  await $.turn.complete({ answer: '', durationMs: 1, isAborted: false, turnId: 't1', reason: 'answer' } as never)
+  await clock.settle()
+  expect(await svg()).toContain(`>${t.states.done}<`)
+  await ui.unmount()
+
+  // The cells carry the word on the row under the model's: calls still run on this board, whatever the turn says.
+  const lines = linesOf(paintMap({ ...BUSY, phase: 'done' }, NOW, setupFrom({ theme: 'dark' }), 60, 28), 60)
+  const model = lines.findIndex(line => line.includes('opus 5.5'))
+  expect(lines[model + 1]).toContain(t.states.running)
+
+  // Every state in every language is short enough to sit under the core.
+  for (const language of ['en', 'ru', 'es', 'fr', 'de', 'it', 'pt']) {
+    for (const word of Object.values(stringsFor(language).states)) expect(word.length).toBeLessThanOrEqual(14)
+  }
 })
 
 test("every cell of the terminal map is one narrow glyph, and the terminal's own color is only ever a background", () => {
