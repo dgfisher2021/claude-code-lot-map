@@ -1473,6 +1473,24 @@ test('/workmap does what /lot-map does', async ($, on) => {
   await $.session.end({ reason: 'other' } as never)
 })
 
+test("/workmap help and /lot-map help answer the legend in the session's language", { options: { language: 'ru' } }, async ($, on) => {
+  on('command.register', (_, e) => ({ value: { command: e.name } }))
+  on('session.start', (_, e) => ({ cwd: e.cwd }))
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  const answer = String((await $.command.run({ command: 'workmap', args: 'help' } as never)).text)
+  expect(answer.split('\n')).toEqual(stringsFor('ru').legend)
+  expect(answer).toContain('Память')
+  expect((await $.command.run({ command: 'lot-map', args: 'help' } as never)).text).toBe(answer)
+  for (const language of ['en', 'ru', 'es', 'fr', 'de', 'it', 'pt']) expect(stringsFor(language).legend.length).toBe(8)
+})
+
+test('each station carries a title for hovering: its calls, its errors and its refusals', () => {
+  const svg = drawMap({ ...BUSY, blocks: { shell: 2 } }, NOW, setupFrom({}))
+  expect(svg.match(/<title>/g)?.length).toBe(10)
+  expect(svg).toContain('<title>Shell: 6 calls this session · 2 refused</title>')
+  expect(svg).toContain('<title>Hooks: 2 calls this session · 1 error since your last message</title>')
+})
+
 /** A session in Windows Terminal from WSL, as one in the background sees it: the profile is set, the tab is not. */
 const IN_WINDOWS_TERMINAL = { WSL_DISTRO_NAME: 'Ubuntu', WT_PROFILE_ID: '{51855cb2}', TMPDIR: '/tmp' }
 

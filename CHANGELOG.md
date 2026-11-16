@@ -12,6 +12,10 @@ What changed in each version of lot-map, newest first. To get a new version, see
   - `ExitPlanMode` now lands on You, not Shell.
   - New option `notify`, off by default, raises a notification for each.
 - A failed shell command's row shows its exit code, such as `exit 1`, and nothing of its output.
+- A legend:
+  - `/workmap help` says what each mark means, in the session's language.
+  - `?` in the window puts it where the rows are.
+  - In the app, hovering a station names its calls, errors and refusals.
 - A subagent's failures show on the subagent: its dot at Agents turns red, and its rows carry its name (`↳ explore auth · …`).
 - A refused call looks different from a failed one:
   - Its row reads `⊘` in the warning colour.

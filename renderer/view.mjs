@@ -48,7 +48,14 @@ process.stdin.on('data', data => {
     cell = { w: Number(reply[2]), h: Number(reply[1]) }
     relayout()
   }
-  if (/[q\x03]/.test(text.replace(/\x1b\[[0-9;]*t/g, ''))) quit(0)
+  const keys = text.replace(/\x1b\[[0-9;]*t/g, '')
+  if (/[q\x03]/.test(keys)) quit(0)
+  // ? swaps the rows for the legend, and back.
+  if (keys.includes('?')) {
+    showsLegend = !showsLegend
+    feedAt = 0
+    rows()
+  }
 })
 
 /** Rows of the feed under the map at most, as in the pane: the action now, then the calls. */
@@ -92,7 +99,7 @@ function relayout() {
 }
 
 function hint() {
-  out.write(`\x1b[${size.rows};1H\x1b[2mq closes this window\x1b[0m`)
+  out.write(`\x1b[${size.rows};1H\x1b[2K\x1b[2mq closes · ? legend\x1b[0m`)
 }
 
 /** A line in the middle of the map's room, until the first picture covers it. */
@@ -116,6 +123,25 @@ let feedAt = 0
 /** Cuts a line to the window's width, by characters. */
 const fitLine = text => Array.from(text).slice(0, size.cols).join('')
 
+/** Whether the legend stands where the rows go: `?` swaps them. */
+let showsLegend = false
+
+/** Breaks a line of the legend at spaces to the window's width, a word too long for it cut. */
+function wrapLine(text) {
+  const lines = []
+  let line = ''
+  for (const word of text.split(' ')) {
+    const next = line === '' ? word : `${line} ${word}`
+    if (Array.from(next).length <= size.cols) line = next
+    else {
+      if (line !== '') lines.push(line)
+      line = fitLine(word)
+    }
+  }
+  if (line !== '') lines.push(line)
+  return lines
+}
+
 /** Draws the action now and the rows under it when feed.json has changed, clearing what the last ones left. */
 function rows() {
   let stat
@@ -135,9 +161,13 @@ function rows() {
   // The top line: a wait on the person in the accent, a finished turn in green.
   const nowTone = { wait: '\x1b[1;38;2;225;172;110m', done: '\x1b[1;38;2;143;191;127m' }[feed.nowTone] ?? '\x1b[1m'
   const lines = [`${nowTone}${fitLine(String(feed.now ?? ''))}\x1b[0m`]
-  const listed = Array.isArray(feed.rows) ? feed.rows : []
-  if (listed.length === 0) lines.push(`\x1b[2m${fitLine(String(feed.empty ?? ''))}\x1b[0m`)
-  for (const { line, tone } of listed) lines.push(`${TONES[tone] ?? ''}${fitLine(String(line))}\x1b[0m`)
+  if (showsLegend) {
+    for (const line of Array.isArray(feed.legend) ? feed.legend : []) lines.push(...wrapLine(String(line)))
+  } else {
+    const listed = Array.isArray(feed.rows) ? feed.rows : []
+    if (listed.length === 0) lines.push(`\x1b[2m${fitLine(String(feed.empty ?? ''))}\x1b[0m`)
+    for (const { line, tone } of listed) lines.push(`${TONES[tone] ?? ''}${fitLine(String(line))}\x1b[0m`)
+  }
   let text = ''
   for (let i = 0; i < size.feedRows; i++) text += `\x1b[${size.feedTop + i};1H\x1b[2K${lines[i] ?? ''}`
   out.write(text)
