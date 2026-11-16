@@ -6,6 +6,11 @@ What changed in each version of lot-map, newest first. To get a new version, see
 
 - `/workmap` is a second name for `/lot-map`: the same pane or window, and `/workmap window` as `/lot-map window`.
 - One word under the centre says what the session is doing: thinking, running, needs you, compacting, done or idle. In the cells it sits under the model's name.
+- Needs you:
+  - While Claude asks you a question or puts a plan to you, the top line reads `Needs you:`, counting the time in the warning colour.
+  - After the answer it reads `Done … ago · your turn`.
+  - `ExitPlanMode` now lands on You, not Shell.
+  - New option `notify`, off by default, raises a notification for each.
 
 ## 0.9.1 (2026-11-16)
 

@@ -33,6 +33,7 @@ To remove what it keeps, uninstall the plugin.
 - It makes no network requests and has no telemetry, analytics or crash reports.
 - It reads no files. It runs no processes and writes no files, except in picture mode and for the map window, below.
 - It calls no model and adds nothing to the conversation.
+- It raises no notification unless you turn `notify` on. Then it raises one when Claude asks you a question or puts a plan to you, saying only that it needs you and for what kind of thing ("question for you"), never the question, and one when a turn ends.
 - It changes no tool call, result, prompt or context. It sees what your settings hooks decide about a call, hands that decision on as it was, and decides nothing about permissions itself.
 
 The code that takes names from a call is `classify` in [`hooks/map.ts`](hooks/map.ts); the hooks are in [`hooks/register.tsx`](hooks/register.tsx).

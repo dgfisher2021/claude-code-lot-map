@@ -33,6 +33,7 @@ type Start = {
   status?: Status
   agentId?: string
   mark?: Entry['mark']
+  waits?: true
   /** Adds nothing to the station's count: a second view of something already counted. */
   uncounted?: boolean
   startedAt?: number
@@ -63,6 +64,7 @@ async function begin($: EngineInterface, start: Start): Promise<string | undefin
       ...(start.status !== undefined ? { endedAt: start.endedAt ?? now } : {}),
       ...(start.agentId !== undefined ? { agentId: start.agentId } : {}),
       ...(start.mark !== undefined ? { mark: start.mark } : {}),
+      ...(start.waits === true ? { waits: true as const } : {}),
     }
     await update($, board, b => ({
       ...b,
@@ -267,7 +269,15 @@ async function writePicture($: EngineInterface, state: Board, now: number, setup
  * Terminal: `/lot-map window` keeps the live map in a folder (map.svg, the rows under it in feed.json, and a heartbeat
  * in alive) and opens renderer/view.mjs beside the session to draw them.
  */
-const sharing: { dir?: string; timer?: Timer; written: string; beat: number } = { written: '', beat: 0 }
+const sharing: { dir?: string; timer?: Timer; written: string; line: string; beat: number } = { written: '', line: '', beat: 0 }
+
+/** The top line's own clock: while it counts time it is drawn again when its words would change. */
+const lineTick: { timer?: Timer } = {}
+
+function tickLine($: EngineInterface, next: number | undefined): void {
+  lineTick.timer?.cancel()
+  lineTick.timer = next === undefined ? undefined : $.clock.after(Math.max(50, next), () => void quietly(async () => $.ui.invalidate('ui.render')))
+}
 
 /** Writes the map when the board has changed, and the heartbeat every few seconds, so the window knows the session lives. */
 async function share($: EngineInterface, setup: Setup): Promise<void> {
@@ -277,11 +287,16 @@ async function share($: EngineInterface, setup: Setup): Promise<void> {
     const state = await read($, board)
     const now = await $.clock.now()
     const seen = JSON.stringify(state)
-    if (seen !== sharing.written) {
+    const isChanged = seen !== sharing.written
+    if (isChanged) {
       sharing.written = seen
       await $.fs.write(`${dir}/map.svg`, framedMap(state, now, setup, 920, 860))
-      // The rows under the map, as the pane writes them.
-      const feed = { now: describeNow(state, setup.t), rows: feedLines(state.entries, setup.t), empty: setup.t.nothingYet }
+    }
+    // The rows under the map, as the pane writes them; again when the top line's time moves on.
+    const line = describeNow(state, setup.t, now)
+    if (isChanged || line.text !== sharing.line) {
+      sharing.line = line.text
+      const feed = { now: line.text, nowTone: line.tone, rows: feedLines(state.entries, setup.t), empty: setup.t.nothingYet }
       await $.fs.write(`${dir}/feed.json`, JSON.stringify(feed))
     }
     if (now - sharing.beat >= 3000) {
@@ -364,7 +379,7 @@ async function runCommand($: EngineInterface, args: string, setup: Setup, openin
 async function stopSharing($: EngineInterface): Promise<void> {
   const dir = sharing.dir
   sharing.timer?.cancel()
-  Object.assign(sharing, { dir: undefined, timer: undefined, written: '', beat: 0 })
+  Object.assign(sharing, { dir: undefined, timer: undefined, written: '', line: '', beat: 0 })
   if (dir !== undefined && /\/lot-map-live-[a-z0-9]+$/.test(dir)) await quietly(() => $.process.run(['rm', '-rf', '--', dir]))
 }
 
@@ -504,6 +519,7 @@ export const register: Register = (on, options) => {
         status: e.isAborted ? 'err' : 'ok',
         ...(e.isAborted ? {} : { mark: 'done' as const }),
       })
+      if (!e.isAborted && setup.notify) void quietly(() => $.ui.notify(t.notifyDone, { title: t.title, key: 'lot-map-wait' }))
       // An interrupted call never reports back; left alone its row would pulse for the rest of the session.
       await quietly(async () => {
         const now = await $.clock.now()
@@ -520,7 +536,14 @@ export const register: Register = (on, options) => {
   on('tool.call', async ($, e, next) => {
     const id = await quietly(async () => {
       const seen = classify(e.tool, e as unknown as Record<string, unknown>, setup)
-      return begin($, { ...seen, ...(e.agentId === undefined ? { from: 'core' as const } : { from: 'agents' as const, agentId: e.agentId }) })
+      // A question for the person, or a plan for their approval, waits on them until they answer.
+      const waits = e.agentId === undefined && (e.tool === 'AskUserQuestion' || e.tool === 'ExitPlanMode')
+      if (waits && setup.notify) void quietly(() => $.ui.notify(t.notifyWaiting(seen.label), { title: t.title, key: 'lot-map-wait' }))
+      return begin($, {
+        ...seen,
+        ...(e.agentId === undefined ? { from: 'core' as const } : { from: 'agents' as const, agentId: e.agentId }),
+        ...(waits ? { waits: true as const } : {}),
+      })
     })
     try {
       const ran = await next(e)
@@ -614,7 +637,14 @@ export const register: Register = (on, options) => {
       </Text>
     ))
     const feed = rows.length > 0 ? rows : [<Text dimColor>{t.nothingYet}</Text>]
-    const current = <Text mono size="footnote">{describeNow(state, t)}</Text>
+    // The top line: a wait on the person stands out, a finished turn reads as theirs.
+    const line = describeNow(state, t, now)
+    tickLine($, line.next)
+    const current = (
+      <Text mono size="footnote" color={line.tone === 'wait' ? 'warning' : line.tone === 'done' ? 'success' : undefined} bold={line.tone === 'wait'}>
+        {line.text}
+      </Text>
+    )
 
     if (e.surface === 'terminal') {
       const size = setup.terminalMap ? mapSize(e.props.bodyColumns, e.props.scroll.bodyRows, e.props.placement) : undefined
@@ -641,7 +671,7 @@ export const register: Register = (on, options) => {
       if (picture.canShow === true && !picture.isRefused && picture.dir !== undefined && picture.generation > 0) {
         stopReel()
         picture.isShown = true
-        map = <Image key={MAP} source={frameSource(picture.dir, picture.generation)} columns={size.columns} rows={size.rows} alt={describeNow(state, t)} />
+        map = <Image key={MAP} source={frameSource(picture.dir, picture.generation)} columns={size.columns} rows={size.rows} alt={line.text} />
       } else {
         picture.isShown = false
         reel.painted = paintMap(state, now, setup, size.columns, size.rows)
@@ -670,7 +700,7 @@ export const register: Register = (on, options) => {
     const { Svg } = $.ui.resolve(e)
     return (
       <Box flexDirection="column">
-        <Svg source={drawMap(state, now, setup)} alt={`${t.title}. ${describeNow(state, t)}`} />
+        <Svg source={drawMap(state, now, setup)} alt={`${t.title}. ${line.text}`} />
         {current}
         {feed}
       </Box>

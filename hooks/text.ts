@@ -42,10 +42,19 @@ export type Strings = {
   skill: string
   loadingTools: string
   questionForYou: string
+  planForYou: string
+  /** The top line while Claude waits on the person, and after an answer: what it waits for or since when, and how long. */
+  waitingFor: (label: string, since: string) => string
+  yourTurn: (since: string) => string
+  /** With `notify` on: a wait, and a finished turn. */
+  notifyWaiting: (label: string) => string
+  notifyDone: string
   fileForYou: string
   ms: (n: number) => string
   seconds: (s: string) => string
   minutes: (m: number, s: number) => string
+  /** A time since, once it passes a minute: whole minutes. */
+  wholeMinutes: (m: number) => string
 }
 
 const en: Strings = {
@@ -96,10 +105,16 @@ const en: Strings = {
   skill: 'skill',
   loadingTools: 'loading tools',
   questionForYou: 'question for you',
+  planForYou: 'plan for your approval',
+  waitingFor: (label, since) => `Needs you: ${label} · ${since}`,
+  yourTurn: since => `Done ${since} ago · your turn`,
+  notifyWaiting: label => `Needs you: ${label}`,
+  notifyDone: 'Done: your turn',
   fileForYou: 'file for you',
   ms: n => `${n} ms`,
   seconds: s => `${s} s`,
   minutes: (m, s) => `${m} min ${s} s`,
+  wholeMinutes: m => `${m} min`,
 }
 
 const ru: Strings = {
@@ -141,7 +156,7 @@ const ru: Strings = {
   windowOpen: 'Окно с картой уже открыто рядом.',
   windowByHand: command => `Запустите это в панели терминала, который показывает картинки Sixel: ${command}`,
   idle: 'Сейчас ничего не выполняется.',
-  states: { idle: 'ожидание', thinking: 'думает', running: 'работает', waiting: 'ждёт вас', compacting: 'сжимает', done: 'готово' },
+  states: { idle: 'ожидание', thinking: 'думает', running: 'работает', waiting: 'ждёт тебя', compacting: 'сжимает', done: 'готово' },
   context: 'контекст',
   andMore: n => ` и ещё ${n}`,
   webSearch: 'поиск в сети',
@@ -150,10 +165,16 @@ const ru: Strings = {
   skill: 'скилл',
   loadingTools: 'загрузка инструментов',
   questionForYou: 'вопрос тебе',
+  planForYou: 'план на твоё одобрение',
+  waitingFor: (label, since) => `Ждёт тебя: ${label} · ${since}`,
+  yourTurn: since => `Готово ${since} назад · твой ход`,
+  notifyWaiting: label => `Ждёт тебя: ${label}`,
+  notifyDone: 'Готово: твой ход',
   fileForYou: 'файл тебе',
   ms: n => `${n} мс`,
   seconds: s => `${s} с`,
   minutes: (m, s) => `${m} мин ${s} с`,
+  wholeMinutes: m => `${m} мин`,
 }
 
 const es: Strings = {
@@ -204,10 +225,16 @@ const es: Strings = {
   skill: 'skill',
   loadingTools: 'cargando herramientas',
   questionForYou: 'pregunta para ti',
+  planForYou: 'plan para que lo apruebes',
+  waitingFor: (label, since) => `Te espera: ${label} · ${since}`,
+  yourTurn: since => `Listo hace ${since} · te toca`,
+  notifyWaiting: label => `Te espera: ${label}`,
+  notifyDone: 'Listo: te toca',
   fileForYou: 'archivo para ti',
   ms: n => `${n} ms`,
   seconds: s => `${s} s`,
   minutes: (m, s) => `${m} min ${s} s`,
+  wholeMinutes: m => `${m} min`,
 }
 
 const fr: Strings = {
@@ -258,10 +285,16 @@ const fr: Strings = {
   skill: 'skill',
   loadingTools: 'chargement des outils',
   questionForYou: 'question pour vous',
+  planForYou: 'plan à approuver',
+  waitingFor: (label, since) => `Vous attend : ${label} · ${since}`,
+  yourTurn: since => `Terminé il y a ${since} · à vous`,
+  notifyWaiting: label => `Vous attend : ${label}`,
+  notifyDone: 'Terminé : à vous',
   fileForYou: 'fichier pour vous',
   ms: n => `${n} ms`,
   seconds: s => `${s.replace('.', ',')} s`,
   minutes: (m, s) => `${m} min ${s} s`,
+  wholeMinutes: m => `${m} min`,
 }
 
 const de: Strings = {
@@ -303,7 +336,7 @@ const de: Strings = {
   windowOpen: 'Das Kartenfenster ist daneben schon geöffnet.',
   windowByHand: command => `Führen Sie dies in einem Bereich eines Terminals aus, das Sixel-Bilder zeigt: ${command}`,
   idle: 'Nichts läuft.',
-  states: { idle: 'untätig', thinking: 'denkt nach', running: 'arbeitet', waiting: 'wartet auf Sie', compacting: 'verdichtet', done: 'fertig' },
+  states: { idle: 'untätig', thinking: 'denkt nach', running: 'arbeitet', waiting: 'braucht dich', compacting: 'verdichtet', done: 'fertig' },
   context: 'Kontext',
   andMore: n => ` und ${n} weitere`,
   webSearch: 'Websuche',
@@ -312,10 +345,16 @@ const de: Strings = {
   skill: 'Skill',
   loadingTools: 'Werkzeuge werden geladen',
   questionForYou: 'Frage an dich',
+  planForYou: 'Plan zur Freigabe',
+  waitingFor: (label, since) => `Braucht dich: ${label} · ${since}`,
+  yourTurn: since => `Fertig vor ${since} · du bist dran`,
+  notifyWaiting: label => `Braucht dich: ${label}`,
+  notifyDone: 'Fertig: du bist dran',
   fileForYou: 'Datei für dich',
   ms: n => `${n} ms`,
   seconds: s => `${s.replace('.', ',')} s`,
   minutes: (m, s) => `${m} Min. ${s} s`,
+  wholeMinutes: m => `${m} Min.`,
 }
 
 const it: Strings = {
@@ -366,10 +405,16 @@ const it: Strings = {
   skill: 'skill',
   loadingTools: 'caricamento strumenti',
   questionForYou: 'domanda per te',
+  planForYou: 'piano da approvare',
+  waitingFor: (label, since) => `Ti aspetta: ${label} · ${since}`,
+  yourTurn: since => `Fatto ${since} fa · tocca a te`,
+  notifyWaiting: label => `Ti aspetta: ${label}`,
+  notifyDone: 'Fatto: tocca a te',
   fileForYou: 'file per te',
   ms: n => `${n} ms`,
   seconds: s => `${s.replace('.', ',')} s`,
   minutes: (m, s) => `${m} min ${s} s`,
+  wholeMinutes: m => `${m} min`,
 }
 
 // European Portuguese.
@@ -412,7 +457,7 @@ const pt: Strings = {
   windowOpen: 'A janela do mapa já está aberta ao lado.',
   windowByHand: command => `Execute isto num painel de um terminal que mostre imagens Sixel: ${command}`,
   idle: 'Nada em execução.',
-  states: { idle: 'parado', thinking: 'a pensar', running: 'a trabalhar', waiting: 'à sua espera', compacting: 'a compactar', done: 'pronto' },
+  states: { idle: 'parado', thinking: 'a pensar', running: 'a trabalhar', waiting: 'espera por ti', compacting: 'a compactar', done: 'pronto' },
   context: 'contexto',
   andMore: n => ` e mais ${n}`,
   webSearch: 'pesquisa na web',
@@ -421,10 +466,16 @@ const pt: Strings = {
   skill: 'skill',
   loadingTools: 'a carregar ferramentas',
   questionForYou: 'pergunta para ti',
+  planForYou: 'plano para aprovares',
+  waitingFor: (label, since) => `Espera por ti: ${label} · ${since}`,
+  yourTurn: since => `Pronto há ${since} · é a tua vez`,
+  notifyWaiting: label => `Espera por ti: ${label}`,
+  notifyDone: 'Pronto: é a tua vez',
   fileForYou: 'ficheiro para ti',
   ms: n => `${n} ms`,
   seconds: s => `${s.replace('.', ',')} s`,
   minutes: (m, s) => `${m} min ${s} s`,
+  wholeMinutes: m => `${m} min`,
 }
 
 const TABLES = new Map<unknown, Strings>([['en', en], ['ru', ru], ['es', es], ['fr', fr], ['de', de], ['it', it], ['pt', pt]])

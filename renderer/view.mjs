@@ -125,7 +125,9 @@ function rows() {
     return
   }
   feedAt = stat.mtimeMs
-  const lines = [`\x1b[1m${fitLine(String(feed.now ?? ''))}\x1b[0m`]
+  // The top line: a wait on the person in the accent, a finished turn in green.
+  const nowTone = { wait: '\x1b[1;38;2;225;172;110m', done: '\x1b[1;38;2;143;191;127m' }[feed.nowTone] ?? '\x1b[1m'
+  const lines = [`${nowTone}${fitLine(String(feed.now ?? ''))}\x1b[0m`]
   const listed = Array.isArray(feed.rows) ? feed.rows : []
   if (listed.length === 0) lines.push(`\x1b[2m${fitLine(String(feed.empty ?? ''))}\x1b[0m`)
   for (const { line, tone } of listed) lines.push(`${TONES[tone] ?? ''}${fitLine(String(line))}\x1b[0m`)
