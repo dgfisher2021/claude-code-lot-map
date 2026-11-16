@@ -37,7 +37,7 @@ type Start = {
   uncounted?: boolean
   startedAt?: number
   endedAt?: number
-  patch?: Partial<Pick<Board, 'model' | 'step' | 'switchedAt'>>
+  patch?: Partial<Pick<Board, 'model' | 'step' | 'switchedAt' | 'phase'>>
 }
 
 /** The newest rows, and beside them every background task still going, however long ago it started. */
@@ -446,8 +446,8 @@ export const register: Register = (on, options) => {
       // A background task reporting back is no message of the person's.
       if (notice.status !== undefined) await settle($, notice.id, notice.status)
     } else if (e.agentId === undefined && e.text !== '') {
-      // A new message clears what went wrong on the way to the last answer.
-      await quietly(() => update($, board, b => (b.faults === undefined ? b : { ...b, faults: {} })))
+      // A new message clears what went wrong on the way to the last answer, and the session thinks again.
+      await quietly(() => update($, board, b => ({ ...b, ...(b.faults === undefined ? {} : { faults: {} }), phase: 'thinking' as const })))
       await begin($, { station: 'you', label: t.newMessage, from: 'inbound', status: 'ok' })
       if (windowed.isMap && !windowed.isAsked) void quietly(() => showWindow($, setup, opening))
     }
@@ -509,6 +509,7 @@ export const register: Register = (on, options) => {
         const now = await $.clock.now()
         await update($, board, b => ({
           ...b,
+          phase: 'done' as const,
           entries: b.entries.map(x => (x.status === 'run' && x.from === 'core' && x.task === undefined ? { ...x, status: 'ok' as const, endedAt: now } : x)),
         }))
       })
@@ -591,11 +592,13 @@ export const register: Register = (on, options) => {
   })
 
   on('session.compact', async ($, e, next) => {
-    const id = await begin($, { station: 'model', label: t.compacting })
+    const before = (await quietly(() => read($, board)))?.phase
+    const id = await begin($, { station: 'model', label: t.compacting, patch: { phase: 'compacting' } })
     try {
       return await next(e)
     } finally {
       await finish($, id, 'ok', await contextOf($))
+      await quietly(() => update($, board, b => ({ ...b, phase: before })))
     }
   })
 

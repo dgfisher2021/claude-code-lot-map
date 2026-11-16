@@ -37,6 +37,8 @@ export type Board = {
   context?: number
   /** When the model last changed. */
   switchedAt?: number
+  /** Where the main loop's turn stands: thinking from the person's message, done at its end, compacting meanwhile. */
+  phase?: 'thinking' | 'compacting' | 'done'
 }
 
 declare module 'claude-code' {
