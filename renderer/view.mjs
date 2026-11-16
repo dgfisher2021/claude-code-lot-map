@@ -164,6 +164,8 @@ function rows() {
   if (showsLegend) {
     for (const line of Array.isArray(feed.legend) ? feed.legend : []) lines.push(...wrapLine(String(line)))
   } else {
+    // Work still going in the background, pinned under the top line.
+    for (const { line, tone } of Array.isArray(feed.pinned) ? feed.pinned : []) lines.push(`${TONES[tone] ?? ''}${fitLine(String(line))}\x1b[0m`)
     const listed = Array.isArray(feed.rows) ? feed.rows : []
     if (listed.length === 0) lines.push(`\x1b[2m${fitLine(String(feed.empty ?? ''))}\x1b[0m`)
     for (const { line, tone } of listed) lines.push(`${TONES[tone] ?? ''}${fitLine(String(line))}\x1b[0m`)

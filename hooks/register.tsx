@@ -2,7 +2,22 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register, Timer } from 'claude-code'
 
 import type { Board, Entry, StationId, Status } from '../types'
-import { STATIONS, classify, clean, describeNow, drawMap, feedLines, firstLine, framedMap, memoryIds, setupFrom, shortModel, taskNotice, taskOf } from './map'
+import {
+  STATIONS,
+  classify,
+  clean,
+  describeNow,
+  drawMap,
+  feedLines,
+  firstLine,
+  framedMap,
+  memoryIds,
+  pinnedLines,
+  setupFrom,
+  shortModel,
+  taskNotice,
+  taskOf,
+} from './map'
 import type { Setup } from './map'
 import { MAP_COLUMNS, MAP_MIN_COLUMNS, MAP_ROWS, PICTURE_CELL, mapSize, paceOf, paintMap } from './raster'
 
@@ -302,11 +317,14 @@ async function share($: EngineInterface, setup: Setup): Promise<void> {
     }
     // The rows under the map, as the pane writes them; again when the top line's time moves on.
     const line = describeNow(state, setup.t, now)
-    if (isChanged || line.text !== sharing.line) {
-      sharing.line = line.text
+    const pinned = pinnedLines(state.entries, now, setup.t)
+    const said = [line.text, ...pinned.map(p => p.line)].join('\n')
+    if (isChanged || said !== sharing.line) {
+      sharing.line = said
       const feed = {
         now: line.text,
         nowTone: line.tone,
+        pinned,
         rows: feedLines(state.entries, setup.t, state.agentNames),
         empty: setup.t.nothingYet,
         legend: setup.t.legend,
@@ -682,11 +700,21 @@ export const register: Register = (on, options) => {
     const feed = rows.length > 0 ? rows : [<Text dimColor>{t.nothingYet}</Text>]
     // The top line: a wait on the person stands out, a finished turn reads as theirs.
     const line = describeNow(state, t, now)
-    tickLine($, line.next)
+    // Under it, work still going in the background, with its time: the pane is drawn again as the times move on.
+    const pinned = pinnedLines(state.entries, now, t)
+    const next = Math.min(line.next ?? Infinity, pinned.length > 0 ? 1000 - (now % 1000) : Infinity)
+    tickLine($, Number.isFinite(next) ? next : undefined)
     const current = (
-      <Text mono size="footnote" color={line.tone === 'wait' ? 'warning' : line.tone === 'done' ? 'success' : undefined} bold={line.tone === 'wait'}>
-        {line.text}
-      </Text>
+      <Box flexDirection="column">
+        <Text mono size="footnote" color={line.tone === 'wait' ? 'warning' : line.tone === 'done' ? 'success' : undefined} bold={line.tone === 'wait'}>
+          {line.text}
+        </Text>
+        {pinned.map(p => (
+          <Text mono size="footnote" color="claude">
+            {p.line}
+          </Text>
+        ))}
+      </Box>
     )
 
     if (e.surface === 'terminal') {
