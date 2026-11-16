@@ -847,12 +847,14 @@ export function drawMap(board: Board, now: number, setup: Setup, isFilling = fal
 
   // Each subagent still at work circles the agents station.
   const crew = (board.agents ?? []).slice(0, 6)
-  crew.forEach((_, k) => {
+  crew.forEach((agent, k) => {
     const lap = 7000
     const spin = `${n1(agentsAt.x)} ${n1(agentsAt.y)}`
+    // A subagent a call of which failed or was refused circles in red.
+    const dot = (board.agentFaults ?? []).includes(agent) ? c.red : c.hot
     body +=
       `<g><animateTransform attributeName="transform" type="rotate" from="0 ${spin}" to="360 ${spin}" begin="${clock(-((now + (k * lap) / crew.length) % lap))}" dur="${clock(lap)}" repeatCount="indefinite"/>` +
-      `<circle cx="${n1(agentsAt.x)}" cy="${n1(agentsAt.y - NODE - 6)}" r="3" fill="${c.hot}"/></g>`
+      `<circle cx="${n1(agentsAt.x)}" cy="${n1(agentsAt.y - NODE - 6)}" r="3" fill="${dot}"/></g>`
   })
 
   // A name longer than three letters shrinks to stay inside the circle.
@@ -953,14 +955,17 @@ export function foldRows(entries: readonly Entry[], max = 16): Row[] {
 export type FeedLine = { line: string; tone: 'run' | 'ok' | 'bad' | 'block' | 'switch' }
 
 /** The feed's rows as the pane and the map window write them, the station names in a column as wide as the longest. */
-export function feedLines(entries: readonly Entry[], t: Strings): FeedLine[] {
+export function feedLines(entries: readonly Entry[], t: Strings, agentNames: Readonly<Record<string, string>> = {}): FeedLine[] {
   const column = Math.max(8, ...Object.values(t.stations).map(name => name.length))
   return foldRows(entries).map(({ entry, times, tookMs }) => {
     const isSwitch = entry.mark === 'switch'
     const mark = isSwitch ? '◆' : entry.status === 'run' ? '●' : entry.status === 'ok' ? '·' : entry.status === 'block' ? '⊘' : '✕'
     const took = entry.endedAt === undefined ? t.running : tookMs > 0 ? formatMs(tookMs, t) : ''
     const exit = entry.exit === undefined ? '' : `  ${t.exitCode(entry.exit)}`
-    const line = `${mark} ${t.stations[entry.station].padEnd(column)} ${entry.label}${times > 1 ? `  +${times - 1}` : ''}${exit}${took === '' ? '' : `  ${took}`}`
+    // A subagent's call carries its name, when it is known.
+    const agent = entry.agentId === undefined ? undefined : agentNames[entry.agentId]
+    const label = agent === undefined ? entry.label : `↳ ${agent} · ${entry.label}`
+    const line = `${mark} ${t.stations[entry.station].padEnd(column)} ${label}${times > 1 ? `  +${times - 1}` : ''}${exit}${took === '' ? '' : `  ${took}`}`
     return { line, tone: isSwitch ? 'switch' : entry.status === 'run' ? 'run' : entry.status === 'ok' ? 'ok' : entry.status === 'block' ? 'block' : 'bad' }
   })
 }

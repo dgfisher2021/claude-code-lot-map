@@ -39,6 +39,10 @@ export type Board = {
   blocks?: Partial<Record<StationId, number>>
   /** Subagents whose loops are still going. */
   agents?: string[]
+  /** The short description each subagent was started with, by its id: the last twelve. */
+  agentNames?: Record<string, string>
+  /** Subagents a call of which failed or was refused. */
+  agentFaults?: string[]
   /** How full the context window is, 0 to 100. */
   context?: number
   /** When the model last changed. */

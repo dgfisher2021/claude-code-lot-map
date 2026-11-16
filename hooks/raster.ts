@@ -570,11 +570,12 @@ export function paintMap(board: Board, now: number, setup: Setup, columns: numbe
   // Each subagent still at work circles the agents station.
   const agentsAt = place(indexOf('agents'))
   const crew = (board.agents ?? []).slice(0, 6)
-  crew.forEach((_, k) => {
+  crew.forEach((agent, k) => {
     const lap = 7000
     const turn = (((now + (k * lap) / crew.length) % lap) / lap) * 2 * Math.PI
     const r = NODE + 6
-    cv.disc({ x: agentsAt.x + r * Math.sin(turn), y: agentsAt.y - r * Math.cos(turn) }, 3, c.hot)
+    // A subagent a call of which failed or was refused circles in red.
+    cv.disc({ x: agentsAt.x + r * Math.sin(turn), y: agentsAt.y - r * Math.cos(turn) }, 3, (board.agentFaults ?? []).includes(agent) ? c.red : c.hot)
   })
 
   // The core breathes at rest and quickens while something runs.
