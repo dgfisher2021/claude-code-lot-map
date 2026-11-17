@@ -322,7 +322,12 @@ Checked on 2026-11-17 against the `wave-2` branch at 0.11.0 (155 tests pass), wi
 
 - **Compacting under the guard** (item 11): the live "compacting" word needs `session.compact`, which the guard skips. With `guardedHooks` off, a fall of the context by 30 points or more marks "compacted" afterwards instead.
 - **A refusal by a hook under the guard** (item 11) still reads as failed: the mod learns of it only from `classic.PreToolUse`. A person's "No" at a permission prompt now reads as refused (item 13), from the ask that was never settled.
-- **Every session at a glance** (item 20): each session writes `${TMPDIR}/lot-map-sessions/<id>.json`, not a file in its live folder, so sessions without a window show too. A number key shows that session's rows, not its full map.
+- **Every session at a glance** (item 20):
+  - Each session writes `<id>.json` in a folder of the person's own, not a file in its live folder, so sessions without a window show too.
+  - The folder is `$XDG_RUNTIME_DIR/lot-map-sessions`, else `~/.cache/lot-map/sessions`; with neither variable set, nothing is written.
+  - A number key shows that session's rows, not its full map.
+- **Nothing happening** (item 18): the warning comes only when nothing at all is at work, no call and no model step, for three minutes. A model request that hangs while it streams doesn't warn.
+- **A warned station in cells** (item 18): its sign turns amber; the ring is drawn in the app and the window only.
 
 **Left for later:**
 
@@ -330,7 +335,8 @@ Checked on 2026-11-17 against the `wave-2` branch at 0.11.0 (155 tests pass), wi
 - **More than nine sessions** (item 20): the window shows nine tiles with no "+N more"; `/workmap all` as text lists them all.
 - **Earlier turns** (item 16): an error on a turn older than the last twelve kept no longer reaches a header, though the session totals count it.
 - **The cost in cells** (item 19): at the dock's size the cost sits over the bottom of the arcs. It stays readable.
-- **A shared temporary folder** (item 20): on a machine with several users, another user could own `/tmp/lot-map-sessions` first. Text read from it is stripped of control characters before it is shown.
+- **A message typed while a turn runs** (item 16): when the engine hands it into the running turn instead of starting a new one, what a settings hook added for it waits for the next message's turn.
+- **SECURITY.md** still counts any file read or process started as a vulnerability. Since 0.7 the mod starts a renderer, and since 0.11 it reads its status folder; the page needs a rewrite for what the mod does now.
 
 ## Wave 3: later
 
