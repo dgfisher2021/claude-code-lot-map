@@ -1042,8 +1042,8 @@ export function warningsOf(board: Board, now: number, t: Strings): Warning[] {
 export type NowLine = { text: string; tone: 'wait' | 'done' | 'plain'; next?: number }
 
 /** What the session does now: what it waits on the person for and how long, since when the answer is ready, or what runs. */
-export function describeNow(board: Board, t: Strings, now: number): NowLine {
-  const context = board.context === undefined ? '' : ` · ${t.context} ${Math.round(board.context)}%`
+export function describeNow(board: Board, t: Strings, now: number, withContext = true): NowLine {
+  const context = board.context === undefined || !withContext ? '' : ` · ${t.context} ${Math.round(board.context)}%`
   const state = stateOf(board)
   const wait = state === 'waiting' ? board.entries.find(e => e.status === 'run' && e.waits === true) : undefined
   if (wait !== undefined) {

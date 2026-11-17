@@ -602,7 +602,7 @@ async function writeStatus($: EngineInterface, setup: Setup): Promise<void> {
       name: overview.cwd.split(/[\\/]/).filter(Boolean).at(-1) ?? overview.cwd,
       state: status,
       word: setup.t.states[status],
-      now: describeNow(state, setup.t, now).text,
+      now: describeNow(state, setup.t, now, false).text,
       ...(state.context === undefined ? {} : { context: Math.round(state.context) }),
       startedAt: overview.startedAt,
       fault: Object.values(state.faults ?? {}).some(count => count > 0),
@@ -610,8 +610,11 @@ async function writeStatus($: EngineInterface, setup: Setup): Promise<void> {
     }
     const json = JSON.stringify(tile)
     if (file === overview.file && json === overview.json && now - overview.wroteAt < HEARTBEAT_MS) return
+    // A tick still running when the session ended must not bring the file back.
+    if (overview.timer === undefined) return
     await $.fs.write(file, JSON.stringify({ ...tile, updatedAt: now }))
-    Object.assign(overview, { file, json, wroteAt: now })
+    if (overview.timer === undefined) await $.process.run(['rm', '-f', '--', file])
+    else Object.assign(overview, { file, json, wroteAt: now })
   })
 }
 
@@ -622,8 +625,13 @@ async function sweepSessions($: EngineInterface): Promise<void> {
     const now = await $.clock.now()
     for (const entry of await $.fs.list(dir)) {
       if (entry.kind !== 'file' || !/^[\w-]+\.json$/.test(entry.name)) continue
-      const updatedAt = (JSON.parse(String(await $.fs.read(`${dir}/${entry.name}`))) as { updatedAt?: unknown }).updatedAt
-      if (typeof updatedAt === 'number' && now - updatedAt > SESSION_GONE_MS) await $.process.run(['rm', '-f', '--', `${dir}/${entry.name}`])
+      // One file that cannot be read or removed leaves the others to their turn; a file that is no status goes by its age.
+      await quietly(async () => {
+        const path = `${dir}/${entry.name}`
+        const parsed = await quietly(async () => (JSON.parse(String(await $.fs.read(path))) as { updatedAt?: unknown } | null)?.updatedAt)
+        const at = typeof parsed === 'number' ? parsed : entry.mtimeMs
+        if (now - at > SESSION_GONE_MS) await $.process.run(['rm', '-f', '--', path])
+      })
     }
   })
 }
