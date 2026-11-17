@@ -4,9 +4,9 @@ What changed in each version of lot-map, newest first. To get a new version, see
 
 ## 0.12.0 (2026-11-17)
 
-- New option `motion`, from upstream's #40: `reduced` shows the same state with nothing moving by itself. The map draws no pulse, ripple, beam, blink or spin; a running station keeps its ring and its clock hands still, at their place; the cells repaint at the slow pace; the picture is painted once for each map and not stepped for animation.
-- New `theme` value `contrast`: the dark palette on black, words at 7:1 or more against the ground, marks at 4.5:1 or more. Colours of your own still win.
-- Shapes tell what colour alone should not: an error badge is a filled square (the refusal stays an outlined circle, `×N` a round one), and a wait on you adds a dashed ring round the core to its blinking word. The legend has one more line.
+- New option `motion`, from upstream's #40: `reduced` shows the same state with nothing moving by itself. The map draws no pulse, ripple, beam, blink or spin; a lit station or a leg of the route is on until its time is up and then off, never faded; a running station keeps its ring, and its clock hands step every five seconds; the cells repaint every five seconds at most; the picture is painted once for each map and not stepped for animation.
+- New `theme` value `contrast`: the dark palette on black, words at 7:1 or more against the ground, marks, lines and spokes at 4.5:1 or more. Colours of your own still win.
+- Shapes tell what colour alone should not: an error badge is a filled square (the refusal stays an outlined circle, `×N` a round one), and a wait on you adds a dashed ring just inside the core's edge to its blinking word. The legend has one more line.
 - New option `errorReasons`, off by default: a failed call's row shows the first line of its error after the label, ` — cannot open file`, cleaned and cut to 72 characters. A refused call shows none; the `/workmap all` status file and notifications never carry it.
 
 ## 0.11.0 (2026-11-17)
