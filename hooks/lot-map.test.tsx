@@ -1336,6 +1336,26 @@ test('a permission prompt left unanswered notifies once', { options: { notify: t
   await calling
 })
 
+test('a second ask for one call notifies once', { options: { notify: true } }, async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  const notes: string[] = []
+  on('ui.notify', (_, e) => {
+    notes.push(e.text)
+    return { value: { isSent: true, channel: 'client' } } as never
+  })
+  const held = askedCall(on)
+  const calling = $.tool.call(SHELL)
+  await clock.settle()
+  await held.ask($)
+  await clock.advance(300)
+  await held.ask($)
+  await clock.advance(3000)
+  await clock.settle()
+  expect(notes).toEqual(['Needs you: permission for Shell: Build it'])
+  held.release()
+  await calling
+})
+
 test('a refused ask closes as blocked, not waiting', async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
   const held = askedCall(on)

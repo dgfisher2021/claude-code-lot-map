@@ -128,8 +128,7 @@ async function finish($: EngineInterface, id: string | undefined, status: Status
         ...patch,
         entries: b.entries.map(e => {
           if (e !== open) return e
-          const { asks, waits, ...rest } = e
-          return { ...rest, status: closed, endedAt: now, ...(exit === undefined || refusal ? {} : { exit }) }
+          return { ...bare(e), status: closed, endedAt: now, ...(exit === undefined || refusal ? {} : { exit }) }
         }),
         ...(open !== undefined ? tally(b, open.station, closed, open.agentId) : {}),
       }
@@ -159,6 +158,12 @@ async function settle($: EngineInterface, task: string, status: Status): Promise
   })
 }
 
+/** A row without a permission prompt's marks. */
+const bare = (e: Entry): Entry => {
+  const { asks, waits, ...rest } = e
+  return rest
+}
+
 /** A permission prompt's row: its ask marked, or its ask and wait cleared. */
 async function askOn($: EngineInterface, calls: Map<string, string>, call: string | undefined, isAsked: boolean): Promise<void> {
   await quietly(async () => {
@@ -170,8 +175,7 @@ async function askOn($: EngineInterface, calls: Map<string, string>, call: strin
         if (e.id !== id || e.status !== 'run') return e
         // A question or a plan already waits on the person, and the mode's ask is no news. Only a mode's ask is cleared.
         if (isAsked) return e.waits === true ? e : { ...e, asks: true as const }
-        const { asks, waits, ...rest } = e
-        return e.asks === true ? rest : e
+        return e.asks === true ? bare(e) : e
       }),
     }))
   })
@@ -181,12 +185,17 @@ async function askOn($: EngineInterface, calls: Map<string, string>, call: strin
 async function waitsOnYou($: EngineInterface, setup: Setup, calls: Map<string, string>, call: string): Promise<void> {
   await quietly(async () => {
     const id = calls.get(call)
-    const open = id === undefined ? undefined : (await read($, board)).entries.find(x => x.id === id && x.status === 'run' && x.asks === true)
-    if (open === undefined) return
-    await update($, board, b => ({ ...b, entries: b.entries.map(x => (x.id === open.id ? { ...x, waits: true as const } : x)) }))
+    if (id === undefined) return
+    // Checked and written in one step: a run that cleared the ask meanwhile leaves the row alone.
+    let row: Entry | undefined
+    await update($, board, b => {
+      row = b.entries.find(x => x.id === id && x.status === 'run' && x.asks === true && x.waits !== true)
+      return row === undefined ? b : { ...b, entries: b.entries.map(x => (x === row ? { ...x, waits: true as const } : x)) }
+    })
+    if (row === undefined) return
     const { t } = setup
-    if (setup.notify)
-      void quietly(() => $.ui.notify(t.notifyWaiting(t.permissionFor(`${t.stations[open.station]}: ${open.label}`)), { title: t.title, key: 'lot-map-wait' }))
+    const { station, label } = row
+    if (setup.notify) void quietly(() => $.ui.notify(t.notifyWaiting(t.permissionFor(`${t.stations[station]}: ${label}`)), { title: t.title, key: 'lot-map-wait' }))
   })
 }
 
