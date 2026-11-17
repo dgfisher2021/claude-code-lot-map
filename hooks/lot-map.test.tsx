@@ -2189,6 +2189,7 @@ test('the rate-limit windows and the cost show around the core', async ($, on) =
   expect(stroke(fiveHour)).toBe(contextRing)
   expect(svg).toContain(`<title>${SETUP.t.limitTitle('five_hour', 92, SETUP.t.hoursMinutes(2, 10))}</title>`)
   expect(svg).toContain('>$1.23<')
+  expect(drawMap({ ...kept.board, limits: [{ kind: 'seven_day', percent: 40.6 }] }, 1_000_000, SETUP)).toContain(SETUP.t.limitTitle('seven_day', 41))
 })
 
 test('/workmap usage answers the context, the windows and the cost', async ($, on) => {
@@ -2230,6 +2231,46 @@ test('/workmap usage answers the context, the windows and the cost', async ($, o
   expect(lines.some(l => l.startsWith('Skills'))).toBe(false)
   expect(lines).toContain('Five-hour 92% · resets in 2 h 10 min')
   expect(lines.at(-1)).toBe('Cost so far, an estimate: $1.23')
+})
+
+test('/workmap usage still answers the windows and the cost when the engine cannot give the breakdown', async ($, on) => {
+  on('clock.now', () => ({ value: 1_000_000 }))
+  on('command.register', (_, e) => ({ value: { command: e.name } }))
+  keepBoard(on as never)
+  on('session.usage', () => {
+    throw new Error('no session')
+  })
+  on('session.start', (_, e) => ({ cwd: e.cwd }))
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  await $.session.measure({
+    context: { percent: 37 },
+    rateLimits: [{ kind: 'seven_day', percentUsed: 40 }],
+    cost: { usd: 2 },
+    changed: ['rateLimits'],
+  } as never)
+  expect(String((await $.command.run({ command: 'workmap', args: 'usage' } as never)).text).split('\n')).toEqual([
+    'Weekly 40%',
+    'Cost so far, an estimate: $2.00',
+  ])
+})
+
+test('the terminal map paints the rate-limit arcs and the cost at the dock size, and nothing without them', () => {
+  const setup = setupFrom({ theme: 'dark' })
+  const bare: Board = { entries: [], counts: {} }
+  const gauged: Board = { ...bare, limits: [{ kind: 'five_hour', percent: 92 }], cost: 1.234 }
+  const isRed = (cells: string): boolean => {
+    const words = wordsOf(cells)
+    for (let k = 1; k < words.length; k++)
+      if (k % 3 !== 0 && ((words[k] ?? 0) >> 16) - ((words[k] ?? 0) & 0xff) > 50 && ((words[k] ?? 0) >> 16) - (((words[k] ?? 0) >> 8) & 0xff) > 50) return true
+    return false
+  }
+  const plain = paintMap(bare, NOW, setup, 60, 22)
+  const drawn = paintMap(gauged, NOW, setup, 60, 22)
+  expect(isRed(plain)).toBe(false)
+  expect(isRed(drawn)).toBe(true)
+  expect(linesOf(drawn, 60).join('\n')).toContain('$1.23')
+  expect(linesOf(plain, 60).join('\n')).not.toMatch(/\$\d/)
+  expect(linesOf(paintMap({ ...bare, cost: 0.004 }, NOW, setup, 60, 22), 60).join('\n')).not.toMatch(/\$\d/)
 })
 
 test('with no rate limits and no cost, nothing new is drawn', async ($, on) => {

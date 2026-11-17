@@ -636,9 +636,9 @@ export function paintMap(board: Board, now: number, setup: Setup, columns: numbe
     setup.t.states[state],
     { idle: c.dim, thinking: c.bone, running: c.hot, waiting: isDim ? c.dim : c.accent, compacting: c.mem, done: c.ash }[state],
   )
-  // The cost on the row under it, where that row still lies within the core's reach.
+  // The cost on the row under it, where that row lies no further out than the map draws it in the picture.
   const spent = costText(board.cost)
-  if (spent !== undefined && ((middle + 3.5) * PY - cv.oy) / s - CY < CORE + 8) say(middle + 3, spent, c.dim)
+  if (spent !== undefined && ((middle + 3.5) * PY - cv.oy) / s - CY < CORE + 30) say(middle + 3, spent, c.dim)
 
   // A changed model rings at the core and at its station for a few seconds.
   if (isSwitching) {

@@ -916,6 +916,8 @@ export const register: Register = (on, options) => {
         if (kind === 'five_hour' || kind === 'seven_day') limits.push({ kind, percent: percentUsed, ...(resetsAt === undefined ? {} : { resetsAt }) })
       }
       await update($, board, b => ({ ...b, limits: limits.length > 0 ? limits : undefined, cost: e.cost?.usd }))
+    })
+    await quietly(async () => {
       const percent = e.context.percent
       if (typeof percent !== 'number') return
       const fell = lastContext !== undefined && lastContext - percent >= 30
