@@ -17,6 +17,8 @@ What changed in each version of lot-map, newest first. To get a new version, see
 - A permission prompt that has waited on you for a second reads as needs you: the top line says `Needs you: permission for Shell: the call`, and with `notify` on you are told once. A mode that settles it at once (accept edits, bypass permissions, auto mode's classifier) never shows it. A call you refuse at the prompt now reads as refused, not as a failure, and counts with the refusals.
 - Fixed: where no surface is attached at the start, as in the desktop app, the pane is no longer opened into nothing; it opens when a surface attaches.
 
+- The rows are grouped by turn. Your message opens a turn, whose bold header (`Turn 3 · 12.4 s · 7 calls · 1 error`) leads the list with the turn's rows under it; the four turns before it shrink to dim headers. The list stays within 16 lines. A turn a background task's notification starts opens no header. The legend has one more line.
+
 ## 0.10.0 (2026-11-16)
 
 - `/workmap` is a second name for `/lot-map`: the same pane or window, and `/workmap window` as `/lot-map window`.

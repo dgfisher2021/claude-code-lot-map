@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register, Timer } from 'claude-code'
 
-import type { Board, Entry, StationId, Status } from '../types'
+import type { Board, Entry, StationId, Status, TurnSummary } from '../types'
 import {
   STATIONS,
   classify,
@@ -32,6 +32,8 @@ const KEEP = 80
 /** How many refusals are remembered until their calls come by: a call that never comes would stay for the whole session. */
 const REFUSALS_KEPT = 64
 const CREW = 12
+/** How many turns the board keeps. */
+const TURNS = 12
 
 // Change the tag when a field of Entry or Board changes: it declines what an earlier version stored.
 const board = atom({ plugin: 'lot-map', key: 'board' } as const, { entries: [], counts: {} } as Board, { shape: 'board-4' })
@@ -68,17 +70,25 @@ const kept = (entries: Entry[]): Entry[] => {
   return from <= 0 ? entries : entries.filter((e, i) => i >= from || (e.status === 'run' && e.task !== undefined))
 }
 
+/** The turns with the open one changed by `f`; nothing before the person's first message. */
+const inTurn = (b: Board, f: (t: TurnSummary) => TurnSummary): Pick<Board, 'turns'> => {
+  const open = b.turns?.[b.turns.length - 1]
+  return open === undefined || b.turns === undefined ? {} : { turns: [...b.turns.slice(0, -1), f(open)] }
+}
+
 const oneMore = (counts: Board['faults'], station: StationId): Board['faults'] => ({ ...counts, [station]: (counts?.[station] ?? 0) + 1 })
 
 /**
  * A call that ended badly counts on its station, an error with the faults and a refusal with the blocks, and marks the
  * subagent that made it.
  */
-function tally(b: Board, station: StationId, status: Status, agentId?: string): Pick<Board, 'faults' | 'faultTotals' | 'blocks' | 'agentFaults'> {
+function tally(b: Board, station: StationId, status: Status, agentId?: string): Pick<Board, 'faults' | 'faultTotals' | 'blocks' | 'agentFaults' | 'turns'> {
   if (status !== 'err' && status !== 'block') return {}
   const agentFaults = agentId === undefined || (b.agentFaults ?? []).includes(agentId) ? {} : { agentFaults: [...(b.agentFaults ?? []), agentId].slice(-12) }
   const bad = status === 'err' ? { faults: oneMore(b.faults, station), faultTotals: oneMore(b.faultTotals, station) } : { blocks: oneMore(b.blocks, station) }
-  return { ...bad, ...agentFaults }
+  // An error counts on the open turn.
+  const turns = status === 'err' && station !== 'model' && station !== 'you' ? inTurn(b, t => ({ ...t, errors: t.errors + 1 })) : {}
+  return { ...bad, ...agentFaults, ...turns }
 }
 
 async function begin($: EngineInterface, start: Start): Promise<string | undefined> {
@@ -96,20 +106,24 @@ async function begin($: EngineInterface, start: Start): Promise<string | undefin
       ...(start.mark !== undefined ? { mark: start.mark } : {}),
       ...(start.waits === true ? { waits: true as const } : {}),
     }
-    await update($, board, b => ({
-      ...b,
-      ...start.patch,
-      entries: kept([...b.entries, entry]),
-      counts: start.uncounted ? b.counts : { ...b.counts, [entry.station]: (b.counts[entry.station] ?? 0) + 1 },
-      ...(start.uncounted ? {} : { turnCounts: oneMore(b.turnCounts, entry.station) }),
-      // What a hook brought to memory unasked is counted apart from what was asked for.
-      ...(entry.station === 'memory' && entry.from === 'inbound' && !start.uncounted ? { pushed: (b.pushed ?? 0) + 1 } : {}),
-      // An interrupted turn lands on the person's own station and is no fault of anything.
-      ...(entry.station !== 'you' ? tally(b, entry.station, entry.status, entry.agentId) : {}),
-      ...(entry.agentId !== undefined && !(b.agents ?? []).includes(entry.agentId)
-        ? { agents: [...(b.agents ?? []), entry.agentId].slice(-CREW) }
-        : {}),
-    }))
+    await update($, board, b => {
+      const open = b.turns?.[b.turns.length - 1]
+      const bad = entry.station !== 'you' ? tally(b, entry.station, entry.status, entry.agentId) : {}
+      const counts = !start.uncounted && entry.station !== 'model' && entry.station !== 'you'
+      return {
+        ...b,
+        ...start.patch,
+        entries: kept([...b.entries, open === undefined ? entry : { ...entry, turn: open.n }]),
+        counts: start.uncounted ? b.counts : { ...b.counts, [entry.station]: (b.counts[entry.station] ?? 0) + 1 },
+        ...(start.uncounted ? {} : { turnCounts: oneMore(b.turnCounts, entry.station) }),
+        // What a hook brought to memory unasked is counted apart from what was asked for.
+        ...(entry.station === 'memory' && entry.from === 'inbound' && !start.uncounted ? { pushed: (b.pushed ?? 0) + 1 } : {}),
+        // An interrupted turn lands on the person's own station and is no fault of anything.
+        ...bad,
+        ...(counts ? inTurn({ ...b, ...bad }, t => ({ ...t, calls: t.calls + 1 })) : {}),
+        ...(entry.agentId !== undefined && !(b.agents ?? []).includes(entry.agentId) ? { agents: [...(b.agents ?? []), entry.agentId].slice(-CREW) } : {}),
+      }
+    })
     return entry.id
   })
 }
@@ -382,7 +396,7 @@ async function share($: EngineInterface, setup: Setup): Promise<void> {
         nowTone: line.tone,
         plan: planLines(state.plan, setup.t),
         pinned,
-        rows: feedLines(state.entries, setup.t, state.agentNames),
+        rows: feedLines(state.entries, setup.t, state.agentNames, state.turns),
         empty: setup.t.nothingYet,
         legend: setup.t.legend,
         windowRows: setup.windowRows,
@@ -585,15 +599,17 @@ export const register: Register = (on, options) => {
       // A background task reporting back is no message of the person's.
       if (notice.status !== undefined) await settle($, notice.id, notice.status)
     } else if (e.agentId === undefined && e.text !== '') {
-      // A new message clears what went wrong on the way to the last answer.
-      await quietly(() =>
-        update($, board, b => ({
+      // A new message clears what went wrong on the way to the last answer, and opens a turn.
+      await quietly(async () => {
+        const now = await $.clock.now()
+        await update($, board, b => ({
           ...b,
           ...(b.faults === undefined ? {} : { faults: {} }),
           ...(b.blocks === undefined ? {} : { blocks: {} }),
           ...(b.turnCounts === undefined ? {} : { turnCounts: {} }),
-        })),
-      )
+          turns: [...(b.turns ?? []), { n: (b.turns?.[b.turns.length - 1]?.n ?? 0) + 1, startedAt: now, calls: 0, errors: 0 }].slice(-TURNS),
+        }))
+      })
       await begin($, { station: 'you', label: t.newMessage, from: 'inbound', status: 'ok' })
       if (windowed.isMap && !windowed.isAsked) void quietly(() => showWindow($, setup, opening))
     }
@@ -659,6 +675,7 @@ export const register: Register = (on, options) => {
           ...b,
           phase: e.isAborted ? undefined : ('done' as const),
           answeredAt: e.isAborted ? undefined : now,
+          ...inTurn(b, t => ({ ...t, endedAt: now })),
           entries: b.entries.map(x => (x.status === 'run' && x.from === 'core' && x.task === undefined ? { ...x, status: 'ok' as const, endedAt: now } : x)),
         }))
       })
@@ -840,10 +857,11 @@ export const register: Register = (on, options) => {
     const { Box, Text } = $.ui.resolve(e)
 
     // Theme keys, so the rows read on a light theme as well as on a dark one.
-    const rows = feedLines(state.entries, t, state.agentNames).map(({ line, tone }) => (
+    const rows = feedLines(state.entries, t, state.agentNames, state.turns).map(({ line, tone, isBold }) => (
       <Text
         mono
         size="footnote"
+        bold={isBold === true}
         color={tone === 'run' || tone === 'switch' ? 'claude' : tone === 'bad' ? 'error' : tone === 'block' ? 'warning' : undefined}
         dimColor={tone === 'ok'}
       >
