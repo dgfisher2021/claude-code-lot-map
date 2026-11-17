@@ -3,7 +3,7 @@ import { expect, mock, test } from 'claude-code/testing'
 
 import type { Board } from '../types'
 import type { Entry, TurnSummary } from '../types'
-import { COLOR_NAMES, TRAIL_FADE_MS, TRAIL_HOLD_MS, changedLine, classify, clean, describeNow, drawMap, feedLines, firstLine, foldRows, formatMs, keepNewest, memoryIds, pinnedLines, routeOf, setupFrom, stateOf, taskNotice, taskOf, warningsOf } from './map'
+import { COLOR_NAMES, TRAIL_FADE_MS, TRAIL_HOLD_MS, changedLine, classify, clean, describeNow, drawMap, feedLines, firstLine, foldRows, formatMs, framedMap, keepNewest, memoryIds, motionOf, paletteOf, pinnedLines, routeOf, setupFrom, stateOf, taskNotice, taskOf, warningsOf } from './map'
 import { mapSize, paceOf, paintMap } from './raster'
 import { stringsFor } from './text'
 import { layout } from '../renderer/layout.mjs'
@@ -1148,12 +1148,92 @@ test('an error and a refusal at one station keep two badges, and their rows two 
   expect((await ui.find({ type: 'Text', text: /Build it/ }))?.text).toMatch(/^✕ Shell/)
   const svg = async () => String((await ui.find({ type: 'Svg' }))?.props.source)
   // A failure fills its badge; a refusal draws one in outline.
-  expect(await svg()).toMatch(/r="7\.5" fill="#[0-9a-f]{6}"\/>/)
+  expect(await svg()).toMatch(/width="13" height="13" fill="#[0-9a-f]{6}"\/>/)
   expect(await svg()).toMatch(/r="7\.5" fill="none" stroke="#[0-9a-f]{6}"/)
   // The person's next message clears both.
   await $.turn.start({ text: 'again', turnId: 't2' } as never)
-  expect(await svg()).not.toMatch(/r="7\.5"/)
+  expect(await svg()).not.toMatch(/width="13" height="13"|r="7\.5"/)
   await ui.unmount()
+})
+
+/** WCAG contrast ratio of two #rrggbb colours. */
+function contrast(a: string, b: string): number {
+  const lum = (hex: string): number => {
+    const [r = 0, g = 0, bl = 0] = [1, 3, 5].map(i => {
+      const v = parseInt(hex.slice(i, i + 2), 16) / 255
+      return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4
+    })
+    return 0.2126 * r + 0.7152 * g + 0.0722 * bl
+  }
+  const [hi = 0, lo = 0] = [lum(a), lum(b)].sort((x, y) => y - x)
+  return (hi + 0.05) / (lo + 0.05)
+}
+
+test('with motion reduced nothing on the map moves by itself', () => {
+  const still = setupFrom({ motion: 'reduced' })
+  const board: Board = {
+    entries: [
+      at('files', 300),
+      at('shell', 90_000, { status: 'run', endedAt: undefined }),
+      at('web', 200, { status: 'err' }),
+      at('hooks', 100, { status: 'block' }),
+      at('you', 80, { from: 'inbound' }),
+      at('agents', 3000, { status: 'run', endedAt: undefined }),
+      at('model', 50, { mark: 'done' }),
+      at('files', 20, { status: 'run', endedAt: undefined, waits: true }),
+    ],
+    counts: { files: 2, shell: 1, web: 1 },
+    faults: { web: 1 },
+    agents: ['a', 'b'],
+    model: 'claude-opus-5-5',
+    switchedAt: NOW - 500,
+    context: 40,
+  }
+  expect(drawMap(board, NOW, setupFrom())).toContain('<animate')
+  const drawn = drawMap(board, NOW, still)
+  expect(drawn).not.toContain('<animate')
+  // The state is still told: the running station's clock hands at their place, the wait, the crew.
+  expect(drawn).toContain('stroke-dashoffset="0.5"')
+  expect(drawn).toContain('needs you')
+  expect(drawn.split('transform="rotate(').length - 1).toBeGreaterThanOrEqual(2)
+  // The renderer need not step the picture, and the cells repaint at the slow pace.
+  expect(framedMap(board, NOW, still, 920, 860)).toContain('data-motion="reduced"')
+  expect(framedMap(board, NOW, still, 920, 860)).not.toContain('data-running')
+  expect(framedMap(board, NOW, setupFrom(), 920, 860)).toContain('data-running="1"')
+  expect(paceOf(board, NOW, still)).toBe(250)
+  expect(paceOf(BUSY, NOW, still)).toBe(250)
+  expect(paceOf(BUSY, NOW, setupFrom())).toBe(40)
+  // Nothing flies in the cells either: no pulse, return or beam, and the picture differs from the full one.
+  const flying: Board = { entries: [at('files', 300)], counts: { files: 1 } }
+  const { flights, returns, beams } = motionOf(flying, NOW, true)
+  expect(flights.length + returns.length + beams.length).toBe(0)
+  expect(motionOf(flying, NOW).flights.length).toBe(1)
+  expect(paintMap(flying, NOW, still, 60, 28)).not.toBe(paintMap(flying, NOW, setupFrom(), 60, 28))
+  expect(setupFrom({ motion: 'none' }).motion).toBe('full')
+})
+
+test('the contrast theme meets its ratios', () => {
+  const c = paletteOf(setupFrom({ theme: 'contrast' }))
+  for (const name of ['text', 'label', 'accent', 'active', 'error'] as const) {
+    const key = COLOR_NAMES[name] as keyof typeof c
+    expect(contrast(c[key], c.ground)).toBeGreaterThanOrEqual(name === 'text' || name === 'label' ? 7 : 4.5)
+  }
+  for (const key of ['mem', 'memHot', 'dim', 'trail'] as const) expect(contrast(c[key], c.ground)).toBeGreaterThanOrEqual(4.5)
+  // A colour of your own still wins, and no light rules ride along.
+  expect(paletteOf(setupFrom({ theme: 'contrast', colors: 'accent=#ff0000' })).accent).toBe('#ff0000')
+  expect(setupFrom({ theme: 'contrast' }).theme).toBe('contrast')
+  expect(drawMap({ entries: [], counts: {} }, NOW, setupFrom({ theme: 'contrast' }))).not.toContain('<style>')
+})
+
+test('an error badge is a square, a refusal an outlined circle, a wait a dashed core ring', () => {
+  const board: Board = { entries: [], counts: { shell: 3 }, faults: { shell: 2 }, blocks: { files: 1 } }
+  const drawn = drawMap(board, NOW, STRANGER)
+  expect(drawn).toMatch(/<rect [^>]*width="13" height="13" fill="#e8654f"\/>/)
+  expect(drawn).not.toMatch(/r="7\.5" fill="#e8654f"/)
+  expect(drawn).toMatch(/r="7\.5" fill="none" stroke="#e8654f"/)
+  expect(drawn).not.toContain('stroke-dasharray="3 3"')
+  const waiting: Board = { entries: [at('files', 20, { status: 'run', endedAt: undefined, waits: true })], counts: { files: 1 } }
+  expect(drawMap(waiting, NOW, STRANGER)).toMatch(/r="36" fill="none" stroke="#e1ac6e" stroke-width="1.4" stroke-dasharray="3 3"/)
 })
 
 /** Answers TaskCreate as Claude Code does, numbering the tasks; refuses or fails any tool listed in `bad`. */
@@ -1700,9 +1780,9 @@ test('the terminal map names each station with its count, the core with its mode
 test('the terminal map moves while something flies and only breathes when nothing does', () => {
   const setup = setupFrom({})
   const quiet: Board = { entries: [at('files', 90_000)], counts: { files: 1 } }
-  expect(paceOf(BUSY, NOW)).toBe(40)
-  expect(paceOf({ ...quiet, entries: [at('shell', 5_000, { status: 'run', endedAt: undefined })] }, NOW)).toBe(90)
-  expect(paceOf(quiet, NOW)).toBe(250)
+  expect(paceOf(BUSY, NOW, setup)).toBe(40)
+  expect(paceOf({ ...quiet, entries: [at('shell', 5_000, { status: 'run', endedAt: undefined })] }, NOW, setup)).toBe(90)
+  expect(paceOf(quiet, NOW, setup)).toBe(250)
   // A pulse in flight is somewhere else a few frames later; a quiet map changes only with its breath.
   expect(paintMap(BUSY, NOW + 40, setup, 60, 28)).not.toBe(paintMap(BUSY, NOW + 160, setup, 60, 28))
   expect(paintMap(quiet, NOW, setup, 60, 28)).toBe(paintMap(quiet, NOW + 4_800, setup, 60, 28))
@@ -2006,7 +2086,7 @@ test("/workmap help and /lot-map help answer the legend in the session's languag
   expect(answer.split('\n')).toEqual(stringsFor('ru').legend)
   expect(answer).toContain('Память')
   expect((await $.command.run({ command: 'lot-map', args: 'help' } as never)).text).toBe(answer)
-  for (const language of ['en', 'ru', 'es', 'fr', 'de', 'it', 'pt']) expect(stringsFor(language).legend.length).toBe(15)
+  for (const language of ['en', 'ru', 'es', 'fr', 'de', 'it', 'pt']) expect(stringsFor(language).legend.length).toBe(16)
 })
 
 test("the count keeps the session's errors and shows what this turn added", async ($, on) => {
@@ -2028,7 +2108,7 @@ test("the count keeps the session's errors and shows what this turn added", asyn
   expect(drawn).toContain('<tspan fill-opacity="0.55"> +2</tspan>')
   expect(drawn).toContain('1✕')
   // The red badge went with the message; the session's error stayed.
-  expect(drawn).not.toMatch(/r="7\.5" fill="#[0-9a-f]{6}"\/>/)
+  expect(drawn).not.toMatch(/width="13" height="13" fill="#[0-9a-f]{6}"\/>/)
   expect(drawn).toContain('<title>Shell: 5 calls this session · 2 this turn · 1 error in this session</title>')
   await ui.unmount()
 })

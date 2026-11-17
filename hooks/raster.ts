@@ -396,8 +396,9 @@ export function mapSize(bodyColumns: number, bodyRows: number, placement: 'dock'
   return rows >= 20 && bodyColumns >= columns + 32 ? { columns, rows, isBeside: true } : undefined
 }
 
-/** How soon the map wants its next frame: often while something flies, seldom while it only breathes. */
-export function paceOf(board: Board, now: number): number {
+/** How soon the map wants its next frame: often while something flies, seldom while it only breathes; with reduced motion, always seldom. */
+export function paceOf(board: Board, now: number, setup: Setup): number {
+  if (setup.motion === 'reduced') return 250
   const { recent, flights, returns, beams, anyRunning } = motionOf(board, now)
   const done = recent.filter(e => e.mark === 'done').pop()
   const isSwitching = board.switchedAt !== undefined && now - board.switchedAt < SWITCH_MS
@@ -422,7 +423,8 @@ export function paintMap(board: Board, now: number, setup: Setup, columns: numbe
   const colOf = (x: number): number => (x * s + cv.ox) / PX
   const rowOf = (y: number): number => (y * s + cv.oy) / PY
   const core: Point = { x: CX, y: CY }
-  const { recent, flights, returns, beams, anyRunning } = motionOf(board, now)
+  const isStill = setup.motion === 'reduced'
+  const { recent, flights, returns, beams, anyRunning } = motionOf(board, now, isStill)
   const isBad = (e: Entry): boolean => e.status === 'block' || e.status === 'err'
   const tone = (e: Entry): [Rgb, Rgb] => (e.station === 'memory' ? [c.mem, c.memHot] : [c.accent, c.hot])
 
@@ -458,7 +460,7 @@ export function paintMap(board: Board, now: number, setup: Setup, columns: numbe
     if (running.length > 0) {
       const elapsed = now - Math.min(...running.map(e => e.startedAt))
       const beat = (elapsed % 1400) / 1400
-      cv.ring(p, NODE + 15 * beat, 1.3, color, 0.9 * (1 - beat))
+      if (!isStill) cv.ring(p, NODE + 15 * beat, 1.3, color, 0.9 * (1 - beat))
       cv.ring(p, NODE + Math.max(4, 1.5 / s), 2.2, hot, 1, (elapsed % 60_000) / 60_000)
       cv.ring(p, NODE + Math.max(8, 3.1 / s), 1.2, hot, 1, Math.min(elapsed, 600_000) / 600_000)
     }
@@ -466,12 +468,14 @@ export function paintMap(board: Board, now: number, setup: Setup, columns: numbe
 
   // The route between the last stations, the newest leg drawing itself. Lighter than the drawing's, as its lines are wider here.
   for (const leg of legsOf(recent, now)) {
+    // Standing still, a leg is drawn whole and goes with the next frame after its time.
+    if (isStill && leg.age >= TRAIL_HOLD_MS) continue
     const { a, bend, b } = legPoints(indexOf(leg.from), indexOf(leg.to))
     const isHead = leg.k === leg.count - 1
     const fading = clamp(1 - (leg.age - TRAIL_HOLD_MS) / TRAIL_FADE_MS, 0, 1)
     const opacity = (0.08 + (0.32 * leg.k) / (leg.count - 1)) * fading
-    cv.path(curve(a, bend, b, isHead ? clamp(leg.age / 500, 0.02, 1) : 1), isHead ? 1.5 : 1.1, c.trail, opacity)
-    if (isHead && leg.age > 400) cv.disc(b, 2.4, c.trail, 0.85 * clamp((leg.age - 400) / 150, 0, 1) * fading)
+    cv.path(curve(a, bend, b, isHead && !isStill ? clamp(leg.age / 500, 0.02, 1) : 1), isHead ? 1.5 : 1.1, c.trail, opacity)
+    if (isHead && (isStill || leg.age > 400)) cv.disc(b, 2.4, c.trail, 0.85 * (isStill ? 1 : clamp((leg.age - 400) / 150, 0, 1)) * fading)
   }
 
   /** A pulse with a short tail behind it; a hollow one is a signal nobody asked for. */
@@ -589,7 +593,7 @@ export function paintMap(board: Board, now: number, setup: Setup, columns: numbe
   const crew = (board.agents ?? []).slice(0, 6)
   crew.forEach((agent, k) => {
     const lap = 7000
-    const turn = (((now + (k * lap) / crew.length) % lap) / lap) * 2 * Math.PI
+    const turn = (isStill ? k / crew.length : ((now + (k * lap) / crew.length) % lap) / lap) * 2 * Math.PI
     const r = NODE + 6
     // A subagent a call of which failed or was refused circles in red.
     cv.disc({ x: agentsAt.x + r * Math.sin(turn), y: agentsAt.y - r * Math.cos(turn) }, 3, (board.agentFaults ?? []).includes(agent) ? c.red : c.hot)
@@ -599,7 +603,8 @@ export function paintMap(board: Board, now: number, setup: Setup, columns: numbe
   const period = anyRunning ? 1600 : 4800
   const phase = (now % period) / period
   const breath = phase < 0.5 ? phase * 2 : 2 - phase * 2
-  cv.disc(core, CORE + 3 + 10 * breath, c.accent, 0.05 + ((anyRunning ? 0.24 : 0.12) - 0.05) * breath)
+  if (isStill) cv.disc(core, CORE + 8, c.accent, anyRunning ? 0.16 : 0.08)
+  else cv.disc(core, CORE + 3 + 10 * breath, c.accent, 0.05 + ((anyRunning ? 0.24 : 0.12) - 0.05) * breath)
   cv.disc(core, CORE, c.raised)
   cv.ring(core, CORE, 1.3, anyRunning ? c.accent : c.line)
 
@@ -630,7 +635,7 @@ export function paintMap(board: Board, now: number, setup: Setup, columns: numbe
   if (board.model !== undefined) say(middle + 1, shortModel(board.model), isSwitching ? c.hot : c.ash)
   // Under them, one word for what the session is doing; a wait for the person blinks.
   const state = stateOf(board)
-  const isDim = state === 'waiting' && Math.floor(now / 600) % 2 === 1
+  const isDim = state === 'waiting' && !isStill && Math.floor(now / 600) % 2 === 1
   say(
     middle + 2,
     setup.t.states[state],
@@ -641,7 +646,7 @@ export function paintMap(board: Board, now: number, setup: Setup, columns: numbe
   if (spent !== undefined && ((middle + 3.5) * PY - cv.oy) / s - CY < CORE + 30) say(middle + 3, spent, c.dim)
 
   // A changed model rings at the core and at its station for a few seconds.
-  if (isSwitching) {
+  if (isSwitching && !isStill) {
     const t = (switchAge % 1600) / 1600
     for (const [p, r] of [
       [core, CORE],
@@ -652,7 +657,7 @@ export function paintMap(board: Board, now: number, setup: Setup, columns: numbe
 
   // The answer leaves the core as one wide ring.
   const done = recent.filter(e => e.mark === 'done').pop()
-  if (done !== undefined && now - done.startedAt < DONE_MS) {
+  if (done !== undefined && now - done.startedAt < DONE_MS && !isStill) {
     const t = (now - done.startedAt) / DONE_MS
     cv.ring(core, CORE + 38 * t, 1.6, c.bone, 0.6 * (1 - t))
   }

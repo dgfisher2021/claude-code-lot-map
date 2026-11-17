@@ -6,7 +6,8 @@
 //   ready <dir>   the folder to write <dir>/map.svg into; frames appear as <dir>/frame.png
 //   frame <n>     frame n is in <dir>/frame.png, written whole
 //   error <text>  the renderer cannot run; it exits
-// The size of the picture is the width and height of map.svg's root element; data-running="1" there says a call runs.
+// The size of the picture is the width and height of map.svg's root element; data-running="1" there says a call runs,
+// and data-motion="reduced" that nothing moves: the map is painted once for each file written, and no more.
 //
 // Chromium is LOT_MAP_CHROMIUM when set, else the first that runs of chromium on PATH, ~/.local/bin/chromium,
 // ~/bin/chromium, google-chrome, and chromium-browser.
@@ -192,7 +193,9 @@ const SHOW = `(() => { for (const s of document.querySelectorAll('#m svg')) { s.
 const STEP = `(() => { const t = (performance.now() - window.t0) / 1000; for (const s of document.querySelectorAll('#m svg')) s.setCurrentTime(t) })()`
 async function step() {
   const started = Date.now()
-  if (shownAt !== 0 && !isClosing) {
+  // With reduced motion a frame is painted for a new map only, never for animation alone.
+  if (shownAt !== 0 && !isClosing && (!isStill || isFresh)) {
+    isFresh = false
     await send('Runtime.evaluate', { expression: STEP }, page).catch(() => {})
     // The picture is cut to the map's own size: after a resize Chromium can go on capturing the viewport it had.
     const clip = size.width > 0 ? { clip: { x: 0, y: 0, width: size.width, height: size.height, scale: 1 }, captureBeyondViewport: true } : {}
@@ -216,6 +219,8 @@ async function resize(width, height) {
 let shownAt = 0
 let shownWallAt = 0
 let isRunning = false
+let isStill = false
+let isFresh = false
 async function show() {
   let stat
   try {
@@ -231,6 +236,8 @@ async function show() {
   shownWallAt = Date.now()
   const root = /<svg\b[^>]*>/.exec(svg)?.[0] ?? ''
   isRunning = /\sdata-running="1"/.test(root)
+  isStill = /\sdata-motion="reduced"/.test(root)
+  isFresh = true
   const width = Number(/\swidth="(\d+)"/.exec(root)?.[1])
   const height = Number(/\sheight="(\d+)"/.exec(root)?.[1])
   if (width > 0 && height > 0) await resize(Math.min(width, 4096), Math.min(height, 4096))

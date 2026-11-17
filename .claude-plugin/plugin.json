@@ -110,10 +110,11 @@
       "options": [
         "auto",
         "dark",
-        "light"
+        "light",
+        "contrast"
       ],
       "default": "auto",
-      "description": "The map's colours: dark, light, or auto, which is dark on a dark surface and light on a light one."
+      "description": "The map's colours: dark, light, contrast (the dark ones at full contrast, on black), or auto, which is dark on a dark surface and light on a light one."
     },
     "background": {
       "type": "string",
@@ -131,6 +132,16 @@
       "title": "Colours of your own",
       "default": [],
       "description": "Colours that replace the map's own, each written as name=#rrggbb. Names: background, node, line, spoke, text, label, faint, accent, active, error, memory, memoryActive, route. Set theme to dark or light with them."
+    },
+    "motion": {
+      "type": "string",
+      "title": "Motion",
+      "options": [
+        "full",
+        "reduced"
+      ],
+      "default": "full",
+      "description": "With reduced, nothing on the map moves by itself: no pulses, rings, beams, blinking or spinning, and the cells repaint slowly. The same state is shown still."
     },
     "terminalMap": {
       "type": "boolean",
