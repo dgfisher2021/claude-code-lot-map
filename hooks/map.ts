@@ -467,7 +467,7 @@ function station(s: (typeof STATIONS)[number], i: number, { entries, board, now,
     const figures =
       pushed === 0 ? String(count) : `${asked > 0 ? `${asked} ` : ''}<tspan fill="${main}">↓${pushed}</tspan>`
     // After the count: what this turn added, then the session's errors in red.
-    const extra = (turn > 0 && turn < count ? `<tspan> +${turn}</tspan>` : '') + (total > 0 ? `<tspan fill="${c.red}"> · ${total}✕</tspan>` : '')
+    const extra = (turn > 0 && turn < count ? `<tspan fill-opacity="0.55"> +${turn}</tspan>` : '') + (total > 0 ? `<tspan fill="${c.red}"> · ${total}✕</tspan>` : '')
     over += `<text x="${x}" y="${n1(p.y + NODE + 28)}" text-anchor="middle" ${FONT} font-size="9.5" ${rim} fill="${c.dim}">${figures}${extra}</text>`
   }
 
