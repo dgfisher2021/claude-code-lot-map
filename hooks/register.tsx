@@ -70,10 +70,11 @@ const kept = (entries: Entry[]): Entry[] => {
   return from <= 0 ? entries : entries.filter((e, i) => i >= from || (e.status === 'run' && e.task !== undefined))
 }
 
-/** The turns with the open one changed by `f`; nothing before the person's first message. */
-const inTurn = (b: Board, f: (t: TurnSummary) => TurnSummary): Pick<Board, 'turns'> => {
-  const open = b.turns?.[b.turns.length - 1]
-  return open === undefined || b.turns === undefined ? {} : { turns: [...b.turns.slice(0, -1), f(open)] }
+/** The turns with turn `n` changed by `f`, the open one when no turn is named; nothing before the person's first message. */
+const inTurn = (b: Board, f: (t: TurnSummary) => TurnSummary, n?: number): Pick<Board, 'turns'> => {
+  const turns = b.turns
+  const at = turns === undefined ? -1 : n === undefined ? turns.length - 1 : turns.findIndex(t => t.n === n)
+  return turns === undefined || at < 0 ? {} : { turns: turns.map((t, i) => (i === at ? f(t) : t)) }
 }
 
 const oneMore = (counts: Board['faults'], station: StationId): Board['faults'] => ({ ...counts, [station]: (counts?.[station] ?? 0) + 1 })
@@ -82,12 +83,18 @@ const oneMore = (counts: Board['faults'], station: StationId): Board['faults'] =
  * A call that ended badly counts on its station, an error with the faults and a refusal with the blocks, and marks the
  * subagent that made it.
  */
-function tally(b: Board, station: StationId, status: Status, agentId?: string): Pick<Board, 'faults' | 'faultTotals' | 'blocks' | 'agentFaults' | 'turns'> {
+function tally(
+  b: Board,
+  station: StationId,
+  status: Status,
+  agentId?: string,
+  turn?: number,
+): Pick<Board, 'faults' | 'faultTotals' | 'blocks' | 'agentFaults' | 'turns'> {
   if (status !== 'err' && status !== 'block') return {}
   const agentFaults = agentId === undefined || (b.agentFaults ?? []).includes(agentId) ? {} : { agentFaults: [...(b.agentFaults ?? []), agentId].slice(-12) }
   const bad = status === 'err' ? { faults: oneMore(b.faults, station), faultTotals: oneMore(b.faultTotals, station) } : { blocks: oneMore(b.blocks, station) }
-  // An error counts on the open turn.
-  const turns = status === 'err' && station !== 'model' && station !== 'you' ? inTurn(b, t => ({ ...t, errors: t.errors + 1 })) : {}
+  // An error counts on the turn of the call.
+  const turns = status === 'err' && station !== 'model' && station !== 'you' ? inTurn(b, t => ({ ...t, errors: t.errors + 1 }), turn) : {}
   return { ...bad, ...agentFaults, ...turns }
 }
 
@@ -144,7 +151,7 @@ async function finish($: EngineInterface, id: string | undefined, status: Status
           if (e !== open) return e
           return { ...bare(e), status: closed, endedAt: now, ...(exit === undefined || refusal ? {} : { exit }) }
         }),
-        ...(open !== undefined ? tally(b, open.station, closed, open.agentId) : {}),
+        ...(open !== undefined ? tally(b, open.station, closed, open.agentId, open.turn) : {}),
       }
     })
   })
@@ -166,7 +173,7 @@ async function settle($: EngineInterface, task: string, status: Status): Promise
       return {
         ...b,
         entries: b.entries.map(e => (e === open ? { ...e, status, endedAt: now } : e)),
-        ...tally(b, open.station, status, open.agentId),
+        ...tally(b, open.station, status, open.agentId, open.turn),
       }
     })
   })
