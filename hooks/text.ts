@@ -14,6 +14,7 @@ export type Strings = {
   step: (n: number) => string
   subagent: string
   compacting: string
+  compacted: string
   addedContext: (when: string) => string
   addedMemory: (when: string) => string
   toMessage: string
@@ -91,6 +92,7 @@ const en: Strings = {
   step: n => `step ${n}`,
   subagent: 'subagent',
   compacting: 'compacting context',
+  compacted: 'context compacted',
   addedContext: when => `added context ${when}`,
   addedMemory: when => `added memory ${when}`,
   toMessage: 'to the message',
@@ -167,6 +169,7 @@ const ru: Strings = {
   step: n => `шаг ${n}`,
   subagent: 'субагент',
   compacting: 'сжатие контекста',
+  compacted: 'контекст сжат',
   addedContext: when => `добавил контекст ${when}`,
   addedMemory: when => `подмешал память ${when}`,
   toMessage: 'к сообщению',
@@ -243,6 +246,7 @@ const es: Strings = {
   step: n => `paso ${n}`,
   subagent: 'subagente',
   compacting: 'compactando el contexto',
+  compacted: 'contexto compactado',
   addedContext: when => `añadió contexto ${when}`,
   addedMemory: when => `añadió memoria ${when}`,
   toMessage: 'al mensaje',
@@ -319,6 +323,7 @@ const fr: Strings = {
   step: n => `étape ${n}`,
   subagent: 'sous-agent',
   compacting: 'compactage du contexte',
+  compacted: 'contexte compacté',
   addedContext: when => `contexte ajouté ${when}`,
   addedMemory: when => `mémoire ajoutée ${when}`,
   toMessage: 'au message',
@@ -395,6 +400,7 @@ const de: Strings = {
   step: n => `Schritt ${n}`,
   subagent: 'Subagent',
   compacting: 'Kontext wird komprimiert',
+  compacted: 'Kontext komprimiert',
   addedContext: when => `Kontext ${when} hinzugefügt`,
   addedMemory: when => `Erinnerungen ${when} hinzugefügt`,
   toMessage: 'zur Nachricht',
@@ -471,6 +477,7 @@ const it: Strings = {
   step: n => `passo ${n}`,
   subagent: 'subagente',
   compacting: 'compattazione del contesto',
+  compacted: 'contesto compattato',
   addedContext: when => `contesto aggiunto ${when}`,
   addedMemory: when => `memoria aggiunta ${when}`,
   toMessage: 'al messaggio',
@@ -548,6 +555,7 @@ const pt: Strings = {
   step: n => `passo ${n}`,
   subagent: 'subagente',
   compacting: 'a compactar o contexto',
+  compacted: 'contexto compactado',
   addedContext: when => `adicionou contexto ${when}`,
   addedMemory: when => `adicionou memória ${when}`,
   toMessage: 'à mensagem',

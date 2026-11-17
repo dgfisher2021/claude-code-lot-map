@@ -380,7 +380,7 @@ export type MapLayout = { columns: number; rows: number; isBeside: boolean }
  * short, so the map takes its height with the rows beside it. In a short dock the rows under the map give way before
  * the map does. Undefined where the map would be too small for its labels.
  */
-export function mapSize(bodyColumns: number, bodyRows: number, placement: 'dock' | 'inline'): MapLayout | undefined {
+export function mapSize(bodyColumns: number, bodyRows: number, placement: 'dock' | 'inline' | 'widget'): MapLayout | undefined {
   if (placement === 'dock') {
     const columns = Math.min(Math.floor(bodyColumns), 120)
     // Eight rows for the feed while the map keeps its 20, then fewer.
