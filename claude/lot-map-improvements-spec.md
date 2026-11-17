@@ -1,6 +1,6 @@
 # lot-map improvements: the map and the task list
 
-Status: wave 1 shipped in 0.10.0 (PR #5, 2026-11-16). Wave 2 was updated on 2026-11-17 with what wave 1 left and what upstream has fixed since; see [Left after wave 1](#left-after-wave-1). Written 2026-11-16 against lot-map 0.9.0 (fork `main`). The items are in three waves, numbered in the order they would be built.
+Status: wave 1 shipped in 0.10.0 (PR #5, 2026-11-16). Wave 2 shipped in 0.11.0 (2026-11-17), with what wave 1 left and upstream's fixes; see [Left after wave 1](#left-after-wave-1) and [Left after wave 2](#left-after-wave-2). Written 2026-11-16 against lot-map 0.9.0 (fork `main`). The items are in three waves, numbered in the order they would be built.
 
 ## Goal
 
@@ -12,7 +12,7 @@ Make lot-map the one place to glance at for any Claude Code session. Within two 
 4. **What has it changed?**
 5. **What is it costing:** context, rate limits, money?
 
-Before wave 1 it answered question 2 well, questions 1, 4 and 5 only in part, and question 3 not at all. Since 0.10.0 it answers questions 1 to 3, except a permission prompt waiting on you (item 13). Questions 4 and 5 are wave 2's.
+Before wave 1 it answered question 2 well, questions 1, 4 and 5 only in part, and question 3 not at all. Since 0.10.0 it answers questions 1 to 3, and since 0.11.0 a permission prompt waiting on you (item 13) and questions 4 and 5 as well: the changed files, the usage gauges and the cost.
 
 ## Principles to keep
 
@@ -42,7 +42,7 @@ Before wave 1 it answered question 2 well, questions 1, 4 and 5 only in part, an
 ## The waves
 
 - **Wave 1, done in 0.10.0 (1–10):** `/workmap` command, core state, needs you, exit codes, blocked vs failed, subagent failures, legend, background pinned, plan checklist, window favours the map.
-- **Wave 2, next (11–20):** quiet under an organisation's guard, upstream's fixes ported, permission prompts as needs you, session fault total, this turn's `+N`, rows by turn, files changed, stuck warnings, usage gauges, every session at a glance.
+- **Wave 2, done in 0.11.0 (11–20):** quiet under an organisation's guard, upstream's fixes ported, permission prompts as needs you, session fault total, this turn's `+N`, rows by turn, files changed, stuck warnings, usage gauges, every session at a glance.
 - **Wave 3, later (21–31):** error first line, more rows on demand, session recap, timeline, context cost per call, subagents apart, MCP station, time share, file satellites, accessibility, full rename to workmap.
 
 ## Wave 1: done in 0.10.0
@@ -181,13 +181,13 @@ So upstream's fixes come in by hand, with their tests, and the fork's own design
 | #93                          | the remembered refusals are held to the newest 64                                                            | item 12                                    |
 | #82                          | no picture in iTerm2, which keeps every frame in memory                                                      | item 12                                    |
 | #83 `contextCost`            | what each call added to the context                                                                          | item 25                                    |
-| #86 `serverStations`         | an MCP server's tools on a station you choose                                                                | item 27                                    |
+| #86 `serverStations`         | an MCP server's tools on a station you choose                                                                | item 12 (ported with classify.ts)          |
 | #40 `motion`                 | reduced motion                                                                                               | item 30                                    |
 | #77                          | a running row coloured apart from a failed one                                                               | not needed: the fork already does          |
 | #71 `subagentNames`          | a subagent's model step names the subagent                                                                   | not needed: item 6 names a subagent's rows |
 | #33, #45, #46, #68, #41, #88 | terminal picture and braille, the `map.ts` split, the rows reworked, the model on the idle line, pane colour | not ported: the fork has its own           |
 
-## Wave 2: next
+## Wave 2: done in 0.11.0
 
 What changed and what it costs, and help for people running many sessions. It starts with what wave 1 left (11–13). Each new mark gets a line in the legend (item 7), in all seven languages.
 
@@ -314,6 +314,24 @@ What changed and what it costs, and help for people running many sessions. It st
 - Each session already writes a live folder; it would add a small `status.json`.
 - The viewer reads every `lot-map-live-*` folder. All local.
 
+### Left after wave 2
+
+Checked on 2026-11-17 against the `wave-2` branch at 0.11.0 (155 tests pass), with real Windows Terminal probes of the window and of `/workmap all`.
+
+**Built differently from the text above:**
+
+- **Compacting under the guard** (item 11): the live "compacting" word needs `session.compact`, which the guard skips. With `guardedHooks` off, a fall of the context by 30 points or more marks "compacted" afterwards instead.
+- **A refusal by a hook under the guard** (item 11) still reads as failed: the mod learns of it only from `classic.PreToolUse`. A person's "No" at a permission prompt now reads as refused (item 13), from the ask that was never settled.
+- **Every session at a glance** (item 20): each session writes `${TMPDIR}/lot-map-sessions/<id>.json`, not a file in its live folder, so sessions without a window show too. A number key shows that session's rows, not its full map.
+
+**Left for later:**
+
+- **Shell edits in "changed"** (item 17): `sed -i`, `mv` and `rm` are not listed, since their file names would mean reading the command's arguments.
+- **More than nine sessions** (item 20): the window shows nine tiles with no "+N more"; `/workmap all` as text lists them all.
+- **Earlier turns** (item 16): an error on a turn older than the last twelve kept no longer reaches a header, though the session totals count it.
+- **The cost in cells** (item 19): at the dock's size the cost sits over the bottom of the arcs. It stays readable.
+- **A shared temporary folder** (item 20): on a machine with several users, another user could own `/tmp/lot-map-sessions` first. Text read from it is stripped of control characters before it is shown.
+
 ## Wave 3: later
 
 Larger, or useful in fewer sessions. The full rename comes last, once upstream updates are no longer wanted.
@@ -374,7 +392,7 @@ It's the answer of a command, so it doesn't enter the model's context.
 
 Upstream issue #55: an MCP station with a small mark per server that lights when one of its tools is called.
 
-**Upstream:** #86 answered #55 another way: `serverStations` puts a server's tools on an existing station you choose. Port it first, then decide whether a per-server mark is still wanted.
+**Upstream:** #86 answered #55 another way: `serverStations` puts a server's tools on an existing station you choose. It came in with `classify.ts` in 0.11.0 (item 12); what is left here is deciding whether a per-server mark is still wanted.
 
 ### 28. Time share, not only counts (map · value low · effort small)
 
