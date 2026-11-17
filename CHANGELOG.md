@@ -14,6 +14,7 @@ What changed in each version of lot-map, newest first. To get a new version, see
 - Fixed: a call still running stays in the list of rows however many came after it, as its last rows, taking half the list at most; the map and the list now say the same.
 - Fixed: the refusals the mod remembers until their calls come by are held to the newest 64, so a call that never comes cannot stay for the session.
 - In iTerm2 the picture is off and the map stays in cells (`terminalPicture`): iTerm2 keeps every frame it is sent in memory. The mod knows it by `TERM_PROGRAM`, or `LC_TERMINAL` over ssh or in tmux.
+- A permission prompt that has waited on you for a second reads as needs you: the top line says `Needs you: permission for Shell: the call`, and with `notify` on you are told once. A mode that settles it at once (accept edits, bypass permissions, auto mode's classifier) never shows it. A call you refuse at the prompt now reads as refused, not as a failure, and counts with the refusals.
 - Fixed: where no surface is attached at the start, as in the desktop app, the pane is no longer opened into nothing; it opens when a surface attaches.
 
 ## 0.10.0 (2026-11-16)

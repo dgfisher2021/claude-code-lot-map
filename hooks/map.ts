@@ -891,7 +891,8 @@ export function describeNow(board: Board, t: Strings, now: number): NowLine {
   const wait = state === 'waiting' ? board.entries.find(e => e.status === 'run' && e.waits === true) : undefined
   if (wait !== undefined) {
     // A wait counts in seconds.
-    return { text: `${t.waitingFor(wait.label, formatClock(now - wait.startedAt, t))}${context}`, tone: 'wait', next: 1000 - ((now - wait.startedAt) % 1000) }
+    const what = wait.asks === true ? t.permissionFor(`${t.stations[wait.station]}: ${wait.label}`) : wait.label
+    return { text: `${t.waitingFor(what, formatClock(now - wait.startedAt, t))}${context}`, tone: 'wait', next: 1000 - ((now - wait.startedAt) % 1000) }
   }
   if (state === 'done' && board.answeredAt !== undefined) {
     // The time since the answer counts in seconds for a minute, then in whole minutes.

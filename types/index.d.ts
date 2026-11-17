@@ -22,6 +22,8 @@ export type Entry = {
   mark?: 'switch' | 'done'
   /** The call waits on the person: a question for them, a plan for their approval. */
   waits?: true
+  /** The mode asked about the call and nothing has settled it yet: a permission prompt may be open. */
+  asks?: true
   /** A failed shell command's exit code: a number, nothing of its output. */
   exit?: number
 }

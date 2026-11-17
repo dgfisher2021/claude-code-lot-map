@@ -1204,11 +1204,188 @@ test('a failed shell row shows its exit code, and nothing of its output', async 
 })
 
 /** A tool that answers only when `release` is called. */
-function heldTool(on: On): { release: () => void } {
-  const held = { release: () => {} }
-  on('tool.call', () => new Promise(resolve => (held.release = () => resolve({ result: {} }))) as never)
+function heldTool(on: On): { release: (answer?: object) => void } {
+  const held: { release: (answer?: object) => void } = { release: () => {} }
+  on('tool.call', () => new Promise(resolve => (held.release = answer => resolve(answer ?? { result: {} }))) as never)
   return held
 }
+
+type Called = { tool: { check: (input: never) => Promise<unknown>; run: (input: never) => Promise<unknown> } }
+
+/**
+ * A permission prompt. The call's own check allows and its run is held open; a release with `text` makes the tool fail; `ask` then answers a check with ask, and
+ * `settle` is a run that answers at once, as the engine's does once the person has approved.
+ */
+function askedCall(on: On): { release: (answer?: object) => void; ask: ($: Called) => Promise<unknown>; settle: ($: Called) => Promise<unknown> } {
+  let asking = false
+  let settling = false
+  let failure = ''
+  const held = { release: (_answer?: object) => {} }
+  on('tool.check', () => ({ decision: asking ? 'ask' : 'allow' }) as never)
+  on('tool.judge', () => ({ decision: 'allow' }) as never)
+  on('tool.run', () => {
+    if (settling) return { result: {} } as never
+    return new Promise((resolve, reject) => {
+      held.release = answer => {
+        if (answer && 'text' in answer) {
+          failure = String(answer.text)
+          reject(new Error(failure))
+        } else resolve(answer ?? { result: {} })
+      }
+    }) as never
+  })
+  // A run that fails falls through to the tool's own answer: an error.
+  on('tool.call', () => ({ result: {}, isError: true, text: failure }) as never)
+  return {
+    release: answer => held.release(answer),
+    ask: $ => {
+      asking = true
+      return $.tool.check(ASK as never)
+    },
+    settle: async $ => {
+      settling = true
+      await $.tool.run(SHELL as never)
+      settling = false
+    },
+  }
+}
+
+/** Whether the map says it needs you. */
+const isWaiting = async (ui: { find: (q: object) => Promise<{ props: Record<string, unknown> } | undefined> }) =>
+  String((await ui.find({ type: 'Svg' }))?.props.source).includes('>needs you<')
+
+const SHELL = { tool: 'Bash', command: 'make build', description: 'Build it', tool_use_id: 'u1' } as never
+const ASK = { tool: 'Bash', input: { command: 'make build', description: 'Build it' }, tool_use_id: 'u1' } as never
+
+test('a permission prompt left a second reads as needs you, and clears when the call runs', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  const held = askedCall(on)
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  const calling = $.tool.call(SHELL)
+  await clock.settle()
+  await held.ask($)
+  await clock.advance(999)
+  expect(await isWaiting(ui)).toBe(false)
+  expect(await ui.find({ type: 'Text', text: /^Needs you: / })).toBeUndefined()
+  await clock.advance(1)
+  await clock.settle()
+  expect(await isWaiting(ui)).toBe(true)
+  expect((await ui.find({ type: 'Text', text: /^Needs you: / }))?.text).toMatch(/^Needs you: permission for Shell: Build it · /)
+  await held.settle($)
+  expect(await isWaiting(ui)).toBe(false)
+  held.release()
+  await calling
+  await ui.unmount()
+})
+
+test('an ask settled at once never shows', { options: { notify: true } }, async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  const notes: string[] = []
+  on('ui.notify', (_, e) => {
+    notes.push(e.text)
+    return { value: { isSent: true, channel: 'client' } } as never
+  })
+  const held = askedCall(on)
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  const calling = $.tool.call(SHELL)
+  await clock.settle()
+  await held.ask($)
+  await clock.advance(5)
+  await held.settle($)
+  for (let ms = 0; ms < 2000; ms += 100) {
+    await clock.advance(100)
+    expect(await isWaiting(ui)).toBe(false)
+  }
+  expect(notes).toEqual([])
+  held.release()
+  await calling
+  await ui.unmount()
+})
+
+test("auto mode's classifier settles the ask, not the person", async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  const held = askedCall(on)
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  const calling = $.tool.call(SHELL)
+  await clock.settle()
+  await held.ask($)
+  await clock.advance(300)
+  await $.tool.judge(ASK)
+  await clock.advance(1700)
+  expect(await isWaiting(ui)).toBe(false)
+  held.release()
+  await calling
+  await ui.unmount()
+})
+
+test('a permission prompt left unanswered notifies once', { options: { notify: true } }, async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  const notes: string[] = []
+  on('ui.notify', (_, e) => {
+    notes.push(e.text)
+    return { value: { isSent: true, channel: 'client' } } as never
+  })
+  const held = askedCall(on)
+  const calling = $.tool.call(SHELL)
+  await clock.settle()
+  await held.ask($)
+  await clock.advance(5000)
+  await clock.settle()
+  expect(notes).toEqual(['Needs you: permission for Shell: Build it'])
+  held.release()
+  await calling
+})
+
+test('a refused ask closes as blocked, not waiting', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  const held = askedCall(on)
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  const calling = $.tool.call(SHELL)
+  await clock.settle()
+  await held.ask($)
+  await clock.advance(1500)
+  await clock.settle()
+  held.release({ deny: 'no' })
+  await calling
+  await clock.settle()
+  expect(await isWaiting(ui)).toBe(false)
+  expect((await ui.find({ type: 'Text', text: /Build it/ }))?.text).toMatch(/^⊘ Shell/)
+  await ui.unmount()
+})
+
+test("a person's no, an error answer after an unsettled ask, closes as blocked", async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  const held = askedCall(on)
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  const calling = $.tool.call(SHELL)
+  await clock.settle()
+  await held.ask($)
+  await clock.advance(1500)
+  await clock.settle()
+  held.release({ isError: true, text: "The user doesn't want to proceed" })
+  await calling
+  await clock.settle()
+  expect((await ui.find({ type: 'Text', text: /Build it/ }))?.text).toMatch(/^⊘ Shell/)
+  expect(String((await ui.find({ type: 'Svg' }))?.props.source)).toContain('1 refused')
+  await ui.unmount()
+})
+
+test('a call that ran after the ask and then failed stays an error', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  const held = askedCall(on)
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  const calling = $.tool.call(SHELL)
+  await clock.settle()
+  await held.ask($)
+  await clock.advance(1500)
+  await clock.settle()
+  await held.settle($)
+  held.release({ isError: true, text: 'Exit code 1' })
+  await calling
+  await clock.settle()
+  expect((await ui.find({ type: 'Text', text: /Build it/ }))?.text).toMatch(/^✕ Shell/)
+  await ui.unmount()
+})
 
 test('a question or a plan for the person makes the session wait on them, and the top line says for how long', async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
