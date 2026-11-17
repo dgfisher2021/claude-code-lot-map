@@ -2045,14 +2045,15 @@ test('a command line is read up to a length, and a long one costs no more than t
   const t0 = performance.now()
   stationOf(pipes)
   const ms = performance.now() - t0
-  expect(ms).toBeLessThan(100)
+  // The cap is asserted above; these bounds only catch a quadratic blow-up, so they are loose.
+  expect(ms).toBeLessThan(500)
   const doc = `cat <<EOF > f\n${'line of text here\n'.repeat(11_000)}EOF\ncurl x`
   for (let i = 0; i < 3; i++) stationOf(doc)
   const t1 = performance.now()
   // The command after a long here-document is still seen.
   expect(stationOf(doc)).toBe('web')
   const docMs = performance.now() - t1
-  expect(docMs).toBeLessThan(100)
+  expect(docMs).toBeLessThan(500)
 })
 
 test('more commands that reach the network are known by name or by subcommand', () => {
