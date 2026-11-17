@@ -3,7 +3,7 @@ import { expect, mock, test } from 'claude-code/testing'
 
 import type { Board } from '../types'
 import type { Entry, TurnSummary } from '../types'
-import { COLOR_NAMES, TRAIL_FADE_MS, TRAIL_HOLD_MS, changedLine, classify, clean, drawMap, feedLines, firstLine, foldRows, formatMs, keepNewest, memoryIds, pinnedLines, routeOf, setupFrom, stateOf, taskNotice, taskOf } from './map'
+import { COLOR_NAMES, TRAIL_FADE_MS, TRAIL_HOLD_MS, changedLine, classify, clean, drawMap, feedLines, firstLine, foldRows, formatMs, keepNewest, memoryIds, pinnedLines, routeOf, setupFrom, stateOf, taskNotice, taskOf, warningsOf } from './map'
 import { mapSize, paceOf, paintMap } from './raster'
 import { stringsFor } from './text'
 import { layout } from '../renderer/layout.mjs'
@@ -1869,7 +1869,7 @@ test("/workmap help and /lot-map help answer the legend in the session's languag
   expect(answer.split('\n')).toEqual(stringsFor('ru').legend)
   expect(answer).toContain('Память')
   expect((await $.command.run({ command: 'lot-map', args: 'help' } as never)).text).toBe(answer)
-  for (const language of ['en', 'ru', 'es', 'fr', 'de', 'it', 'pt']) expect(stringsFor(language).legend.length).toBe(12)
+  for (const language of ['en', 'ru', 'es', 'fr', 'de', 'it', 'pt']) expect(stringsFor(language).legend.length).toBe(13)
 })
 
 test("the count keeps the session's errors and shows what this turn added", async ($, on) => {
@@ -2712,4 +2712,80 @@ test("a background task's failure counts on the turn that started it", async ($,
   expect(await text(/^Turn 1 · /)).toMatch(/ · 1 call · 1 error$/)
   expect(await text(/^Turn 2 · /)).toMatch(/ · 0 calls$/)
   await ui.unmount()
+})
+
+const call = (id: string, station: Entry['station'], label: string, startedAt: number, extra: Partial<Entry> = {}): Entry => ({
+  id,
+  station,
+  label,
+  from: 'core',
+  startedAt,
+  status: 'ok',
+  ...extra,
+})
+
+test('the same command failing three times in a row warns, and a success ends it', () => {
+  const t = stringsFor('en')
+  const fail = (id: string, at: number, extra: Partial<Entry> = {}) => call(id, 'shell', 'make build', at, { status: 'err', endedAt: at + 500, ...extra })
+  const board = (entries: Entry[]): Board => ({ entries, counts: {} })
+  expect(warningsOf(board([fail('1', 1000), fail('2', 2000)]), 5000, t)).toEqual([])
+  expect(warningsOf(board([fail('1', 1000), fail('2', 2000), fail('3', 3000)]), 5000, t)).toEqual([
+    { station: 'shell', line: t.failedInARow('Shell', 'make build', 3) },
+  ])
+  expect(warningsOf(board([fail('1', 1000), fail('2', 2000), fail('3', 3000), fail('4', 4000)]), 5000, t)[0]?.line).toBe(
+    t.failedInARow('Shell', 'make build', 4),
+  )
+  // A success, another command, or another loop's call between them ends the streak; one subagent's streak is its own.
+  const ok = call('o', 'shell', 'make build', 2500, { endedAt: 2600 })
+  expect(warningsOf(board([fail('1', 1000), fail('2', 2000), ok, fail('3', 3000)]), 5000, t)).toEqual([])
+  expect(warningsOf(board([fail('1', 1000), fail('2', 2000), fail('3', 3000, { label: 'make test' })]), 5000, t)).toEqual([])
+  expect(warningsOf(board([fail('1', 1000, { agentId: 'a' }), fail('2', 2000), fail('3', 3000, { agentId: 'a' })]), 5000, t)).toEqual([])
+  expect(
+    warningsOf(board([fail('1', 1000, { agentId: 'a' }), fail('2', 2000), fail('3', 3000, { agentId: 'a' }), fail('4', 4000, { agentId: 'a' })]), 5000, t),
+  ).toHaveLength(1)
+})
+
+test("a call running far past its station's usual time warns", () => {
+  const t = stringsFor('en')
+  const done = [0, 1, 2].map(i => call(`d${i}`, 'shell', 'ls', i * 2000, { endedAt: i * 2000 + 1000 }))
+  const at = (started: number, extra: Partial<Entry> = {}) =>
+    ({ entries: [...done, call('r', 'shell', 'make build', started, { status: 'run', ...extra })], counts: {} }) as Board
+  const now = 100_000
+  expect(warningsOf(at(now - 90_000), now, t)).toEqual([{ station: 'shell', line: t.runningLong('Shell', 'make build', '1 min 30 s', '1.0 s') }])
+  expect(warningsOf(at(now - 50_000), now, t)).toEqual([])
+  // Fewer than three finished calls there: no usual time to go by.
+  expect(warningsOf({ entries: [...done.slice(0, 2), call('r', 'shell', 'x', now - 90_000, { status: 'run' })], counts: {} }, now, t)).toEqual([])
+})
+
+test('nothing happening for three minutes in a running turn warns', () => {
+  const t = stringsFor('en')
+  const entries = [call('1', 'files', 'a.ts', 1000, { endedAt: 2000 })]
+  expect(warningsOf({ entries, counts: {}, phase: 'thinking' }, 2000 + 179_000, t)).toEqual([])
+  expect(warningsOf({ entries, counts: {}, phase: 'thinking' }, 2000 + 180_000, t)).toEqual([{ line: t.quietFor(3) }])
+  expect(warningsOf({ entries, counts: {}, phase: 'done' }, 2000 + 600_000, t)).toEqual([])
+  expect(warningsOf({ entries, counts: {} }, 2000 + 600_000, t)).toEqual([])
+})
+
+test('background work and a wait on the person never warn', () => {
+  const t = stringsFor('en')
+  const done = [0, 1, 2].map(i => call(`d${i}`, 'shell', 'ls', i * 2000, { endedAt: i * 2000 + 1000 }))
+  const now = 700_000
+  const background = call('b', 'shell', 'npm run dev', 100_000, { status: 'run', task: 'bg1' })
+  expect(warningsOf({ entries: [...done, background], counts: {}, phase: 'thinking' }, now, t)).toEqual([])
+  const question = call('q', 'you', 'question for you', 100_000, { status: 'run', waits: true })
+  expect(warningsOf({ entries: [...done, question], counts: {}, phase: 'thinking' }, now, t)).toEqual([])
+  const prompt = call('p', 'shell', 'make build', 100_000, { status: 'run', asks: true })
+  expect(warningsOf({ entries: [...done, prompt], counts: {}, phase: 'thinking' }, now, t)).toEqual([])
+  // Finished background rows do not make the usual time.
+  const slow = [0, 1, 2].map(i => call(`s${i}`, 'shell', 'dev', i, { endedAt: 600_000, task: 'x' }))
+  expect(warningsOf({ entries: [...slow, call('r', 'shell', 'x', 0, { status: 'run' })], counts: {} }, 90_000, t)).toEqual([])
+})
+
+test('a warned station wears its ring on the map', () => {
+  const fail = (id: string, at: number) => call(id, 'shell', 'make build', at, { status: 'err', endedAt: at + 500 })
+  const warned = drawMap({ entries: [fail('1', 1000), fail('2', 2000), fail('3', 3000)], counts: {} }, 4000, STRANGER)
+  const plain = drawMap({ entries: [fail('1', 1000), fail('2', 2000)], counts: {} }, 4000, STRANGER)
+  const ring = /<circle [^>]*r="34"[^>]*stroke-dasharray="[^"]+"/
+  expect(warned).toMatch(ring)
+  expect(plain).not.toMatch(ring)
 })
