@@ -48,7 +48,7 @@ const CHANGED = 40
 const CHANGING_TOOLS = new Set(['Write', 'Edit', 'NotebookEdit'])
 
 // Change the tag when a field of Entry or Board changes: it declines what an earlier version stored.
-const board = atom({ plugin: 'lot-map', key: 'board' } as const, { entries: [], counts: {} } as Board, { shape: 'board-4' })
+const board = atom({ plugin: 'lot-map', key: 'board' } as const, { entries: [], counts: {} } as Board, { shape: 'board-5' })
 
 const newId = (now: number): string => `${now.toString(36)}${Math.random().toString(36).slice(2, 7)}`
 
@@ -149,7 +149,7 @@ async function begin($: EngineInterface, start: Start): Promise<string | undefin
   })
 }
 
-async function finish($: EngineInterface, id: string | undefined, status: Status, patch?: Pick<Board, 'context'>, exit?: number): Promise<void> {
+async function finish($: EngineInterface, id: string | undefined, status: Status, patch?: Pick<Board, 'context'>, exit?: number, reason?: string): Promise<void> {
   if (id === undefined) return
   await quietly(async () => {
     const now = await $.clock.now()
@@ -163,7 +163,7 @@ async function finish($: EngineInterface, id: string | undefined, status: Status
         ...patch,
         entries: b.entries.map(e => {
           if (e !== open) return e
-          return { ...bare(e), status: closed, endedAt: now, ...(exit === undefined || refusal ? {} : { exit }) }
+          return { ...bare(e), status: closed, endedAt: now, ...(exit === undefined || refusal ? {} : { exit }), ...(reason === undefined || refusal ? {} : { reason }) }
         }),
         ...(open !== undefined ? tally(b, open.station, closed, open.agentId, open.turn) : {}),
       }
@@ -977,7 +977,11 @@ export const register: Register = (on, options) => {
       // A failed shell command keeps its exit code, read off the first line of its answer, and nothing else of it.
       const isShell = ['Bash', 'PowerShell'].includes(String(e.tool))
       const code = isShell && !wasRefused && ran.isError === true ? /^(?:Error: )?Exit code (\d{1,3})\b/.exec(String(ran.text ?? ''))?.[1] : undefined
-      await finish($, id, wasRefused ? 'block' : ran.isError === true ? 'err' : 'ok', undefined, code === undefined ? undefined : Number(code))
+      // With errorReasons on, a failed call also keeps the first line of its error, cleaned and cut; a shell's exit line is no reason.
+      const failed = !wasRefused && ran.isError === true
+      const body = String(ran.text ?? '').replace(/^\s*(?:Error: )?Exit code \d{1,3}\b[^\n]*\n?/, '')
+      const reason = setup.errorReasons && failed ? clean(firstLine(body, 72), 72) || undefined : undefined
+      await finish($, id, wasRefused ? 'block' : ran.isError === true ? 'err' : 'ok', undefined, code === undefined ? undefined : Number(code), reason)
       return ran
     } catch (failure) {
       await finish($, id, 'err')

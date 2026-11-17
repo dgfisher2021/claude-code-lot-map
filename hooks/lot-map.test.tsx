@@ -382,6 +382,93 @@ test('an error of the tool itself is no refusal: the hooks station stays dark', 
   await ui.unmount()
 })
 
+const failing = (text: string) => ({ result: {}, isError: true as const, text })
+
+test('with errorReasons off a failed call shows no reason', { options: OWN }, async ($, on) => {
+  on('clock.now', () => ({ value: 1_000_000 }))
+  on('tool.call', () => failing('Exit code 2\nls: /nowhere: No such file or directory'))
+
+  await $.tool.call({ tool: 'Bash', command: 'ls /nowhere', description: 'Показать папку' })
+
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  const row = (await ui.find({ type: 'Text', text: /Показать папку/ }))?.text ?? ''
+  expect(row).toContain('✕')
+  expect(row).not.toContain('—')
+  expect(await ui.find({ type: 'Text', text: /nowhere/ })).toBeUndefined()
+  await ui.unmount()
+})
+
+test(
+  'with errorReasons on a failed call shows its first line, cleaned and cut to 72',
+  { options: { ...OWN, errorReasons: true, notify: true } },
+  async ($, on) => {
+    const clock = mock.clock(on, { now: NOW })
+    mock.env(on, { ...RUNTIME, TMPDIR: '/tmp' })
+    fakeHost(on)
+    const written: string[] = []
+    on('fs.write', (_, e) => {
+      written.push(e.text)
+      return { value: undefined }
+    })
+    const notes: string[] = []
+    on('ui.notify', (_, e) => {
+      notes.push(e.text)
+      return { value: { isSent: true, channel: 'client' } } as never
+    })
+    on('session.id', () => ({ value: 'abc-123' }) as never)
+    on('turn.start', (_, e) => ({ turnId: e.turnId }) as never)
+    on('turn.complete', () => ({ text: '' }))
+    on('command.register', () => ({ value: { command: 'lot-map' } }))
+    on('ui.open', () => ({ value: { isPlaced: true } }))
+    on('session.start', (_, e) => ({ cwd: e.cwd }))
+    const texts = [
+      'cannot\u0000open\u0007file\nsecret sk-private-1234',
+      `\n  fail ${'y'.repeat(5000)}\nsecret sk-private-1234`,
+      'Exit code 3\nstat: no such file\nsecret sk-private-1234',
+    ]
+    on('tool.call', () => failing(texts.shift() ?? ''))
+
+    await $.session.start({ cwd: '/home/u/projects/lot-map', surface: 'terminal', isInteractive: true })
+    await $.turn.start({ text: 'hello', turnId: 't1' } as never)
+    await $.tool.call({ tool: 'Bash', command: 'a', description: 'Первая' })
+    await $.tool.call({ tool: 'Bash', command: 'b', description: 'Вторая' })
+    await $.tool.call({ tool: 'Bash', command: 'c', description: 'Третья' })
+    await $.turn.complete({ answer: '', durationMs: 1, isAborted: false, turnId: 't1', reason: 'answer' } as never)
+    await clock.advance(6000)
+
+    const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+    const first = (await ui.find({ type: 'Text', text: /Первая/ }))?.text ?? ''
+    expect(first).toContain(' — cannot open file')
+    const second = (await ui.find({ type: 'Text', text: /Вторая/ }))?.text ?? ''
+    expect(second).toContain(` — fail ${'y'.repeat(66)}…`)
+    expect(second).not.toContain('y'.repeat(67))
+    const third = (await ui.find({ type: 'Text', text: /Третья/ }))?.text ?? ''
+    expect(third).toMatch(/код 3.* — stat: no such file/)
+    for (const row of [first, second, third]) expect(row).not.toMatch(/[\u0000-\u001f]|sk-private/)
+    await ui.unmount()
+
+    // Never in a notification nor in the status file.
+    expect(written.length).toBeGreaterThan(0)
+    for (const text of [...written, ...notes]) expect(text).not.toMatch(/cannot|fail y|no such file|sk-private/)
+  },
+)
+
+test('a refused call never shows a reason', { options: { ...OWN, errorReasons: true } }, async ($, on) => {
+  on('clock.now', () => ({ value: 1_000_000 }))
+  on('classic.PreToolUse', () => ({ deny: 'JUDGE: нельзя\nCommand: secret' }))
+  on('tool.call', () => failing('blocked by judge: sk-private'))
+
+  await $.tool.call({ tool: 'Bash', command: 'git status', description: 'Показать статус' })
+
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  const row = (await ui.find({ type: 'Text', text: /Показать статус/ }))?.text ?? ''
+  expect(row).toMatch(/^⊘ /)
+  expect(row).not.toContain('—')
+  expect(await ui.find({ type: 'Text', text: /sk-private/ })).toBeUndefined()
+  await ui.unmount()
+})
+
+
 test('memory a hook adds shows as numbers, never as its text', { options: OWN }, async ($, on) => {
   on('clock.now', () => ({ value: 1_000_000 }))
   on('classic.UserPromptSubmit', () => ({ additionalContext: ['• [#1971 excerpt] тайный текст записи\n• [#277 excerpt] ещё'] }))

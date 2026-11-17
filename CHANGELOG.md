@@ -2,6 +2,10 @@
 
 What changed in each version of lot-map, newest first. To get a new version, see [Updating](README.md#updating).
 
+## 0.12.0 (2026-11-17)
+
+- New option `errorReasons`, off by default: a failed call's row shows the first line of its error after the label, ` — cannot open file`, cleaned and cut to 72 characters. A refused call shows none, and no notification or status file carries it.
+
 ## 0.11.0 (2026-11-17)
 
 - New option `guardedHooks`, on by default. On a Team or Enterprise login an organisation's guard skips five of the mod's hooks and the transcript gets a notice each time; turn it off and the mod adds no hook on them. The map then loses the Hooks station, the records a hook adds, the row of a typed slash command and the mark of a compaction, which it takes in its place from a sharp fall of the context (never at a `/clear`, nor at a switch to a model with a larger window).

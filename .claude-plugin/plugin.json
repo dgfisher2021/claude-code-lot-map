@@ -1,6 +1,6 @@
 {
   "name": "lot-map",
-  "version": "0.11.0",
+  "version": "0.12.0",
   "description": "A live map beside the chat: memory, files, shell, web, model, agents, skills and hooks light up as they are used",
   "author": {
     "name": "Aleksei Volodin",
@@ -91,6 +91,12 @@
       "title": "Show why a hook refused",
       "default": false,
       "description": "Show the first line of a hook's refusal, up to 72 characters. Off, the map says only which tool was stopped: a refusal may quote what the hook found."
+    },
+    "errorReasons": {
+      "type": "boolean",
+      "title": "Show why a call failed",
+      "default": false,
+      "description": "Show the first line of a failed call's error, up to 72 characters. Off, the row says only that the call failed: an error may quote what the call touched."
     },
     "guardedHooks": {
       "type": "boolean",
