@@ -377,7 +377,7 @@ async function writePicture($: EngineInterface, state: Board, now: number, setup
  * Terminal: `/lot-map window` keeps the live map in a folder (map.svg, the rows under it in feed.json, and a heartbeat
  * in alive) and opens renderer/view.mjs beside the session to draw them.
  */
-const sharing: { dir?: string; timer?: Timer; written: string; line: string; beat: number } = { written: '', line: '', beat: 0 }
+const sharing: { dir?: string; timer?: Timer; written: string; rings: string; line: string; beat: number } = { written: '', rings: '', line: '', beat: 0 }
 
 /** The top line's own clock: while it counts time it is drawn again when its words would change. */
 const lineTick: { timer?: Timer } = {}
@@ -395,15 +395,18 @@ async function share($: EngineInterface, setup: Setup): Promise<void> {
     const state = await read($, board)
     const now = await $.clock.now()
     const seen = JSON.stringify(state)
-    const isChanged = seen !== sharing.written
+    const warnings = warningsOf(state, now, setup.t)
+    // A ring comes and goes with time alone, so the stations that wear one count in what decides a rewrite.
+    const rings = warnings.map(w => w.station ?? '').join()
+    const isChanged = seen !== sharing.written || rings !== sharing.rings
     if (isChanged) {
       sharing.written = seen
+      sharing.rings = rings
       await $.fs.write(`${dir}/map.svg`, framedMap(state, now, setup, 920, 860))
     }
-    // The rows under the map, as the pane writes them; again when the top line's time moves on.
+    // The top line, warnings, changed line, pinned lines and rows, as the pane writes them; again when the top line's time moves on.
     const line = describeNow(state, setup.t, now)
     const pinned = pinnedLines(state.entries, now, setup.t)
-    const warnings = warningsOf(state, now, setup.t)
     const changed = changedLine(state.changed, setup.t) ?? null
     const said = [line.text, ...warnings.map(w => w.line), changed?.line ?? '', ...pinned.map(p => p.line)].join('\n')
     if (isChanged || said !== sharing.line) {
@@ -510,7 +513,7 @@ async function runCommand($: EngineInterface, args: string, setup: Setup, openin
 async function stopSharing($: EngineInterface): Promise<void> {
   const dir = sharing.dir
   sharing.timer?.cancel()
-  Object.assign(sharing, { dir: undefined, timer: undefined, written: '', line: '', beat: 0 })
+  Object.assign(sharing, { dir: undefined, timer: undefined, written: '', rings: '', line: '', beat: 0 })
   if (dir !== undefined && /\/lot-map-live-[a-z0-9]+$/.test(dir)) await quietly(() => $.process.run(['rm', '-rf', '--', dir]))
 }
 
