@@ -3,7 +3,7 @@ import { expect, mock, test } from 'claude-code/testing'
 
 import type { Board } from '../types'
 import type { Entry } from '../types'
-import { COLOR_NAMES, TRAIL_FADE_MS, TRAIL_HOLD_MS, classify, clean, drawMap, firstLine, foldRows, formatMs, memoryIds, routeOf, setupFrom, stateOf, taskNotice, taskOf } from './map'
+import { COLOR_NAMES, TRAIL_FADE_MS, TRAIL_HOLD_MS, classify, clean, drawMap, firstLine, foldRows, formatMs, memoryIds, pinnedLines, routeOf, setupFrom, stateOf, taskNotice, taskOf } from './map'
 import { mapSize, paceOf, paintMap } from './raster'
 import { stringsFor } from './text'
 import { layout } from '../renderer/layout.mjs'
@@ -968,8 +968,32 @@ test('stateOf reads idle, thinking, running, compacting and done in that precede
   expect(stateOf({ ...quiet, phase: 'thinking', entries: [step] })).toBe('thinking')
   expect(stateOf({ ...quiet, phase: 'done', entries: [shell] })).toBe('running')
   expect(stateOf({ ...quiet, phase: 'compacting', entries: [shell] })).toBe('compacting')
-  // Work left running in the background is no work of the turn.
+  // Work left running in the background is no work of the turn, and neither is a background subagent's call.
   expect(stateOf({ ...quiet, phase: 'done', entries: [{ ...shell, task: 'b1' }] })).toBe('done')
+  expect(stateOf({ ...quiet, phase: 'done', entries: [{ ...shell, from: 'agents', agentId: 'a1' }] })).toBe('done')
+})
+
+test('an interrupted turn reads idle, not the last answer, and a turn a notification starts reads thinking', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  on('turn.start', (_, e) => ({ turnId: e.turnId }) as never)
+  on('turn.complete', () => ({ text: '' }))
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  const svg = async () => String((await ui.find({ type: 'Svg' }))?.props.source)
+  await $.turn.start({ text: 'hello', turnId: 't1' } as never)
+  await $.turn.complete({ answer: '', durationMs: 1, isAborted: false, turnId: 't1', reason: 'answer' } as never)
+  await clock.advance(600_000)
+  await $.turn.start({ text: 'and now this', turnId: 't2' } as never)
+  await clock.advance(5_000)
+  await $.turn.complete({ answer: '', durationMs: 1, isAborted: true, turnId: 't2', reason: 'aborted' } as never)
+  expect(await ui.find({ type: 'Text', text: /your turn/ })).toBeUndefined()
+  expect(await svg()).toContain('>idle<')
+  // A background task reporting back starts a turn of Claude's: it thinks, it is not the person's turn.
+  await $.turn.start({ text: 'again', turnId: 't3' } as never)
+  await $.turn.complete({ answer: '', durationMs: 1, isAborted: false, turnId: 't3', reason: 'answer' } as never)
+  await $.turn.start({ text: NOTICE('b1', 'completed'), turnId: 't4' } as never)
+  expect(await ui.find({ type: 'Text', text: /your turn/ })).toBeUndefined()
+  expect(await svg()).toContain('>thinking<')
+  await ui.unmount()
 })
 
 test('the core names the session state on every surface', async ($, on) => {
@@ -1050,7 +1074,7 @@ test('the plan shows as a checklist with progress, and work counts against the t
 })
 
 test('TodoWrite replaces the plan', async ($, on) => {
-  mock.clock(on, { now: NOW })
+  const clock = mock.clock(on, { now: NOW })
   fakeTasks(on)
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   await $.tool.call({ tool: 'TaskCreate', subject: 'Old', description: 'x' } as never)
@@ -1063,6 +1087,10 @@ test('TodoWrite replaces the plan', async ($, on) => {
   expect((await ui.find({ type: 'Text', text: /^Plan / }))?.text).toMatch(/^Plan 1\/3 /)
   expect((await ui.find({ type: 'Text', text: /Two/ }))?.text).toBe('◐ Two')
   expect(await ui.find({ type: 'Text', text: /Old/ })).toBeUndefined()
+  // A task the list writes as done keeps the time it was in progress.
+  await clock.advance(3_000)
+  await $.tool.call({ tool: 'TodoWrite', todos: todos.map(todo => ({ ...todo, status: 'completed' })) } as never)
+  expect((await ui.find({ type: 'Text', text: /Two/ }))?.text).toBe('✓ Two · 3.0 s')
   await ui.unmount()
 })
 
@@ -1095,6 +1123,15 @@ test('a long subject with emoji and CJK is cut to 60 characters and kept clean',
   await ui.unmount()
 })
 
+test('past five pieces of background work, the rest are counted', () => {
+  const job = (i: number): Entry => ({ id: `b${i}`, station: 'shell', label: `job ${i}`, from: 'core', startedAt: NOW, status: 'run', task: `t${i}` })
+  const going = Array.from({ length: 7 }, (_, i) => job(i))
+  const lines = pinnedLines(going, NOW + 1000, stringsFor('en')).map(l => l.line)
+  expect(lines.length).toBe(6)
+  expect(lines[0]).toMatch(/job 6/)
+  expect(lines[5]).toBe('and 2 more')
+})
+
 test('background work stays pinned with its time while later rows scroll by', async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
   on('tool.call', (_, e) => (e.tool === 'Bash' ? { result: { backgroundTaskId: 'b9' } } : { result: {} }) as never)
@@ -1125,6 +1162,17 @@ test("a subagent's failed call marks its own dot and names it in the row", async
   expect((await ui.find({ type: 'Text', text: /auth\.py/ }))?.text).toMatch(/^· Files +↳ explore auth · b\/auth\.py/)
   // Its dot at Agents turns red.
   expect(String((await ui.find({ type: 'Svg' }))?.props.source)).toMatch(/<circle [^>]*r="3" fill="#e8654f"\/>/)
+  await ui.unmount()
+})
+
+test("a subagent's name is cut by characters, never through one", async ($, on) => {
+  mock.clock(on, { now: NOW })
+  on('agent.spawn', () => ({ model: 'claude-haiku-5-5', agentId: 'a2' }) as never)
+  on('tool.call', () => ({ result: {} }) as never)
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await $.agent.spawn({ prompt: 'x', description: `${'a'.repeat(23)}🙂 and more` } as never)
+  await $.tool.call({ tool: 'Read', file_path: '/a/b/x.py', agentId: 'a2' } as never)
+  expect((await ui.find({ type: 'Text', text: /x\.py/ }))?.text).toContain(`↳ ${'a'.repeat(23)}🙂 · b/x.py`)
   await ui.unmount()
 })
 
@@ -1597,6 +1645,8 @@ test('the window gives the map its room before the list, down to twelve rows', (
   // A short one: the map keeps twelve rows, and the list what is left.
   expect(layout({ cols: 53, rows: 20, cell, listRows: 10, view: 'both' })).toMatchObject({ mapRows: 12, listTop: 14, listRows: 6 })
   expect(layout({ cols: 53, rows: 13, cell, listRows: 10, view: 'both' }).listRows).toBe(0)
+  // Shorter than twelve rows the map stays inside the window, above the hint: a taller picture would scroll it.
+  for (const rows of [6, 8, 10, 12]) expect(layout({ cols: 53, rows, cell: { w: 8, h: 17 }, listRows: 10, view: 'both' }).mapRows).toBeLessThanOrEqual(rows - 1)
 })
 
 test('the window shows the map alone, or the list alone', () => {

@@ -497,7 +497,9 @@ export const register: Register = (on, options) => {
   on('agent.spawn', async ($, e, next) => {
     const spawned = await next(e)
     const agentId = spawned.agentId
-    const name = clean(e.description ?? '').slice(0, 24)
+    const name = Array.from(clean(e.description ?? ''))
+      .slice(0, 24)
+      .join('')
     if (agentId !== undefined && name !== '') {
       await quietly(() =>
         update($, board, b => ({ ...b, agentNames: Object.fromEntries([...Object.entries(b.agentNames ?? {}), [agentId, name]].slice(-12)) })),
@@ -508,18 +510,15 @@ export const register: Register = (on, options) => {
 
   on('turn.start', async ($, e, next) => {
     const notice = e.agentId === undefined ? taskNotice(e.text) : undefined
+    // Any turn of the main loop, the person's or one a background task starts, has Claude thinking again.
+    if (e.agentId === undefined) await quietly(() => update($, board, b => ({ ...b, phase: 'thinking' as const, answeredAt: undefined })))
     if (notice !== undefined) {
       // A background task reporting back is no message of the person's.
       if (notice.status !== undefined) await settle($, notice.id, notice.status)
     } else if (e.agentId === undefined && e.text !== '') {
-      // A new message clears what went wrong on the way to the last answer, and the session thinks again.
+      // A new message clears what went wrong on the way to the last answer.
       await quietly(() =>
-        update($, board, b => ({
-          ...b,
-          ...(b.faults === undefined ? {} : { faults: {} }),
-          ...(b.blocks === undefined ? {} : { blocks: {} }),
-          phase: 'thinking' as const,
-        })),
+        update($, board, b => ({ ...b, ...(b.faults === undefined ? {} : { faults: {} }), ...(b.blocks === undefined ? {} : { blocks: {} }) })),
       )
       await begin($, { station: 'you', label: t.newMessage, from: 'inbound', status: 'ok' })
       if (windowed.isMap && !windowed.isAsked) void quietly(() => showWindow($, setup, opening))
@@ -581,9 +580,11 @@ export const register: Register = (on, options) => {
       // An interrupted call never reports back; left alone its row would pulse for the rest of the session.
       await quietly(async () => {
         const now = await $.clock.now()
+        // An answer leaves the turn done, and says when; an interrupted turn, nothing at work.
         await update($, board, b => ({
           ...b,
-          phase: 'done' as const,
+          phase: e.isAborted ? undefined : ('done' as const),
+          answeredAt: e.isAborted ? undefined : now,
           entries: b.entries.map(x => (x.status === 'run' && x.from === 'core' && x.task === undefined ? { ...x, status: 'ok' as const, endedAt: now } : x)),
         }))
       })
