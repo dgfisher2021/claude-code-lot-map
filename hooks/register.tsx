@@ -29,6 +29,8 @@ import {
   costText,
 } from './map'
 import type { Setup } from './map'
+import { tilesFrom, tileText } from './overview'
+import type { Tile } from './overview'
 import { MAP_COLUMNS, MAP_MIN_COLUMNS, MAP_ROWS, PICTURE_CELL, mapSize, paceOf, paintMap } from './raster'
 
 const PANE = 'lot-map'
@@ -434,6 +436,34 @@ async function share($: EngineInterface, setup: Setup): Promise<void> {
   })
 }
 
+/** The folder a session's temporary files go in: TMPDIR, or /tmp. */
+async function tmpDir($: EngineInterface): Promise<string> {
+  return ((await $.env.get('TMPDIR')) ?? '') || '/tmp'
+}
+
+/**
+ * Opens renderer/view.mjs with `args` in a split of the current Windows Terminal tab, for a session from WSL; else
+ * the command is only returned, to run by hand. `withChromium` hands it the Chromium found here, for the picture.
+ */
+async function splitTab($: EngineInterface, args: string[], withChromium: boolean): Promise<{ isOpen: boolean; command: string[] }> {
+  const view = `${$.plugin.root}/renderer/view.mjs`
+  // Found here, where the session's PATH has them: a pane wsl.exe opens starts with a bare PATH that has neither.
+  const node = (await quietly(() => $.process.run(['sh', '-c', 'command -v node'])))?.stdout.trim() || 'node'
+  const chromium = withChromium
+    ? ((await quietly(() => $.process.run(['sh', '-c', 'command -v chromium || command -v google-chrome'])))?.stdout.trim().split('\n')[0] ?? '')
+    : ''
+  const found = chromium !== '' && !/\s/.test(chromium) ? [`LOT_MAP_CHROMIUM=${chromium}`] : []
+  const command = ['env', ...found, node, view, ...args]
+  const distro = (await $.env.get('WSL_DISTRO_NAME')) ?? ''
+  if (distro !== '') {
+    const opened = await quietly(() =>
+      $.process.run(['wt.exe', '-w', '0', 'split-pane', '--vertical', '--size', '0.45', 'wsl.exe', '-d', distro, '--', ...command]),
+    )
+    if (opened?.exitCode === 0) return { isOpen: true, command }
+  }
+  return { isOpen: false, command }
+}
+
 /** How recently the window must have marked itself shown (it does every two seconds) to count as open. */
 const SHOWN_MS = 6000
 
@@ -446,23 +476,12 @@ async function openWindow($: EngineInterface, setup: Setup): Promise<{ isOpen: b
     const shown = await quietly(() => $.fs.stat(`${sharing.dir}/shown`))
     if (shown !== undefined && (await $.clock.now()) - shown.mtimeMs < SHOWN_MS) return { isOpen: true, text: setup.t.windowOpen }
   } else {
-    const tmp = ((await $.env.get('TMPDIR')) ?? '') || '/tmp'
-    sharing.dir = `${tmp}/lot-map-live-${Math.random().toString(36).slice(2, 10)}`
+    sharing.dir = `${await tmpDir($)}/lot-map-live-${Math.random().toString(36).slice(2, 10)}`
     await share($, setup)
     sharing.timer = $.clock.every(250, () => void share($, setup))
   }
-  const view = `${$.plugin.root}/renderer/view.mjs`
-  // Found here, where the session's PATH has them: a pane wsl.exe opens starts with a bare PATH that has neither.
-  const node = (await quietly(() => $.process.run(['sh', '-c', 'command -v node'])))?.stdout.trim() || 'node'
-  const chromium = (await quietly(() => $.process.run(['sh', '-c', 'command -v chromium || command -v google-chrome'])))?.stdout.trim().split('\n')[0] ?? ''
-  const found = chromium !== '' && !/\s/.test(chromium) ? [`LOT_MAP_CHROMIUM=${chromium}`] : []
-  const command = ['env', ...found, node, view, sharing.dir ?? '']
-  const distro = (await $.env.get('WSL_DISTRO_NAME')) ?? ''
-  if (distro !== '') {
-    const opened = await quietly(() => $.process.run(['wt.exe', '-w', '0', 'split-pane', '--vertical', '--size', '0.45', 'wsl.exe', '-d', distro, '--', ...command]))
-    if (opened?.exitCode === 0) return { isOpen: true, text: setup.t.windowOpened }
-  }
-  return { isOpen: false, text: setup.t.windowByHand(command.join(' ')) }
+  const { isOpen, command } = await splitTab($, [sharing.dir ?? ''], true)
+  return isOpen ? { isOpen: true, text: setup.t.windowOpened } : { isOpen: false, text: setup.t.windowByHand(command.join(' ')) }
 }
 
 /**
@@ -531,6 +550,7 @@ async function runCommand($: EngineInterface, args: string, setup: Setup, openin
   if (args.trim() === 'usage') return { text: await usageLines($, setup) }
   if (args.trim() === 'help') return { text: setup.t.legend.join('\n') }
   if (args.trim() === 'window') return { text: (await openWindow($, setup)).text }
+  if (args.trim() === 'all') return { text: await showOverview($, setup) }
   if (windowed.isMap) return { text: await showWindow($, setup, opening) }
   const opened = await $.ui.open(opening)
   return { text: opened.isPlaced ? setup.t.opened : setup.t.cannotOpen(String(opened.reason)) }
@@ -542,6 +562,107 @@ async function stopSharing($: EngineInterface): Promise<void> {
   sharing.timer?.cancel()
   Object.assign(sharing, { dir: undefined, timer: undefined, written: '', rings: '', line: '', beat: 0 })
   if (dir !== undefined && /\/lot-map-live-[a-z0-9]+$/.test(dir)) await quietly(() => $.process.run(['rm', '-rf', '--', dir]))
+}
+
+/**
+ * Every session in a terminal keeps a small status file in one folder, `lot-map-sessions`, so that `/workmap all` and
+ * renderer/view.mjs --all can show them side by side. It is written when the status changes and every five seconds,
+ * and goes with the session.
+ */
+const overview: { timer?: Timer; cwd: string; startedAt: number; json: string; wroteAt: number; file?: string } = {
+  cwd: '',
+  startedAt: 0,
+  json: '',
+  wroteAt: 0,
+}
+
+/** The id for a session whose own is no fit for a file name: made once per process. */
+const fallbackId = Math.random().toString(36).slice(2, 12)
+
+/** A status file older than this at a session's start is a session killed without an end. */
+const SESSION_GONE_MS = 3_600_000
+/** A status that has not changed is written again this often, so that its `updatedAt` shows the session lives. */
+const HEARTBEAT_MS = 5000
+
+async function sessionsDir($: EngineInterface): Promise<string> {
+  return `${await tmpDir($)}/lot-map-sessions`
+}
+
+/** Writes the session's status when it has changed, and at least every five seconds. */
+async function writeStatus($: EngineInterface, setup: Setup): Promise<void> {
+  await quietly(async () => {
+    const state = await read($, board)
+    const now = await $.clock.now()
+    const id = (await quietly(() => $.session.id())) ?? ''
+    const file = `${await sessionsDir($)}/${/^[\w-]+$/.test(id) ? id : fallbackId}.json`
+    // After a /clear the session goes on under another id: the old file goes.
+    if (overview.file !== undefined && overview.file !== file) await quietly(() => $.process.run(['rm', '-f', '--', overview.file ?? '']))
+    const status = stateOf(state)
+    const tile: Omit<Tile, 'updatedAt'> = {
+      name: overview.cwd.split(/[\\/]/).filter(Boolean).at(-1) ?? overview.cwd,
+      state: status,
+      word: setup.t.states[status],
+      now: describeNow(state, setup.t, now).text,
+      ...(state.context === undefined ? {} : { context: Math.round(state.context) }),
+      startedAt: overview.startedAt,
+      fault: Object.values(state.faults ?? {}).some(count => count > 0),
+      ...(sharing.dir === undefined ? {} : { live: sharing.dir }),
+    }
+    const json = JSON.stringify(tile)
+    if (file === overview.file && json === overview.json && now - overview.wroteAt < HEARTBEAT_MS) return
+    await $.fs.write(file, JSON.stringify({ ...tile, updatedAt: now }))
+    Object.assign(overview, { file, json, wroteAt: now })
+  })
+}
+
+/** Takes away the status files of sessions killed without an end: those not written for an hour, and no other file. */
+async function sweepSessions($: EngineInterface): Promise<void> {
+  await quietly(async () => {
+    const dir = await sessionsDir($)
+    const now = await $.clock.now()
+    for (const entry of await $.fs.list(dir)) {
+      if (entry.kind !== 'file' || !/^[\w-]+\.json$/.test(entry.name)) continue
+      const updatedAt = (JSON.parse(String(await $.fs.read(`${dir}/${entry.name}`))) as { updatedAt?: unknown }).updatedAt
+      if (typeof updatedAt === 'number' && now - updatedAt > SESSION_GONE_MS) await $.process.run(['rm', '-f', '--', `${dir}/${entry.name}`])
+    }
+  })
+}
+
+/** Starts keeping the status, once: from a session's start when it has a surface, else from the attach. */
+async function startStatus($: EngineInterface, setup: Setup, cwd?: string): Promise<void> {
+  if (cwd !== undefined) overview.cwd = cwd
+  if (overview.timer !== undefined) return
+  overview.startedAt = await $.clock.now()
+  overview.timer = $.clock.every(1000, () => void writeStatus($, setup))
+}
+
+/** Stops keeping the status and takes the file away. */
+async function stopStatus($: EngineInterface): Promise<void> {
+  overview.timer?.cancel()
+  const file = overview.file
+  Object.assign(overview, { timer: undefined, json: '', wroteAt: 0, file: undefined })
+  if (file !== undefined) await quietly(() => $.process.run(['rm', '-f', '--', file]))
+}
+
+/** The tiles of the sessions that live, waiting first, as `/workmap all` answers them outside Windows Terminal. */
+async function overviewText($: EngineInterface, setup: Setup): Promise<string> {
+  const dir = await sessionsDir($)
+  const now = await $.clock.now()
+  const entries = (await quietly(() => $.fs.list(dir))) ?? []
+  const texts: string[] = []
+  for (const entry of entries) {
+    if (entry.kind === 'file' && /^[\w-]+\.json$/.test(entry.name)) texts.push(String((await quietly(() => $.fs.read(`${dir}/${entry.name}`))) ?? ''))
+  }
+  const tiles = tilesFrom(texts, now)
+  return tiles.length === 0 ? setup.t.overviewNone : tiles.map(tile => tileText(tile, now, setup.t)).join('\n')
+}
+
+/** `/workmap all`: in Windows Terminal a window beside this one, running view.mjs --all; elsewhere the tiles as text. */
+async function showOverview($: EngineInterface, setup: Setup): Promise<string> {
+  if (overview.timer !== undefined) await writeStatus($, setup)
+  if (((await $.env.get('WSL_DISTRO_NAME')) ?? '') === '') return overviewText($, setup)
+  const { isOpen, command } = await splitTab($, ['--all', await sessionsDir($)], false)
+  return isOpen ? setup.t.overviewOpened : setup.t.windowByHand(command.join(' '))
 }
 
 /** What a settings hook added to the context: shown as the hook acting and, when it brought records, as memory. */
@@ -586,13 +707,18 @@ export const register: Register = (on, options) => {
 
   on('session.start', async ($, e, next) => {
     // Two names for one command: lot-map, as the plugin is called, and workmap.
-    await quietly(() => $.command.register({ name: 'lot-map', description: t.command, argumentHint: '[window | help | changed | usage]' }))
-    await quietly(() => $.command.register({ name: 'workmap', description: t.command, argumentHint: '[window | help | changed | usage]' }))
+    await quietly(() => $.command.register({ name: 'lot-map', description: t.command, argumentHint: '[window | help | changed | usage | all]' }))
+    await quietly(() => $.command.register({ name: 'workmap', description: t.command, argumentHint: '[window | help | changed | usage | all]' }))
     picture.canShow = setup.terminalMap && setup.terminalPicture === 'auto' && (await quietly(() => showsPictures($))) === true
     windowed.isAsked = false
     // A -p run or the SDK draws nowhere (surface null): no window.
     windowed.isMap = e.surface === 'terminal' && (await quietly(() => windowIsTheMap($, setup))) === true
     lastContext = undefined
+    // A -p run or the SDK shows nowhere: it keeps no status.
+    if (e.surface !== null) {
+      await startStatus($, setup, e.cwd)
+      void sweepSessions($)
+    } else overview.cwd = e.cwd
     // With no surface attached yet an open has nowhere to go; session.attach opens the pane then. A roster that
     // cannot be read is tried as before.
     const surfaces = await quietly(() => $.session.surfaces())
@@ -608,6 +734,7 @@ export const register: Register = (on, options) => {
   on('session.attach', async ($, e, next) => {
     if (!windowed.isMap) windowed.isMap = e.surface === 'terminal' && (await quietly(() => windowIsTheMap($, setup))) === true
     if (!windowed.isMap) void quietly(() => $.ui.open(opening))
+    await startStatus($, setup)
     return next(e)
   })
 
@@ -618,7 +745,10 @@ export const register: Register = (on, options) => {
     lastContext = undefined
     const result = await next(e)
     // A /clear ends the conversation but not the process: the window stays for what comes next.
-    if (e.reason !== 'clear') await stopSharing($)
+    if (e.reason !== 'clear') {
+      await stopSharing($)
+      await stopStatus($)
+    }
     return result
   })
 
