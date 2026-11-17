@@ -4,7 +4,7 @@ What changed in each version of lot-map, newest first. To get a new version, see
 
 ## 0.12.0 (2026-11-17)
 
-- New option `errorReasons`, off by default: a failed call's row shows the first line of its error after the label, ` — cannot open file`, cleaned and cut to 72 characters. A refused call shows none, and no notification or status file carries it.
+- New option `errorReasons`, off by default: a failed call's row shows the first line of its error after the label, ` — cannot open file`, cleaned and cut to 72 characters. A refused call shows none; the `/workmap all` status file and notifications never carry it.
 
 ## 0.11.0 (2026-11-17)
 

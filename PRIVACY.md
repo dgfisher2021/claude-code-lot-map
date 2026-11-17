@@ -19,7 +19,7 @@ The mod does not look for personal data and has no use for it. It takes a name f
 - those descriptions and subjects are written by the model, and the mod shows them as written: it does not check what they say;
 - a background task's report: that it ended and whether it failed;
 - a hook's refusal: the name of the tool it stopped, and its first line only if you turn `hookReasons` on;
-- a failed call's error: that it failed, and for a shell command its exit code; its first line only if you turn `errorReasons` on, cleaned and cut to 72 characters, never in a notification or a status file;
+- a failed call's error: that it failed, and for a shell command its exit code; its first line only if you turn `errorReasons` on, cleaned and cut to 72 characters, on its row in the pane and the window (whose feed file holds the rows), never in the `/workmap all` status file nor a notification;
 - context a hook added: that it was added, and record numbers only if you turn `hookRecords` on.
 
 ## What it keeps
