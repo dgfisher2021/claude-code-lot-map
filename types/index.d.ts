@@ -46,6 +46,10 @@ export type Board = {
   pushed?: number
   /** Errors per station since the person's last message. */
   faults?: Partial<Record<StationId, number>>
+  /** Errors per station this session; no message of the person's clears it. */
+  faultTotals?: Partial<Record<StationId, number>>
+  /** Calls per station since the person's last message. */
+  turnCounts?: Partial<Record<StationId, number>>
   /** Calls refused per station (by a hook or a permission prompt) since the person's last message. */
   blocks?: Partial<Record<StationId, number>>
   /** Subagents whose loops are still going. */

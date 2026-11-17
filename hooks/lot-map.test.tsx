@@ -1624,7 +1624,56 @@ test("/workmap help and /lot-map help answer the legend in the session's languag
   expect(answer.split('\n')).toEqual(stringsFor('ru').legend)
   expect(answer).toContain('Память')
   expect((await $.command.run({ command: 'lot-map', args: 'help' } as never)).text).toBe(answer)
-  for (const language of ['en', 'ru', 'es', 'fr', 'de', 'it', 'pt']) expect(stringsFor(language).legend.length).toBe(8)
+  for (const language of ['en', 'ru', 'es', 'fr', 'de', 'it', 'pt']) expect(stringsFor(language).legend.length).toBe(10)
+})
+
+test("the count keeps the session's errors and shows what this turn added", async ($, on) => {
+  mock.clock(on, { now: NOW })
+  on('turn.start', (_, e) => ({ turnId: e.turnId }) as never)
+  const answers: unknown[] = [{ result: {} }, { result: {}, isError: true, text: 'Exit code 1' }]
+  on('tool.call', () => (answers.shift() ?? { result: {} }) as never)
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  const svg = async () => String((await ui.find({ type: 'Svg' }))?.props.source)
+  await $.turn.start({ text: 'first', turnId: 't1' } as never)
+  for (const command of ['make a', 'make b', 'make c']) await $.tool.call({ tool: 'Bash', command, description: command } as never)
+  // The first turn's count is all of it.
+  expect(await svg()).not.toMatch(/\+3/)
+  await $.turn.start({ text: 'second', turnId: 't2' } as never)
+  for (const command of ['make d', 'make e']) await $.tool.call({ tool: 'Bash', command, description: command } as never)
+  const drawn = await svg()
+  expect(drawn).toContain('5<tspan')
+  expect(drawn).toContain('+2')
+  expect(drawn).toContain('1✕')
+  // The red badge went with the message; the session's error stayed.
+  expect(drawn).not.toMatch(/r="7\.5" fill="#[0-9a-f]{6}"\/>/)
+  expect(drawn).toContain('<title>Shell: 5 calls this session · 2 this turn · 1 error in this session</title>')
+  await ui.unmount()
+})
+
+test('a first turn shows no +N, its count being all of it', () => {
+  const board: Board = { entries: [], counts: { shell: 4 }, turnCounts: { shell: 4 } }
+  expect(drawMap(board, NOW, setupFrom({}))).not.toContain('+4')
+  expect(drawMap({ ...board, turnCounts: { shell: 1 } }, NOW, setupFrom({}))).toContain('+1')
+})
+
+test('the count line in cells never passes ten cells', () => {
+  const board: Board = { entries: [], counts: { shell: 999, files: 9 }, turnCounts: { shell: 99, files: 3 }, faultTotals: { shell: 99, files: 2 } }
+  const text = linesOf(paintMap(board, NOW, setupFrom({}), 60, 28), 60).join('\n')
+  // 999 and a turn of 99 and 99 errors: the turn's share goes first, the errors stay.
+  expect(text).toMatch(/Shell 999 99✕/)
+  expect(text).not.toContain('+99')
+  // Room enough for all of it.
+  expect(text).toMatch(/Files 9 \+3 2✕/)
+})
+
+test('the line of counts with no map names the errors of the session', { options: OWN }, async ($, on) => {
+  mock.clock(on, { now: NOW })
+  on('turn.start', (_, e) => ({ turnId: e.turnId }) as never)
+  on('tool.call', () => ({ result: {}, isError: true, text: 'Exit code 1' }) as never)
+  const ui = await $.ui.mount({ ...PANE, props: { ...PANE.props, bodyColumns: 26 }, surface: 'terminal' })
+  await $.tool.call({ tool: 'Bash', command: 'make', description: 'Build it' } as never)
+  expect(await ui.find({ type: 'Text', text: /Терминал 1 · 1✕/ })).toBeDefined()
+  await ui.unmount()
 })
 
 test('each station carries a title for hovering: its calls, its errors and its refusals', () => {

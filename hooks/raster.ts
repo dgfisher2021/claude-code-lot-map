@@ -76,7 +76,8 @@ const isNarrow = (cp: number): boolean =>
   (cp >= 0x48a && cp <= 0x52f) ||
   (cp >= 0x2010 && cp <= 0x2027) ||
   (cp >= 0x2190 && cp <= 0x21ff) ||
-  (cp >= 0x2500 && cp <= 0x25ff)
+  (cp >= 0x2500 && cp <= 0x25ff) ||
+  cp === 0x2715
 
 const glyphs = (text: string): number[] => Array.from(text.normalize('NFC'), ch => ch.codePointAt(0) ?? 0xb7).map(cp => (isNarrow(cp) ? cp : 0xb7))
 
@@ -530,6 +531,19 @@ export function paintMap(board: Board, now: number, setup: Setup, columns: numbe
       const asked = count - pushed
       if (pushed === 0 || asked > 0) parts.push({ text: ` ${pushed === 0 ? count : asked}`, fg: c.dim })
       if (pushed > 0) parts.push({ text: ` ↓${pushed}`, fg: main })
+      // This turn's share, then the session's errors, while the figures stay within ten cells: the share goes first.
+      const turn = board.turnCounts?.[st.id] ?? 0
+      const total = board.faultTotals?.[st.id] ?? 0
+      const share = turn > 0 && turn < count ? [{ text: ` +${turn}`, fg: c.dim }] : []
+      const errors = total > 0 ? [{ text: ` ${total}✕`, fg: c.red }] : []
+      const width = (list: { text: string }[]) => list.reduce((n, part) => n + glyphs(part.text).length, 0)
+      const base = parts.slice(1)
+      for (const more of [[...share, ...errors], errors]) {
+        if (width(base) + width(more) <= 10) {
+          parts.push(...more)
+          break
+        }
+      }
     }
     const length = parts.reduce((n, part) => n + glyphs(part.text).length, 0)
     words.push({

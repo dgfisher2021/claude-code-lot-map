@@ -458,13 +458,17 @@ function station(s: (typeof STATIONS)[number], i: number, { entries, board, now,
     `<path transform="translate(${x} ${y})" d="${s.icon}" fill="none" stroke="${glyphColor}" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round"/>` +
     `<text x="${x}" y="${n1(p.y + NODE + 15)}" text-anchor="middle" ${FONT} font-size="11.5" ${rim} fill="${isLit || isAlarm ? c.bone : c.ash}">${names[s.id]}</text>`
 
+  const turn = board.turnCounts?.[s.id] ?? 0
+  const total = board.faultTotals?.[s.id] ?? 0
   if (count > 0) {
     // Memory keeps two counts: what was asked for, and what a hook brought down unasked.
     const pushed = s.id === 'memory' ? Math.min(count, board.pushed ?? 0) : 0
     const asked = count - pushed
     const figures =
       pushed === 0 ? String(count) : `${asked > 0 ? `${asked} ` : ''}<tspan fill="${main}">↓${pushed}</tspan>`
-    over += `<text x="${x}" y="${n1(p.y + NODE + 28)}" text-anchor="middle" ${FONT} font-size="9.5" ${rim} fill="${c.dim}">${figures}</text>`
+    // After the count: what this turn added, then the session's errors in red.
+    const extra = (turn > 0 && turn < count ? `<tspan> +${turn}</tspan>` : '') + (total > 0 ? `<tspan fill="${c.red}"> · ${total}✕</tspan>` : '')
+    over += `<text x="${x}" y="${n1(p.y + NODE + 28)}" text-anchor="middle" ${FONT} font-size="9.5" ${rim} fill="${c.dim}">${figures}${extra}</text>`
   }
 
   // Top right: how many run at once. Top left: what went wrong since the last message, until the next one.
@@ -488,7 +492,13 @@ function station(s: (typeof STATIONS)[number], i: number, { entries, board, now,
       `<text x="${n1(p.x - corner)}" y="${n1(p.y + corner + 3.1)}" text-anchor="middle" ${FONT} font-size="9" font-weight="700" fill="${c.red}">${blocks > 99 ? '99+' : blocks}</text>`
   }
   // Hovering a station in the app says what its figures are.
-  const figures = [t.callsHere(board.counts[s.id] ?? 0), faults > 0 ? t.errorsHere(faults) : '', blocks > 0 ? t.refusedHere(blocks) : '']
+  const figures = [
+    t.callsHere(board.counts[s.id] ?? 0),
+    turn > 0 && turn < count ? t.thisTurn(turn) : '',
+    faults > 0 ? t.errorsHere(faults) : '',
+    blocks > 0 ? t.refusedHere(blocks) : '',
+    total > 0 ? t.errorsInSession(total) : '',
+  ]
   const title = `${names[s.id]}: ${figures.filter(f => f !== '').join(' · ')}`
   return { under, over: `<g><title>${escapeXml(title)}</title>${over}</g>` }
 }

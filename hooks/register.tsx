@@ -34,7 +34,7 @@ const REFUSALS_KEPT = 64
 const CREW = 12
 
 // Change the tag when a field of Entry or Board changes: it declines what an earlier version stored.
-const board = atom({ plugin: 'lot-map', key: 'board' } as const, { entries: [], counts: {} } as Board, { shape: 'board-3' })
+const board = atom({ plugin: 'lot-map', key: 'board' } as const, { entries: [], counts: {} } as Board, { shape: 'board-4' })
 
 const newId = (now: number): string => `${now.toString(36)}${Math.random().toString(36).slice(2, 7)}`
 
@@ -74,10 +74,11 @@ const oneMore = (counts: Board['faults'], station: StationId): Board['faults'] =
  * A call that ended badly counts on its station, an error with the faults and a refusal with the blocks, and marks the
  * subagent that made it.
  */
-function tally(b: Board, station: StationId, status: Status, agentId?: string): Pick<Board, 'faults' | 'blocks' | 'agentFaults'> {
+function tally(b: Board, station: StationId, status: Status, agentId?: string): Pick<Board, 'faults' | 'faultTotals' | 'blocks' | 'agentFaults'> {
   if (status !== 'err' && status !== 'block') return {}
   const agentFaults = agentId === undefined || (b.agentFaults ?? []).includes(agentId) ? {} : { agentFaults: [...(b.agentFaults ?? []), agentId].slice(-12) }
-  return { ...(status === 'err' ? { faults: oneMore(b.faults, station) } : { blocks: oneMore(b.blocks, station) }), ...agentFaults }
+  const bad = status === 'err' ? { faults: oneMore(b.faults, station), faultTotals: oneMore(b.faultTotals, station) } : { blocks: oneMore(b.blocks, station) }
+  return { ...bad, ...agentFaults }
 }
 
 async function begin($: EngineInterface, start: Start): Promise<string | undefined> {
@@ -100,6 +101,7 @@ async function begin($: EngineInterface, start: Start): Promise<string | undefin
       ...start.patch,
       entries: kept([...b.entries, entry]),
       counts: start.uncounted ? b.counts : { ...b.counts, [entry.station]: (b.counts[entry.station] ?? 0) + 1 },
+      ...(start.uncounted ? {} : { turnCounts: oneMore(b.turnCounts, entry.station) }),
       // What a hook brought to memory unasked is counted apart from what was asked for.
       ...(entry.station === 'memory' && entry.from === 'inbound' && !start.uncounted ? { pushed: (b.pushed ?? 0) + 1 } : {}),
       // An interrupted turn lands on the person's own station and is no fault of anything.
@@ -535,7 +537,12 @@ export const register: Register = (on, options) => {
     } else if (e.agentId === undefined && e.text !== '') {
       // A new message clears what went wrong on the way to the last answer.
       await quietly(() =>
-        update($, board, b => ({ ...b, ...(b.faults === undefined ? {} : { faults: {} }), ...(b.blocks === undefined ? {} : { blocks: {} }) })),
+        update($, board, b => ({
+          ...b,
+          ...(b.faults === undefined ? {} : { faults: {} }),
+          ...(b.blocks === undefined ? {} : { blocks: {} }),
+          ...(b.turnCounts === undefined ? {} : { turnCounts: {} }),
+        })),
       )
       await begin($, { station: 'you', label: t.newMessage, from: 'inbound', status: 'ok' })
       if (windowed.isMap && !windowed.isAsked) void quietly(() => showWindow($, setup, opening))
@@ -714,7 +721,12 @@ export const register: Register = (on, options) => {
           const label = clean(e.skill)
           if (b.entries.some(x => x.station === 'skills' && x.status === 'run' && x.label === label)) return b
           const entry: Entry = { id: newId(now), station: 'skills', label, from: 'core', startedAt: now, endedAt: now, status: 'ok' }
-          return { ...b, entries: kept([...b.entries, entry]), counts: { ...b.counts, skills: (b.counts.skills ?? 0) + 1 } }
+          return {
+            ...b,
+            entries: kept([...b.entries, entry]),
+            counts: { ...b.counts, skills: (b.counts.skills ?? 0) + 1 },
+            turnCounts: oneMore(b.turnCounts, 'skills'),
+          }
         })
       })
       return result
@@ -789,7 +801,9 @@ export const register: Register = (on, options) => {
       const size = setup.terminalMap ? mapSize(e.props.bodyColumns, e.props.scroll.bodyRows, e.props.placement) : undefined
       if (size === undefined) {
         stopReel()
-        const tally = STATIONS.filter(s => (state.counts[s.id] ?? 0) > 0).map(s => `${t.stations[s.id]} ${state.counts[s.id]}`).join(' · ')
+        const tally = STATIONS.filter(s => (state.counts[s.id] ?? 0) > 0)
+          .map(s => `${t.stations[s.id]} ${state.counts[s.id]}${(state.faultTotals?.[s.id] ?? 0) > 0 ? ` · ${state.faultTotals?.[s.id]}✕` : ''}`)
+          .join(' · ')
         // A dock kept narrow (the person's own width wins over the pane's ask) says how wide the map needs it.
         const isNarrow = setup.terminalMap && e.props.placement === 'dock' && e.props.bodyColumns < MAP_MIN_COLUMNS
         return (
