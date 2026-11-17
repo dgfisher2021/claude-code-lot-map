@@ -62,7 +62,7 @@ A pulse flies out when something starts and returns when it ends. Refusals and e
 
 ## Reading the map
 
-`/workmap help` (or `/lot-map help`) says what each mark means. In the window, `?` puts that legend where the rows are. In the app, hovering a station names its figures.
+`/workmap help` (or `/lot-map help`) says what each mark means; `/workmap usage` answers the figures of the session's usage. In the window, `?` puts that legend where the rows are. In the app, hovering a station names its figures.
 
 - **The route.** A thin line joins the last few stations the main loop went through, in order, and its newest leg draws itself. A leg stays for 40 seconds and then fades over 20, so a minute after the work stops only the spokes are left; their thickness keeps where the work went. Model steps are left out, or every leg would pass through Model.
 - **Worn spokes.** A spoke grows thicker and brighter the more its station is used, so at the end of a session the map shows where the work went.
@@ -80,6 +80,7 @@ A pulse flies out when something starts and returns when it ends. Refusals and e
 - **Memory.** It has a colour of its own. A solid pulse is a memory Claude asked for; a hollow one on a dashed line is what a hook brought unasked. Under the station, the plain number counts the first and `↓` the second.
 - **What the session is doing.** One word under the centre: `thinking` from your message, `running` while a call works, `needs you` (blinking) while Claude waits on you, `compacting`, `done` when the answer is ready, and `idle` before the first message. Background work doesn't count as running.
 - **The context window.** The ring around the centre fills as the session goes, with the percentage above the name. It turns amber at 70% and red at 90%.
+- **The rate limits and the cost.** Two thin arcs outside that ring show how much of the five-hour limit (the inner arc) and of the weekly limit is used, in the same colours; the app's hover names the window and when it resets. They appear only on an account whose engine reports the limits. The session's estimated cost stands under the word below the centre as `$1.23`, and nothing shows under a cent. `/workmap usage` lists the context's fill, each category of the window as a share of it, the windows with their resets and the cost, leaving out any figure the engine does not have.
 - **A change of model.** The centre and the Model station ring for a few seconds, and the feed gets a row such as `opus 5.5 → fable 5.2`. This also happens when a session starts on a different model from the last session in the same folder.
 - **Subagents.** Each one still at work circles the Agents station as a small dot, and its calls start from there. Its rows carry its name, the short description it was started with, as in `↳ explore auth · Run the tests`. Its dot turns red when one of its calls fails or is refused; the count lands on the station of the call, as any other.
 - **The answer.** One wide ring leaves the centre when the answer is ready.

@@ -1869,7 +1869,7 @@ test("/workmap help and /lot-map help answer the legend in the session's languag
   expect(answer.split('\n')).toEqual(stringsFor('ru').legend)
   expect(answer).toContain('Память')
   expect((await $.command.run({ command: 'lot-map', args: 'help' } as never)).text).toBe(answer)
-  for (const language of ['en', 'ru', 'es', 'fr', 'de', 'it', 'pt']) expect(stringsFor(language).legend.length).toBe(13)
+  for (const language of ['en', 'ru', 'es', 'fr', 'de', 'it', 'pt']) expect(stringsFor(language).legend.length).toBe(14)
 })
 
 test("the count keeps the session's errors and shows what this turn added", async ($, on) => {
@@ -2150,6 +2150,102 @@ test('with guardedHooks on no row comes from session.measure', { options: OWN },
   await $.session.measure({ context: { percent: 80 }, rateLimits: [], changed: ['context'] } as never)
   await $.session.measure({ context: { percent: 10 }, rateLimits: [], changed: ['context'] } as never)
   expect(kept.entries.filter(e => e.label === SETUP.t.compacted)).toHaveLength(0)
+})
+
+const keepBoard = (on: (event: 'state.set' | 'session.measure', hook: never) => void) => {
+  const kept: { board: Board } = { board: { entries: [], counts: {} } }
+  on(
+    'state.set',
+    ((_: unknown, e: { value?: { value?: Board } }, next: (e: unknown) => unknown) => ((kept.board = e.value?.value ?? kept.board), next(e))) as never,
+  )
+  on('session.measure', ((_: unknown, e: { changed: unknown }) => ({ changed: e.changed })) as never)
+  return kept
+}
+const arcs = (svg: string) =>
+  [...svg.matchAll(/<circle [^>]*stroke-width="1\.2"[^>]*r="(\d+)"[^>]*>|<circle [^>]*r="(\d+)"[^>]*stroke-width="1\.2"[^>]*>/g)].filter(
+    m => Number(m[1] ?? m[2] ?? 0) >= 49,
+  )
+
+test('the rate-limit windows and the cost show around the core', async ($, on) => {
+  on('clock.now', () => ({ value: 1_000_000 }))
+  const kept = keepBoard(on as never)
+  const limits = [
+    { kind: 'five_hour', percentUsed: 92, resetsAt: new Date(1_000_000 + 130 * 60_000).toISOString() },
+    { kind: 'seven_day', percentUsed: 40 },
+    { kind: 'spend_limit', percentUsed: 5 },
+  ]
+  await $.session.measure({ context: { percent: 95 }, rateLimits: limits, cost: { usd: 1.234 }, changed: ['rateLimits'] } as never)
+  expect(kept.board.limits?.map(l => [l.kind, l.percent])).toEqual([
+    ['five_hour', 92],
+    ['seven_day', 40],
+  ])
+  expect(kept.board.cost).toBe(1.234)
+  const svg = drawMap({ ...kept.board, context: 95 }, 1_000_000, SETUP)
+  const found = arcs(svg)
+  expect(found).toHaveLength(4)
+  const stroke = (m: RegExpMatchArray | undefined) => /stroke="(#[0-9a-fA-F]+|[^"]+)"/.exec(m?.[0] ?? '')?.[1]
+  const contextRing = /<circle [^>]*r="45"[^>]*stroke="([^"]+)" pathLength="100" stroke-dasharray="95 100"/.exec(svg)?.[1]
+  const fiveHour = found.filter(m => /pathLength/.test(m[0]))[0]
+  expect(stroke(fiveHour)).toBe(contextRing)
+  expect(svg).toContain(`<title>${SETUP.t.limitTitle('five_hour', 92, SETUP.t.hoursMinutes(2, 10))}</title>`)
+  expect(svg).toContain('>$1.23<')
+})
+
+test('/workmap usage answers the context, the windows and the cost', async ($, on) => {
+  on('clock.now', () => ({ value: 1_000_000 }))
+  on('command.register', (_, e) => ({ value: { command: e.name } }))
+  keepBoard(on as never)
+  const category = (name: string, tokens: number, kind = 'used') => ({ name, tokens, color: 'x', isDeferred: false, kind })
+  on(
+    'session.usage',
+    () =>
+      ({
+        value: {
+          startedAt: 0,
+          context: {
+            window: 200000,
+            tokens: 74000,
+            percent: 37,
+            breakdown: {
+              rawMaxTokens: 200000,
+              maxTokens: 200000,
+              categories: [category('System prompt', 20000), category('Messages', 54000), category('Skills', 0)],
+            },
+          },
+        },
+      }) as never,
+  )
+  on('session.start', (_, e) => ({ cwd: e.cwd }))
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  await $.session.measure({
+    context: { percent: 37 },
+    rateLimits: [{ kind: 'five_hour', percentUsed: 92, resetsAt: new Date(1_000_000 + 130 * 60_000).toISOString() }],
+    cost: { usd: 1.234 },
+    changed: ['rateLimits'],
+  } as never)
+  const lines = String((await $.command.run({ command: 'workmap', args: 'usage' } as never)).text).split('\n')
+  expect(lines[0]).toBe('Context: 37% · 74k of 200k tokens')
+  expect(lines).toContain('System prompt: 10%')
+  expect(lines).toContain('Messages: 27%')
+  expect(lines.some(l => l.startsWith('Skills'))).toBe(false)
+  expect(lines).toContain('Five-hour 92% · resets in 2 h 10 min')
+  expect(lines.at(-1)).toBe('Cost so far, an estimate: $1.23')
+})
+
+test('with no rate limits and no cost, nothing new is drawn', async ($, on) => {
+  on('clock.now', () => ({ value: 1_000_000 }))
+  on('command.register', (_, e) => ({ value: { command: e.name } }))
+  const kept = keepBoard(on as never)
+  on('session.usage', () => ({ value: { startedAt: 0, context: { window: 200000 } } }) as never)
+  on('session.start', (_, e) => ({ cwd: e.cwd }))
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  await $.session.measure({ context: { percent: 10 }, rateLimits: [], changed: ['context'] } as never)
+  expect(kept.board.limits ?? []).toEqual([])
+  const svg = drawMap({ ...kept.board, context: 10 }, 1_000_000, SETUP)
+  expect(arcs(svg)).toHaveLength(0)
+  expect(svg).not.toContain('$')
+  expect(drawMap({ ...kept.board, cost: 0.004 }, 1_000_000, SETUP)).not.toContain('$0')
+  expect((await $.command.run({ command: 'workmap', args: 'usage' } as never)).text).toBe(stringsFor('en').usageNothing)
 })
 
 test('a session that starts with no surface opens its pane when one attaches', async ($, on) => {

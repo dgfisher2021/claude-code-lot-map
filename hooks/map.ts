@@ -617,6 +617,16 @@ export function drawMap(board: Board, now: number, setup: Setup, isFilling = fal
       `<text x="${CX}" y="${CY - 19}" text-anchor="middle" ${FONT} font-size="8" fill="${c.dim}">${full}%</text>`
   }
 
+  // The rate-limit windows as thin arcs outside it, on the context ring's colours.
+  for (const { kind, percent, resetsAt } of board.limits ?? []) {
+    const used = Math.max(0, Math.min(100, Math.round(percent)))
+    const arc = `cx="${CX}" cy="${CY}" r="${CORE + (kind === 'five_hour' ? 9 : 12)}" fill="none" stroke-width="1.2"`
+    body +=
+      `<circle ${arc} stroke="${c.line}" opacity=".5"/>` +
+      `<circle ${arc} stroke="${used >= 90 ? c.red : used >= 70 ? c.accent : c.ash}" pathLength="100" stroke-dasharray="${used} 100" transform="rotate(-90 ${CX} ${CY})">` +
+      `<title>${escapeXml(setup.t.limitTitle(kind, percent, untilText(resetsAt, now, setup.t)))}</title></circle>`
+  }
+
   const switchAge = board.switchedAt === undefined ? Infinity : now - board.switchedAt
   const isSwitching = switchAge >= 0 && switchAge < SWITCH_MS
   body += `<text x="${CX}" y="${CY + (board.model === undefined ? 6 : 1)}" text-anchor="middle" ${FONT} font-size="${n1(coreSize)}" letter-spacing="${n1(coreSize * 0.147)}" fill="${c.bone}">${escapeXml(setup.core)}</text>`
@@ -630,6 +640,8 @@ export function drawMap(board: Board, now: number, setup: Setup, isFilling = fal
   const blink =
     state === 'waiting' ? `<animate attributeName="opacity" values="1;.45;1" begin="${clock(-(now % 1200))}" dur="1.2s" repeatCount="indefinite"/>` : ''
   body += `<text x="${CX}" y="${CY + CORE + 17}" text-anchor="middle" ${FONT} font-size="9" paint-order="stroke" stroke="${c.ground}" stroke-width="3.5" stroke-linejoin="round" fill="${stateColor}">${blink}${escapeXml(setup.t.states[state])}</text>`
+  const spent = costText(board.cost)
+  if (spent !== undefined) body += `<text x="${CX}" y="${CY + CORE + 28}" text-anchor="middle" ${FONT} font-size="8" fill="${c.dim}">${spent}</text>`
 
   // A changed model rings at the core and at its station for a few seconds.
   if (isSwitching) {
@@ -727,6 +739,19 @@ const isPinned = (e: Entry): boolean => e.status === 'run' && e.task !== undefin
 export function formatClock(ms: number, t: Strings): string {
   const s = Math.max(0, Math.floor(ms / 1000))
   return s < 60 ? t.seconds(String(s)) : t.minutes(Math.floor(s / 60), s % 60)
+}
+
+/** A reset's time from now as words, or nothing when it is not given, unreadable or past. */
+export function untilText(resetsAt: string | undefined, now: number, t: Strings): string | undefined {
+  const ms = resetsAt === undefined ? NaN : Date.parse(resetsAt) - now
+  if (!(ms > 0)) return undefined
+  const minutes = Math.floor(ms / 60_000)
+  return minutes >= 60 ? t.hoursMinutes(Math.floor(minutes / 60), minutes % 60) : minutes >= 1 ? t.wholeMinutes(minutes) : formatClock(ms, t)
+}
+
+/** The session's cost as `$1.23`; nothing under a cent, where a fresh session's `$0.00` is noise. */
+export function costText(cost: number | undefined): string | undefined {
+  return cost !== undefined && cost >= 0.01 ? `$${cost.toFixed(2)}` : undefined
 }
 
 /** Work sent to the background and still going, pinned above the rows: the newest five, each with its time so far. */
