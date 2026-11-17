@@ -41,6 +41,8 @@ export type Strings = {
   callsHere: (n: number) => string
   errorsHere: (n: number) => string
   refusedHere: (n: number) => string
+  thisTurn: (n: number) => string
+  errorsInSession: (n: number) => string
   context: string
   andMore: (n: number) => string
   webSearch: string
@@ -112,6 +114,8 @@ const en: Strings = {
   states: { idle: 'idle', thinking: 'thinking', running: 'running', waiting: 'needs you', compacting: 'compacting', done: 'done' },
   legend: [
     'Number under a station: its calls this session.',
+    '+N after it: calls added since your last message.',
+    'N✕ after it, in red: errors there this session; a new message keeps them.',
     'Red dot: errors there since your last message. A shell command that exits non-zero counts.',
     'Outlined count: calls refused there, by a hook or a permission prompt.',
     '×N: calls running there at once.',
@@ -123,6 +127,8 @@ const en: Strings = {
   callsHere: n => `${n} ${n === 1 ? 'call' : 'calls'} this session`,
   errorsHere: n => `${n} ${n === 1 ? 'error' : 'errors'} since your last message`,
   refusedHere: n => `${n} refused`,
+  thisTurn: n => `${n} this turn`,
+  errorsInSession: n => `${n} ${n === 1 ? 'error' : 'errors'} in this session`,
   planHeader: (done, total) => `Plan ${done}/${total}`,
   planCalls: n => `${n} ${n === 1 ? 'call' : 'calls'}`,
   context: 'context',
@@ -189,6 +195,8 @@ const ru: Strings = {
   states: { idle: 'ожидание', thinking: 'думает', running: 'работает', waiting: 'ждёт тебя', compacting: 'сжимает', done: 'готово' },
   legend: [
     'Число под станцией: её вызовы за сессию.',
+    '+N после неё: вызовы с твоего последнего сообщения.',
+    'N✕ после неё, красным: ошибки там за сессию; новое сообщение их не стирает.',
     'Красная точка: ошибки там с твоего последнего сообщения. Команда терминала с ненулевым кодом выхода тоже считается.',
     'Число в контуре: вызовы, которые там отклонил хук или запрос разрешения.',
     '×N: вызовы, идущие там одновременно.',
@@ -200,6 +208,8 @@ const ru: Strings = {
   callsHere: n => `вызовов за сессию: ${n}`,
   errorsHere: n => `ошибок с последнего сообщения: ${n}`,
   refusedHere: n => `отклонено: ${n}`,
+  thisTurn: n => `за этот ход: ${n}`,
+  errorsInSession: n => `ошибок за сессию: ${n}`,
   planHeader: (done, total) => `План ${done}/${total}`,
   planCalls: n => `вызовов: ${n}`,
   context: 'контекст',
@@ -266,6 +276,8 @@ const es: Strings = {
   states: { idle: 'inactivo', thinking: 'pensando', running: 'trabajando', waiting: 'te espera', compacting: 'compactando', done: 'listo' },
   legend: [
     'Número bajo una estación: sus llamadas en esta sesión.',
+    '+N después: llamadas desde tu último mensaje.',
+    'N✕ después, en rojo: errores ahí en la sesión; un mensaje nuevo no los borra.',
     'Punto rojo: errores ahí desde tu último mensaje. Cuenta un comando de shell que sale con un código distinto de cero.',
     'Número con contorno: llamadas rechazadas ahí, por un hook o una petición de permiso.',
     '×N: llamadas en curso ahí a la vez.',
@@ -277,6 +289,8 @@ const es: Strings = {
   callsHere: n => `${n} llamadas en esta sesión`,
   errorsHere: n => `${n} errores desde tu último mensaje`,
   refusedHere: n => `${n} rechazadas`,
+  thisTurn: n => `${n} en este turno`,
+  errorsInSession: n => `${n} errores en esta sesión`,
   planHeader: (done, total) => `Plan ${done}/${total}`,
   planCalls: n => `${n} llamadas`,
   context: 'contexto',
@@ -343,6 +357,8 @@ const fr: Strings = {
   states: { idle: 'inactif', thinking: 'réfléchit', running: 'travaille', waiting: 'vous attend', compacting: 'compacte', done: 'terminé' },
   legend: [
     'Nombre sous une station : ses appels pendant la session.',
+    '+N après : appels depuis votre dernier message.',
+    'N✕ après, en rouge : erreurs là pendant la session ; un nouveau message les garde.',
     'Point rouge : erreurs à cet endroit depuis votre dernier message. Une commande shell qui sort avec un code non nul compte.',
     "Nombre entouré : appels refusés à cet endroit, par un hook ou une demande d'autorisation.",
     '×N : appels en cours à cet endroit en même temps.',
@@ -354,6 +370,8 @@ const fr: Strings = {
   callsHere: n => `${n} appels pendant la session`,
   errorsHere: n => `${n} erreurs depuis votre dernier message`,
   refusedHere: n => `${n} refusés`,
+  thisTurn: n => `${n} pendant ce tour`,
+  errorsInSession: n => `${n} erreurs pendant la session`,
   planHeader: (done, total) => `Plan ${done}/${total}`,
   planCalls: n => `${n} appels`,
   context: 'contexte',
@@ -420,6 +438,8 @@ const de: Strings = {
   states: { idle: 'untätig', thinking: 'denkt nach', running: 'arbeitet', waiting: 'braucht dich', compacting: 'verdichtet', done: 'fertig' },
   legend: [
     'Zahl unter einer Station: ihre Aufrufe in dieser Sitzung.',
+    '+N danach: Aufrufe seit deiner letzten Nachricht.',
+    'N✕ danach, rot: Fehler dort in dieser Sitzung; eine neue Nachricht lässt sie stehen.',
     'Roter Punkt: Fehler dort seit deiner letzten Nachricht. Ein Shell-Befehl mit Exit-Code ungleich null zählt mit.',
     'Umrandete Zahl: dort abgelehnte Aufrufe, durch einen Hook oder eine Berechtigungsabfrage.',
     '×N: dort gleichzeitig laufende Aufrufe.',
@@ -431,6 +451,8 @@ const de: Strings = {
   callsHere: n => `${n} Aufrufe in dieser Sitzung`,
   errorsHere: n => `${n} Fehler seit deiner letzten Nachricht`,
   refusedHere: n => `${n} abgelehnt`,
+  thisTurn: n => `${n} in diesem Zug`,
+  errorsInSession: n => `${n} Fehler in dieser Sitzung`,
   planHeader: (done, total) => `Plan ${done}/${total}`,
   planCalls: n => `${n} Aufrufe`,
   context: 'Kontext',
@@ -497,6 +519,8 @@ const it: Strings = {
   states: { idle: 'inattivo', thinking: 'pensa', running: 'lavora', waiting: 'ti aspetta', compacting: 'compatta', done: 'fatto' },
   legend: [
     'Numero sotto una stazione: le sue chiamate nella sessione.',
+    '+N dopo: chiamate dal tuo ultimo messaggio.',
+    'N✕ dopo, in rosso: errori lì nella sessione; un nuovo messaggio li conserva.',
     'Punto rosso: errori lì dal tuo ultimo messaggio. Conta anche un comando shell che esce con un codice diverso da zero.',
     'Numero cerchiato: chiamate rifiutate lì, da un hook o da una richiesta di permesso.',
     '×N: chiamate in corso lì nello stesso momento.',
@@ -508,6 +532,8 @@ const it: Strings = {
   callsHere: n => `${n} chiamate nella sessione`,
   errorsHere: n => `${n} errori dal tuo ultimo messaggio`,
   refusedHere: n => `${n} rifiutate`,
+  thisTurn: n => `${n} in questo turno`,
+  errorsInSession: n => `${n} errori nella sessione`,
   planHeader: (done, total) => `Piano ${done}/${total}`,
   planCalls: n => `${n} chiamate`,
   context: 'contesto',
@@ -575,6 +601,8 @@ const pt: Strings = {
   states: { idle: 'parado', thinking: 'a pensar', running: 'a trabalhar', waiting: 'espera por ti', compacting: 'a compactar', done: 'pronto' },
   legend: [
     'Número sob uma estação: as suas chamadas nesta sessão.',
+    '+N depois: chamadas desde a tua última mensagem.',
+    'N✕ depois, a vermelho: erros aí nesta sessão; uma nova mensagem não os apaga.',
     'Ponto vermelho: erros ali desde a tua última mensagem. Conta um comando de shell que sai com código diferente de zero.',
     'Número contornado: chamadas recusadas ali, por um hook ou um pedido de permissão.',
     '×N: chamadas em curso ali ao mesmo tempo.',
@@ -586,6 +614,8 @@ const pt: Strings = {
   callsHere: n => `${n} chamadas nesta sessão`,
   errorsHere: n => `${n} erros desde a tua última mensagem`,
   refusedHere: n => `${n} recusadas`,
+  thisTurn: n => `${n} neste turno`,
+  errorsInSession: n => `${n} erros nesta sessão`,
   planHeader: (done, total) => `Plano ${done}/${total}`,
   planCalls: n => `${n} chamadas`,
   context: 'contexto',
