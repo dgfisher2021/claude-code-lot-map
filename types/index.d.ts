@@ -44,6 +44,9 @@ export type PlanItem = {
   endedAt?: number
 }
 
+/** The rate-limit windows the map shows. */
+export type LimitKind = 'five_hour' | 'seven_day'
+
 export type Board = {
   entries: Entry[]
   counts: Partial<Record<StationId, number>>
@@ -79,6 +82,10 @@ export type Board = {
   changed?: Record<string, number>
   /** The person's messages this session as turns, the last twelve; the newest is the open one. */
   turns?: TurnSummary[]
+  /** The rate-limit windows the engine last reported: how much of each is used, and when it resets (ISO 8601). */
+  limits?: { kind: LimitKind; percent: number; resetsAt?: string }[]
+  /** What the session has cost so far, in US dollars: an estimate. */
+  cost?: number
 }
 
 declare module 'claude-code' {

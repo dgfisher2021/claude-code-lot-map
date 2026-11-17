@@ -24,6 +24,7 @@ The mod does not look for personal data and has no use for it. It takes a name f
 ## What it keeps
 
 - **During a session:** the rows of the map, the counters under the stations and the last model step, in Claude Code's state for the session. They are gone when the session ends.
+- **Usage figures:** the context's fill and the categories of its window, the five-hour and weekly rate-limit windows with their reset times, and the session's estimated cost. The mod reads them and keeps the windows and the cost with the rows for the session; it writes none of them anywhere.
 - **Between sessions:** one value per folder, the name of the model last used there, so that the map can show a change of model. It is stored under the folder's full path in Claude Code's own store for the plugin, on your computer. A folder's path usually contains your account name.
 - **Your options** (language, colours, memory servers and the rest) are kept by Claude Code in your settings, as for any plugin.
 

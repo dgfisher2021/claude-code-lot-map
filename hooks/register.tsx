@@ -24,7 +24,9 @@ import {
   stateOf,
   taskNotice,
   taskOf,
+  untilText,
   warningsOf,
+  costText,
 } from './map'
 import type { Setup } from './map'
 import { MAP_COLUMNS, MAP_MIN_COLUMNS, MAP_ROWS, PICTURE_CELL, mapSize, paceOf, paintMap } from './raster'
@@ -499,9 +501,34 @@ async function changedFiles($: EngineInterface, setup: Setup): Promise<string> {
   return items.length === 0 ? setup.t.nothingChanged : items.join('\n')
 }
 
+/** `/workmap usage`: the context's fill, its categories, the rate-limit windows and the cost; a figure the engine lacks is left out. */
+async function usageLines($: EngineInterface, setup: Setup): Promise<string> {
+  const { t } = setup
+  const state = await read($, board)
+  const now = await $.clock.now()
+  const context = (await quietly(() => $.session.usage({ breakdown: 'summary' })))?.context
+  const percent = context?.percent ?? state.context
+  const breakdown = context?.breakdown
+  const window = breakdown === undefined ? 0 : breakdown.rawMaxTokens || breakdown.maxTokens
+  const lines = [
+    ...(percent === undefined ? [] : [t.usageContext(percent, context?.tokens, context?.window)]),
+    ...(breakdown?.categories ?? [])
+      .filter(category => category.kind !== 'deferred' && category.tokens > 0 && window > 0)
+      .map(category => `${category.name}: ${Math.max(1, Math.round((category.tokens / window) * 100))}%`),
+    ...(state.limits ?? []).map(({ kind, percent: used, resetsAt }) =>
+      [`${t.limitNames[kind]} ${Math.round(used)}%`, ...[untilText(resetsAt, now, t)].flatMap(until => (until === undefined ? [] : [t.resetsIn(until)]))].join(
+        ' · ',
+      ),
+    ),
+    ...[costText(state.cost)].flatMap(cost => (cost === undefined ? [] : [t.estimatedCost(cost)])),
+  ]
+  return lines.length === 0 ? t.usageNothing : lines.join('\n')
+}
+
 /** `/lot-map` and `/workmap`: the pane, or in Windows Terminal the window; `window` asks for the window anywhere. */
 async function runCommand($: EngineInterface, args: string, setup: Setup, opening: Opening): Promise<{ text: string }> {
   if (args.trim() === 'changed') return { text: await changedFiles($, setup) }
+  if (args.trim() === 'usage') return { text: await usageLines($, setup) }
   if (args.trim() === 'help') return { text: setup.t.legend.join('\n') }
   if (args.trim() === 'window') return { text: (await openWindow($, setup)).text }
   if (windowed.isMap) return { text: await showWindow($, setup, opening) }
@@ -559,8 +586,8 @@ export const register: Register = (on, options) => {
 
   on('session.start', async ($, e, next) => {
     // Two names for one command: lot-map, as the plugin is called, and workmap.
-    await quietly(() => $.command.register({ name: 'lot-map', description: t.command, argumentHint: '[window | help | changed]' }))
-    await quietly(() => $.command.register({ name: 'workmap', description: t.command, argumentHint: '[window | help | changed]' }))
+    await quietly(() => $.command.register({ name: 'lot-map', description: t.command, argumentHint: '[window | help | changed | usage]' }))
+    await quietly(() => $.command.register({ name: 'workmap', description: t.command, argumentHint: '[window | help | changed | usage]' }))
     picture.canShow = setup.terminalMap && setup.terminalPicture === 'auto' && (await quietly(() => showsPictures($))) === true
     windowed.isAsked = false
     // A -p run or the SDK draws nowhere (surface null): no window.
@@ -883,6 +910,12 @@ export const register: Register = (on, options) => {
   // Without session.compact the mark of a compaction is a sharp fall of the context between two measurements.
   on('session.measure', async ($, e, next) => {
     await quietly(async () => {
+      // The windows and the cost the engine has, whatever guardedHooks is; one it lacks is left out.
+      const limits: NonNullable<Board['limits']> = []
+      for (const { kind, percentUsed, resetsAt } of e.rateLimits) {
+        if (kind === 'five_hour' || kind === 'seven_day') limits.push({ kind, percent: percentUsed, ...(resetsAt === undefined ? {} : { resetsAt }) })
+      }
+      await update($, board, b => ({ ...b, limits: limits.length > 0 ? limits : undefined, cost: e.cost?.usd }))
       const percent = e.context.percent
       if (typeof percent !== 'number') return
       const fell = lastContext !== undefined && lastContext - percent >= 30

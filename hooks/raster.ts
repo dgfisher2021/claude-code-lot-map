@@ -18,6 +18,7 @@ import {
   TRAIL_HOLD_MS,
   W,
   aside,
+  costText,
   edge,
   endsOf,
   indexOf,
@@ -615,6 +616,13 @@ export function paintMap(board: Board, now: number, setup: Setup, columns: numbe
     cv.ring(core, r, 2.2, full >= 90 ? c.red : full >= 70 ? c.accent : c.ash, 1, full / 100)
     say(middle - 1, `${full}%`, c.dim)
   }
+  // The rate-limit windows as thin arcs outside it.
+  for (const { kind, percent } of board.limits ?? []) {
+    const used = clamp(Math.round(percent), 0, 100)
+    const r = CORE + Math.max(kind === 'five_hour' ? 9 : 12, (kind === 'five_hour' ? 3 : 4.4) / s)
+    cv.ring(core, r, 1.2, c.line, 0.5)
+    cv.ring(core, r, 1.2, used >= 90 ? c.red : used >= 70 ? c.accent : c.ash, 1, used / 100)
+  }
 
   const switchAge = board.switchedAt === undefined ? Infinity : now - board.switchedAt
   const isSwitching = switchAge >= 0 && switchAge < SWITCH_MS
@@ -628,6 +636,9 @@ export function paintMap(board: Board, now: number, setup: Setup, columns: numbe
     setup.t.states[state],
     { idle: c.dim, thinking: c.bone, running: c.hot, waiting: isDim ? c.dim : c.accent, compacting: c.mem, done: c.ash }[state],
   )
+  // The cost on the row under it, where that row still lies within the core's reach.
+  const spent = costText(board.cost)
+  if (spent !== undefined && ((middle + 3.5) * PY - cv.oy) / s - CY < CORE + 8) say(middle + 3, spent, c.dim)
 
   // A changed model rings at the core and at its station for a few seconds.
   if (isSwitching) {

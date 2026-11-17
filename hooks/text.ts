@@ -1,6 +1,20 @@
 // Every word the map shows, in each language it speaks.
 // A new language is one more table here and one more value of `language` in plugin.json.
-import type { StationId } from '../types'
+import type { LimitKind, StationId } from '../types'
+
+/** 74000 as `74k`, 1500000 as `1.5M`. */
+const tokensShort = (n: number): string => (n >= 1_000_000 ? `${Math.round(n / 100_000) / 10}M` : n >= 1000 ? `${Math.round(n / 1000)}k` : String(n))
+
+/** The window words of a language, the hover title and the reset phrase built from its parts. */
+const limits = (
+  limitNames: Record<LimitKind, string>,
+  title: (name: string, percent: number) => string,
+  resetsIn: (until: string) => string,
+): Pick<Strings, 'limitNames' | 'limitTitle' | 'resetsIn'> => ({
+  limitNames,
+  resetsIn,
+  limitTitle: (kind, percent, until) => [title(limitNames[kind], percent), ...(until === undefined ? [] : [resetsIn(until)])].join(' · '),
+})
 
 export type Strings = {
   title: string
@@ -35,7 +49,7 @@ export type Strings = {
   idle: string
   /** The word under the core: what the session is doing. Fourteen characters at most. */
   states: { idle: string; thinking: string; running: string; waiting: string; compacting: string; done: string }
-  /** `/workmap help`, and `?` in the window: what the map's marks mean. Thirteen lines. */
+  /** `/workmap help`, and `?` in the window: what the map's marks mean. Fourteen lines. */
   legend: string[]
   /** A station's title, for hovering in the app: its calls, its errors and its refusals. */
   callsHere: (n: number) => string
@@ -78,6 +92,16 @@ export type Strings = {
   planHeader: (done: number, total: number) => string
   planCalls: (n: number) => string
   turnHeader: (n: number, time: string, calls: number, errors: number) => string
+  /** The rate-limit windows: their short names, the arc's hover title and the time until a reset. */
+  limitNames: Record<LimitKind, string>
+  limitTitle: (kind: LimitKind, percent: number, resetsIn?: string) => string
+  resetsIn: (until: string) => string
+  /** A time of an hour or more: whole hours and minutes. */
+  hoursMinutes: (h: number, m: number) => string
+  /** /workmap usage: the context's fill and, when known, its tokens of the window; the cost, an estimate; nothing to show. */
+  usageContext: (percent: number, tokens?: number, window?: number) => string
+  estimatedCost: (cost: string) => string
+  usageNothing: string
 }
 
 const en: Strings = {
@@ -135,6 +159,7 @@ const en: Strings = {
     'Turn header, bold: your message, its time, calls and errors. Earlier turns fold to their headers.',
     '✎ Files changed this session, by name, most edited first; ×N is how many times.',
     'Amber ring and line: a command failing over and over, a call far past its usual time, a quiet turn.',
+    'Rings around the centre: context, then the five-hour and weekly limits (red from 90); $ is the cost so far.',
   ],
   callsHere: n => `${n} ${n === 1 ? 'call' : 'calls'} this session`,
   errorsHere: n => `${n} ${n === 1 ? 'error' : 'errors'} since your last message`,
@@ -170,6 +195,16 @@ const en: Strings = {
   failedInARow: (s, l, n) => `Failing again and again: ${s} ${l} · ${n} times in a row`,
   runningLong: (s, l, e, u) => `${s} ${l} has run ${e}, usually ${u}`,
   quietFor: m => `Nothing has happened for ${m} min`,
+  ...limits(
+    { five_hour: 'Five-hour', seven_day: 'Weekly' },
+    (name, p) => `${name} limit: ${p}% used`,
+    until => `resets in ${until}`,
+  ),
+  hoursMinutes: (h, m) => `${h} h ${m} min`,
+  usageContext: (percent, tokens, window) =>
+    `Context: ${percent}%${tokens === undefined || window === undefined ? '' : ` · ${tokensShort(tokens)} of ${tokensShort(window)} tokens`}`,
+  estimatedCost: cost => `Cost so far, an estimate: ${cost}`,
+  usageNothing: 'The engine has no usage figures yet.',
 }
 
 const ru: Strings = {
@@ -227,6 +262,7 @@ const ru: Strings = {
     'Заголовок хода, жирным: твоё сообщение, время, вызовы и ошибки. Прошлые ходы свёрнуты до заголовков.',
     '✎ Файлы, изменённые за сессию, по имени, чаще правленные первыми; ×N — сколько раз.',
     'Янтарное кольцо и строка: команда падает снова и снова, вызов затянулся, ход затих.',
+    'Кольца вокруг центра: контекст, затем пятичасовой и недельный лимиты (красный от 90); $ — стоимость.',
   ],
   callsHere: n => `вызовов за сессию: ${n}`,
   errorsHere: n => `ошибок с последнего сообщения: ${n}`,
@@ -261,6 +297,16 @@ const ru: Strings = {
   failedInARow: (s, l, n) => `Снова и снова падает: ${s} ${l} · ${n} раз подряд`,
   runningLong: (s, l, e, u) => `${s} ${l} идёт уже ${e}, обычно ${u}`,
   quietFor: m => `Ничего не происходит уже ${m} мин`,
+  ...limits(
+    { five_hour: 'Пятичасовой', seven_day: 'Недельный' },
+    (name, p) => `${name} лимит: использовано ${p}%`,
+    until => `сброс через ${until}`,
+  ),
+  hoursMinutes: (h, m) => `${h} ч ${m} мин`,
+  usageContext: (percent, tokens, window) =>
+    `Контекст: ${percent}%${tokens === undefined || window === undefined ? '' : ` · ${tokensShort(tokens)} из ${tokensShort(window)} токенов`}`,
+  estimatedCost: cost => `Стоимость пока, оценка: ${cost}`,
+  usageNothing: 'Данных об использовании у движка пока нет.',
 }
 
 const es: Strings = {
@@ -318,6 +364,7 @@ const es: Strings = {
     'Encabezado de turno, en negrita: tu mensaje, su tiempo, llamadas y errores. Los turnos previos se pliegan.',
     '✎ Archivos cambiados en la sesión, por nombre, los más editados primero; ×N son las veces.',
     'Anillo y línea ámbar: un comando que falla sin parar, una llamada muy lenta, un turno en silencio.',
+    'Anillos junto al centro: contexto, luego límites de cinco horas y semanal (rojo desde 90); $ es el coste.',
   ],
   callsHere: n => `${n} llamadas en esta sesión`,
   errorsHere: n => `${n} errores desde tu último mensaje`,
@@ -355,6 +402,16 @@ const es: Strings = {
   failedInARow: (s, l, n) => `Falla una y otra vez: ${s} ${l} · ${n} veces seguidas`,
   runningLong: (s, l, e, u) => `${s} ${l} lleva ${e}, suele tardar ${u}`,
   quietFor: m => `No pasa nada desde hace ${m} min`,
+  ...limits(
+    { five_hour: 'De cinco horas', seven_day: 'Semanal' },
+    (name, p) => `Límite ${name.toLowerCase()}: ${p}% usado`,
+    until => `se restablece en ${until}`,
+  ),
+  hoursMinutes: (h, m) => `${h} h ${m} min`,
+  usageContext: (percent, tokens, window) =>
+    `Contexto: ${percent}%${tokens === undefined || window === undefined ? '' : ` · ${tokensShort(tokens)} de ${tokensShort(window)} tokens`}`,
+  estimatedCost: cost => `Coste hasta ahora, una estimación: ${cost}`,
+  usageNothing: 'El motor aún no tiene cifras de uso.',
 }
 
 const fr: Strings = {
@@ -412,6 +469,7 @@ const fr: Strings = {
     'En-tête de tour, en gras : votre message, sa durée, appels et erreurs. Les tours passés se replient.',
     '✎ Fichiers modifiés dans la session, par nom, les plus modifiés d’abord ; ×N est le nombre de fois.',
     'Anneau et ligne ambre : une commande qui échoue sans cesse, un appel trop long, un tour silencieux.',
+    'Anneaux autour du centre : contexte, limites de cinq heures et hebdo (rouge dès 90) ; $ : le coût.',
   ],
   callsHere: n => `${n} appels pendant la session`,
   errorsHere: n => `${n} erreurs depuis votre dernier message`,
@@ -449,6 +507,16 @@ const fr: Strings = {
   failedInARow: (s, l, n) => `Échoue encore et encore : ${s} ${l} · ${n} fois de suite`,
   runningLong: (s, l, e, u) => `${s} ${l} dure depuis ${e}, d’ordinaire ${u}`,
   quietFor: m => `Rien ne se passe depuis ${m} min`,
+  ...limits(
+    { five_hour: 'De cinq heures', seven_day: 'Hebdomadaire' },
+    (name, p) => `Limite ${name.toLowerCase()} : ${p} % utilisé`,
+    until => `réinitialisation dans ${until}`,
+  ),
+  hoursMinutes: (h, m) => `${h} h ${m} min`,
+  usageContext: (percent, tokens, window) =>
+    `Contexte : ${percent} %${tokens === undefined || window === undefined ? '' : ` · ${tokensShort(tokens)} sur ${tokensShort(window)} tokens`}`,
+  estimatedCost: cost => `Coût jusqu'ici, une estimation : ${cost}`,
+  usageNothing: "Le moteur n'a pas encore de chiffres d'usage.",
 }
 
 const de: Strings = {
@@ -506,6 +574,7 @@ const de: Strings = {
     'Zugkopf, fett: deine Nachricht, seine Zeit, Aufrufe und Fehler. Frühere Züge schrumpfen auf ihren Kopf.',
     '✎ In der Sitzung geänderte Dateien nach Namen, meistbearbeitete zuerst; ×N ist die Anzahl.',
     'Bernsteinring und -zeile: Befehl scheitert immer wieder, Aufruf dauert zu lange, Zug ist still.',
+    'Ringe um die Mitte: Kontext, dann Fünf-Stunden- und Wochenlimit (rot ab 90); $ sind die Kosten.',
   ],
   callsHere: n => `${n} Aufrufe in dieser Sitzung`,
   errorsHere: n => `${n} Fehler seit deiner letzten Nachricht`,
@@ -541,6 +610,16 @@ const de: Strings = {
   failedInARow: (s, l, n) => `Scheitert immer wieder: ${s} ${l} · ${n} Mal hintereinander`,
   runningLong: (s, l, e, u) => `${s} ${l} läuft seit ${e}, sonst ${u}`,
   quietFor: m => `Seit ${m} Min. passiert nichts`,
+  ...limits(
+    { five_hour: 'Fünf-Stunden', seven_day: 'Wochen' },
+    (name, p) => `${name}-Limit: ${p} % verbraucht`,
+    until => `Reset in ${until}`,
+  ),
+  hoursMinutes: (h, m) => `${h} Std. ${m} Min.`,
+  usageContext: (percent, tokens, window) =>
+    `Kontext: ${percent} %${tokens === undefined || window === undefined ? '' : ` · ${tokensShort(tokens)} von ${tokensShort(window)} Tokens`}`,
+  estimatedCost: cost => `Kosten bisher, geschätzt: ${cost}`,
+  usageNothing: 'Die Engine hat noch keine Nutzungswerte.',
 }
 
 const it: Strings = {
@@ -598,6 +677,7 @@ const it: Strings = {
     'Intestazione del turno, in grassetto: il tuo messaggio, tempo, chiamate ed errori. I turni passati si piegano.',
     '✎ File modificati nella sessione, per nome, i più modificati prima; ×N è il numero di volte.',
     'Anello e riga ambra: un comando che fallisce di continuo, una chiamata troppo lunga, un turno in silenzio.',
+    'Anelli attorno al centro: contesto, poi limiti di cinque ore e settimanale (rosso da 90); $ è il costo.',
   ],
   callsHere: n => `${n} chiamate nella sessione`,
   errorsHere: n => `${n} errori dal tuo ultimo messaggio`,
@@ -635,6 +715,16 @@ const it: Strings = {
   failedInARow: (s, l, n) => `Fallisce di continuo: ${s} ${l} · ${n} volte di fila`,
   runningLong: (s, l, e, u) => `${s} ${l} va avanti da ${e}, di solito ${u}`,
   quietFor: m => `Non succede nulla da ${m} min`,
+  ...limits(
+    { five_hour: 'Di cinque ore', seven_day: 'Settimanale' },
+    (name, p) => `Limite ${name.toLowerCase()}: ${p}% usato`,
+    until => `si azzera tra ${until}`,
+  ),
+  hoursMinutes: (h, m) => `${h} h ${m} min`,
+  usageContext: (percent, tokens, window) =>
+    `Contesto: ${percent}%${tokens === undefined || window === undefined ? '' : ` · ${tokensShort(tokens)} su ${tokensShort(window)} token`}`,
+  estimatedCost: cost => `Costo finora, una stima: ${cost}`,
+  usageNothing: "Il motore non ha ancora dati d'uso.",
 }
 
 // European Portuguese.
@@ -693,6 +783,7 @@ const pt: Strings = {
     'Cabeçalho do turno, em negrito: tua mensagem, tempo, chamadas e erros. Turnos anteriores se recolhem.',
     '✎ Arquivos alterados na sessão, por nome, os mais editados primeiro; ×N é o número de vezes.',
     'Anel e linha âmbar: um comando que falha sem parar, uma chamada longa demais, um turno parado.',
+    'Anéis em volta do centro: contexto, depois limites de cinco horas e semanal (vermelho desde 90); $ é o custo.',
   ],
   callsHere: n => `${n} chamadas nesta sessão`,
   errorsHere: n => `${n} erros desde a tua última mensagem`,
@@ -730,6 +821,16 @@ const pt: Strings = {
   failedInARow: (s, l, n) => `Falha repetidas vezes: ${s} ${l} · ${n} vezes seguidas`,
   runningLong: (s, l, e, u) => `${s} ${l} roda há ${e}, costuma levar ${u}`,
   quietFor: m => `Nada acontece há ${m} min`,
+  ...limits(
+    { five_hour: 'De cinco horas', seven_day: 'Semanal' },
+    (name, p) => `Limite ${name.toLowerCase()}: ${p}% usado`,
+    until => `reinicia em ${until}`,
+  ),
+  hoursMinutes: (h, m) => `${h} h ${m} min`,
+  usageContext: (percent, tokens, window) =>
+    `Contexto: ${percent}%${tokens === undefined || window === undefined ? '' : ` · ${tokensShort(tokens)} de ${tokensShort(window)} tokens`}`,
+  estimatedCost: cost => `Custo até agora, uma estimativa: ${cost}`,
+  usageNothing: 'O motor ainda não tem números de uso.',
 }
 
 const TABLES = new Map<unknown, Strings>([['en', en], ['ru', ru], ['es', es], ['fr', fr], ['de', de], ['it', it], ['pt', pt]])
