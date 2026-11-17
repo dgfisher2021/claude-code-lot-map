@@ -468,6 +468,31 @@ test('a refused call never shows a reason', { options: { ...OWN, errorReasons: t
   await ui.unmount()
 })
 
+test('a call refused at the permission prompt never shows a reason', { options: { ...OWN, errorReasons: true } }, async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  const held = askedCall(on)
+  const calling = $.tool.call(SHELL)
+  await clock.settle()
+  await held.ask($)
+  held.release({ text: 'denied: sk-private' })
+  await calling
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  const row = (await ui.find({ type: 'Text', text: /Build it/ }))?.text ?? ''
+  expect(row).toMatch(/^⊘ /)
+  expect(row).not.toContain('—')
+  await ui.unmount()
+})
+
+test("a subagent's failed call shows its reason after its name and label", { options: { errorReasons: true } }, async ($, on) => {
+  mock.clock(on, { now: NOW })
+  on('agent.spawn', () => ({ model: 'claude-haiku-5-5', agentId: 'a1' }) as never)
+  on('tool.call', () => failing('Exit code 1\nnpm ERR! test failed') as never)
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await $.agent.spawn({ prompt: 'Find the auth code.', description: 'explore auth' } as never)
+  await $.tool.call({ tool: 'Bash', command: 'npm test', description: 'Run the tests', agentId: 'a1' } as never)
+  expect((await ui.find({ type: 'Text', text: /Run the tests/ }))?.text).toMatch(/^✕ Shell +↳ explore auth · Run the tests {2}exit 1 — npm ERR! test failed/)
+  await ui.unmount()
+})
 
 test('memory a hook adds shows as numbers, never as its text', { options: OWN }, async ($, on) => {
   on('clock.now', () => ({ value: 1_000_000 }))

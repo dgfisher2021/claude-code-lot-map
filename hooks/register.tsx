@@ -980,7 +980,7 @@ export const register: Register = (on, options) => {
       // With errorReasons on, a failed call also keeps the first line of its error, cleaned and cut; a shell's exit line is no reason.
       const failed = !wasRefused && ran.isError === true
       const body = String(ran.text ?? '').replace(/^\s*(?:Error: )?Exit code \d{1,3}\b[^\n]*\n?/, '')
-      const reason = setup.errorReasons && failed ? clean(firstLine(body, 72), 72) || undefined : undefined
+      const reason = setup.errorReasons && failed ? body.split('\n').map(line => clean(line, 72)).find(line => line !== '') : undefined
       await finish($, id, wasRefused ? 'block' : ran.isError === true ? 'err' : 'ok', undefined, code === undefined ? undefined : Number(code), reason)
       return ran
     } catch (failure) {
