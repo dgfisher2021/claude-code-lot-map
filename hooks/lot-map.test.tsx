@@ -2983,15 +2983,24 @@ test('a loop warns only while it goes on', () => {
   expect(warningsOf({ entries: sub, counts: {}, phase: 'thinking', agents: ['a'] }, 5000, t)).toHaveLength(1)
 })
 
-/** A folder of sessions' status files, as the engine's fs sees it: file name to its text. */
-function fakeSessionFolder(on: On, files: Record<string, string>, mtimes: Record<string, number> = {}): void {
-  on('fs.list', () => ({ value: Object.keys(files).map(name => ({ name, kind: 'file', size: 1, mtimeMs: mtimes[name] ?? 0, isLink: false })) }) as never)
+/** A folder of sessions' status files, as the engine's fs sees it: file name to its text. Answers the folders listed. */
+function fakeSessionFolder(on: On, files: Record<string, string>, mtimes: Record<string, number> = {}): string[] {
+  const listed: string[] = []
+  on('fs.list', (_, e) => {
+    listed.push(e.path)
+    return { value: Object.keys(files).map(name => ({ name, kind: 'file', size: 1, mtimeMs: mtimes[name] ?? 0, isLink: false })) } as never
+  })
   on('fs.read', (_, e) => ({ value: files[e.path.split('/').at(-1) ?? ''] ?? '' }) as never)
+  return listed
 }
+
+/** The person's own runtime folder, where the sessions' status files go. */
+const RUNTIME = { XDG_RUNTIME_DIR: '/run/user/1000', HOME: '/home/u' }
+const SESSIONS = '/run/user/1000/lot-map-sessions'
 
 test('each session writes its status for the overview, and takes it away when it ends', async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
-  mock.env(on, { TMPDIR: '/tmp' })
+  mock.env(on, { ...RUNTIME, TMPDIR: '/tmp' })
   const runs = fakeHost(on)
   const written: { path: string; text: string }[] = []
   on('fs.write', (_, e) => {
@@ -3009,16 +3018,18 @@ test('each session writes its status for the overview, and takes it away when it
     'young-2.json': JSON.stringify({ updatedAt: NOW - 1000 }),
     'notes.txt': JSON.stringify({ updatedAt: 0 }),
   })
-  const file = '/tmp/lot-map-sessions/abc-123.json'
+  const file = `${SESSIONS}/abc-123.json`
   const mine = () => written.filter(w => w.path === file).map(w => JSON.parse(w.text))
 
   await $.session.start({ cwd: '/home/u/projects/lot-map', surface: 'terminal', isInteractive: true })
+  // The folder is made the person's alone before anything is written to it.
+  expect(runs[0]).toEqual(['mkdir', '-p', '-m', '700', '--', SESSIONS])
   await clock.advance(1000)
   expect(mine().length).toBe(1)
   expect(mine()[0]).toMatchObject({ name: 'lot-map', state: 'idle', word: 'idle', startedAt: NOW, fault: false })
   expect(typeof mine()[0].now).toBe('string')
   // A session killed without an end leaves a file; an hour on, the next start takes it away, and nothing else.
-  expect(runs.filter(argv => argv[0] === 'rm')).toEqual([['rm', '-f', '--', '/tmp/lot-map-sessions/old-1.json']])
+  expect(runs.filter(argv => argv[0] === 'rm')).toEqual([['rm', '-f', '--', `${SESSIONS}/old-1.json`]])
 
   // Unchanged, it is written again only for the heartbeat, every five seconds.
   await clock.advance(3000)
@@ -3031,7 +3042,9 @@ test('each session writes its status for the overview, and takes it away when it
   await clock.advance(1000)
   expect(mine().at(-1)).toMatchObject({ state: 'thinking', word: 'thinking' })
 
+  // A /clear and a /resume go on in the same process: the file stays.
   await $.session.end({ reason: 'clear' } as never)
+  await $.session.end({ reason: 'resume' } as never)
   expect(runs.filter(argv => argv[0] === 'rm').length).toBe(1)
   await $.session.end({ reason: 'other' } as never)
   expect(runs.at(-1)).toEqual(['rm', '-f', '--', file])
@@ -3042,7 +3055,7 @@ test('each session writes its status for the overview, and takes it away when it
 
 test('a run with no surface writes no status', async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
-  mock.env(on, { TMPDIR: '/tmp' })
+  mock.env(on, RUNTIME)
   fakeHost(on)
   const written: string[] = []
   on('fs.write', (_, e) => {
@@ -3059,14 +3072,14 @@ test('a run with no surface writes no status', async ($, on) => {
 
 test('/workmap all outside Windows Terminal answers the tiles as text, waiting first', async ($, on) => {
   mock.clock(on, { now: NOW })
-  mock.env(on, { TMPDIR: '/tmp' })
+  mock.env(on, RUNTIME)
   const runs = fakeHost(on)
   on('fs.write', () => ({ value: undefined }))
   // The top line as the session writes it: the context is the tile's own figure, so it is not in the words.
   const said = (board: Board) => describeNow(board, stringsFor('en'), NOW, false).text
   const tile = (name: string, state: string, word: string, now: string, ago: number) =>
     JSON.stringify({ name, state, word, now, context: 42, startedAt: NOW - 125_000, updatedAt: NOW - ago })
-  fakeSessionFolder(on, {
+  const listed = fakeSessionFolder(on, {
     'a-1.json': tile('zeta', 'running', 'running', 'Shell: make', 1000),
     'b-2.json': tile('beta', 'idle', 'idle', said({ entries: [], counts: {}, context: 42 }), 2000),
     'c-3.json': tile('omega', 'waiting', 'needs you', 'Needs you: permission', 3000),
@@ -3082,11 +3095,12 @@ test('/workmap all outside Windows Terminal answers the tiles as text, waiting f
   expect(lines[3]).toBe('beta  idle  Nothing is running.  42%  2 min 5 s')
   expect(describeNow({ entries: [], counts: {}, context: 42 }, stringsFor('en'), NOW).text).toContain('context 42%')
   expect(runs.some(argv => argv[0] === 'wt.exe')).toBe(false)
+  expect(listed).toEqual([SESSIONS])
 })
 
 test('/workmap all in Windows Terminal opens the overview window, with no Chromium', async ($, on) => {
   mock.clock(on, { now: NOW })
-  mock.env(on, { WSL_DISTRO_NAME: 'Ubuntu', TMPDIR: '/tmp' })
+  mock.env(on, { WSL_DISTRO_NAME: 'Ubuntu', WT_PROFILE_ID: '{51855cb2}', HOME: '/home/u', TMPDIR: '/tmp' })
   const runs = fakeHost(on)
   on('fs.write', () => ({ value: undefined }))
   fakeSessionFolder(on, {})
@@ -3095,12 +3109,46 @@ test('/workmap all in Windows Terminal opens the overview window, with no Chromi
   const wt = runs.find(argv => argv[0] === 'wt.exe') ?? []
   expect(wt.slice(0, 13)).toEqual(['wt.exe', '-w', '0', 'split-pane', '--vertical', '--size', '0.45', 'wsl.exe', '-d', 'Ubuntu', '--', 'env', '/usr/bin/node'])
   expect(wt[13]).toMatch(/\/renderer\/view\.mjs$/)
-  expect(wt.slice(14)).toEqual(['--all', '/tmp/lot-map-sessions'])
+  // Without XDG_RUNTIME_DIR the folder is in the person's own cache.
+  expect(wt.slice(14)).toEqual(['--all', '/home/u/.cache/lot-map/sessions'])
+})
+
+test('/workmap all from WSL outside Windows Terminal answers the tiles as text', async ($, on) => {
+  mock.clock(on, { now: NOW })
+  mock.env(on, { ...RUNTIME, WSL_DISTRO_NAME: 'Ubuntu' })
+  const runs = fakeHost(on)
+  on('fs.write', () => ({ value: undefined }))
+  fakeSessionFolder(on, { 'a-1.json': JSON.stringify({ name: 'zeta', state: 'idle', word: 'idle', now: 'x', startedAt: NOW, updatedAt: NOW }) })
+  expect((await $.command.run({ command: 'workmap', args: 'all' } as never)).text).toBe('zeta  idle  x  0 s')
+  expect(runs.some(argv => argv[0] === 'wt.exe')).toBe(false)
+})
+
+test('with neither XDG_RUNTIME_DIR nor HOME no status is written, and /workmap all has no session to show', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  mock.env(on, { TMPDIR: '/tmp', WSL_DISTRO_NAME: 'Ubuntu', WT_PROFILE_ID: '{51855cb2}' })
+  const runs = fakeHost(on)
+  const written: string[] = []
+  on('fs.write', (_, e) => {
+    written.push(e.path)
+    return { value: undefined }
+  })
+  on('session.id', () => ({ value: 'abc-123' }) as never)
+  on('command.register', () => ({ value: { command: 'lot-map' } }))
+  on('ui.open', () => ({ value: { isPlaced: true } }))
+  on('session.start', (_, e) => ({ cwd: e.cwd }))
+  const listed = fakeSessionFolder(on, {})
+  await $.session.start({ cwd: '/home/u/p', surface: 'terminal', isInteractive: true })
+  await clock.advance(6000)
+  expect(written).toEqual([])
+  expect((await $.command.run({ command: 'workmap', args: 'all' } as never)).text).toBe('No sessions to show.')
+  expect(listed).toEqual([])
+  expect(runs.some(argv => argv[0] === 'wt.exe' || argv[0] === 'mkdir')).toBe(false)
+  await $.session.end({ reason: 'other' } as never)
 })
 
 test('a corrupt file or one that fails does not stop the sweep, and an old corrupt file goes', async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
-  mock.env(on, { TMPDIR: '/tmp' })
+  mock.env(on, RUNTIME)
   const runs = fakeHost(on)
   on('fs.write', () => ({ value: undefined }))
   on('session.id', () => ({ value: 'abc-123' }) as never)
@@ -3122,7 +3170,7 @@ test('a corrupt file or one that fails does not stop the sweep, and an old corru
   await $.session.start({ cwd: '/home/u/p', surface: 'terminal', isInteractive: true })
   await clock.settle()
   const removed = runs.filter(argv => argv[0] === 'rm').map(argv => argv[3])
-  expect(removed.sort()).toEqual(['/tmp/lot-map-sessions/bad-old.json', '/tmp/lot-map-sessions/null-old.json', '/tmp/lot-map-sessions/stale-3.json'])
+  expect(removed.sort()).toEqual([`${SESSIONS}/bad-old.json`, `${SESSIONS}/null-old.json`, `${SESSIONS}/stale-3.json`])
   await $.session.end({ reason: 'other' } as never)
 })
 
@@ -3134,7 +3182,7 @@ test('a tile cannot drive the terminal: control characters are taken out of its 
 
 test('a status write still running when the session ends does not bring the file back', async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
-  mock.env(on, { TMPDIR: '/tmp' })
+  mock.env(on, RUNTIME)
   const runs = fakeHost(on)
   let release = () => {}
   const gate = new Promise<void>(resolve => (release = resolve))
@@ -3155,6 +3203,6 @@ test('a status write still running when the session ends does not bring the file
   release()
   await clock.advance(1000)
   // Every write that landed after the end was taken away again (the end itself had no file yet to remove).
-  const removals = runs.filter(argv => argv[0] === 'rm' && argv[3] === '/tmp/lot-map-sessions/abc-123.json').length
+  const removals = runs.filter(argv => argv[0] === 'rm' && argv[3] === `${SESSIONS}/abc-123.json`).length
   expect(removals).toBe(written.length)
 })
