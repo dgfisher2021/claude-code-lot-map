@@ -624,7 +624,7 @@ export function drawMap(board: Board, now: number, setup: Setup, isFilling = fal
     body +=
       `<circle ${arc} stroke="${c.line}" opacity=".5"/>` +
       `<circle ${arc} stroke="${used >= 90 ? c.red : used >= 70 ? c.accent : c.ash}" pathLength="100" stroke-dasharray="${used} 100" transform="rotate(-90 ${CX} ${CY})">` +
-      `<title>${escapeXml(setup.t.limitTitle(kind, percent, untilText(resetsAt, now, setup.t)))}</title></circle>`
+      `<title>${escapeXml(setup.t.limitTitle(kind, used, untilText(resetsAt, now, setup.t)))}</title></circle>`
   }
 
   const switchAge = board.switchedAt === undefined ? Infinity : now - board.switchedAt
