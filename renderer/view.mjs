@@ -96,7 +96,8 @@ function relayout() {
 }
 
 function hint() {
-  out.write(`\x1b[${size.rows};1H\x1b[2K\x1b[2mq closes · ? legend · m map/list\x1b[0m`)
+  // Cut to the width: a line wrapping off the last row would scroll the window.
+  out.write(`\x1b[${size.rows};1H\x1b[2K\x1b[2m${fitLine('q closes · ? legend · m map/list')}\x1b[0m`)
 }
 
 /** A line in the middle of the map's room, until the first picture covers it. */
@@ -231,7 +232,7 @@ renderer.on('exit', () => {
   if (isQuitting) return
   out.write(CLEAR)
   say(`The map cannot be drawn: ${failed || 'its renderer stopped'}.`)
-  out.write(`\x1b[${size.rows};1H\x1b[2mpress q to close this window\x1b[0m`)
+  out.write(`\x1b[${size.rows};1H\x1b[2m${fitLine('press q to close this window')}\x1b[0m`)
 })
 
 /** Draws the newest frame, unless one went out a moment ago or the terminal is still reading it: then it is drawn later. */

@@ -14,7 +14,8 @@ const MAP_MIN_ROWS = 12
  */
 export function layout({ cols, rows, cell, listRows, view }) {
   if (view === 'list') return { w: 0, h: 0, col: 0, mapRows: 0, listTop: 1, listRows: Math.max(0, rows - 1) }
-  const room = view === 'map' ? rows - 1 : Math.max(MAP_MIN_ROWS, Math.min(rows - 1, rows - 2 - listRows))
+  // Never past the hint's row: a picture taller than the window would scroll it with every frame.
+  const room = view === 'map' ? rows - 1 : Math.min(rows - 1, Math.max(MAP_MIN_ROWS, rows - 2 - listRows))
   const scale = Math.min((cols * cell.w) / MAP_W, (room * cell.h) / MAP_H)
   const w = Math.max(60, Math.floor(MAP_W * scale))
   const h = Math.max(56, Math.floor(MAP_H * scale))

@@ -60,6 +60,8 @@ export type Board = {
   switchedAt?: number
   /** Where the main loop's turn stands: thinking from the person's message, done at its end, compacting meanwhile. */
   phase?: 'thinking' | 'compacting' | 'done'
+  /** When the main loop's last turn gave its answer; cleared when the next one starts. */
+  answeredAt?: number
   /** Claude's own plan, as its task tools set it. */
   plan?: PlanItem[]
 }

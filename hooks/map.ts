@@ -972,11 +972,13 @@ export function formatClock(ms: number, t: Strings): string {
 /** Work sent to the background and still going, pinned above the rows: the newest five, each with its time so far. */
 export function pinnedLines(entries: readonly Entry[], now: number, t: Strings): FeedLine[] {
   const column = columnOf(t)
-  return entries
-    .filter(isPinned)
-    .reverse()
+  const going = entries.filter(isPinned).reverse()
+  const lines: FeedLine[] = going
     .slice(0, 5)
     .map(e => ({ line: `↻ ${t.stations[e.station].padEnd(column)} ${e.label}  ${formatClock(now - e.startedAt, t)}`, tone: 'run' as const }))
+  // The rest still go on: they are counted, since the rows leave them out.
+  if (going.length > 5) lines.push({ line: t.andMore(going.length - 5).trim(), tone: 'ok' })
+  return lines
 }
 
 /** The tools with which Claude keeps its own plan: their calls are no work done on a task. */
@@ -1029,12 +1031,17 @@ export function planAfter(
     )
   }
   if (tool === 'TodoWrite') {
-    // The whole list, written anew: a task kept under the same subject keeps the work counted against it.
+    // The whole list, written anew: a task kept under the same subject keeps the work counted against it, and its times.
     const todos = Array.isArray(input.todos) ? (input.todos as { content?: unknown; status?: unknown }[]) : []
     return todos.flatMap((todo, i) => {
       const subject = subjectOf(todo.content)
+      if (subject === '') return []
       const kept = plan.find(p => p.subject === subject)
-      return subject === '' ? [] : [{ ...kept, id: `t${i}`, subject, status: planStatusOf(todo.status) ?? 'pending', calls: kept?.calls ?? 0 }]
+      const status = planStatusOf(todo.status) ?? 'pending'
+      const startedAt = kept?.startedAt ?? (status === 'in_progress' ? now : undefined)
+      const endedAt = status !== 'completed' ? undefined : kept?.status === 'completed' ? kept.endedAt : now
+      const times = { ...(startedAt !== undefined ? { startedAt } : {}), ...(endedAt !== undefined ? { endedAt } : {}) }
+      return [{ id: `t${i}`, subject, status, calls: kept?.calls ?? 0, ...times }]
     })
   }
   return undefined
@@ -1114,7 +1121,10 @@ export type SessionState = keyof Strings['states']
 export function stateOf(board: Board): SessionState {
   if (board.entries.some(e => e.status === 'run' && e.waits === true)) return 'waiting'
   if (board.phase === 'compacting') return 'compacting'
-  if (board.entries.some(e => e.status === 'run' && e.task === undefined && e.station !== 'model' && e.station !== 'you')) return 'running'
+  // A foreground subagent keeps the main loop's own Agent call open; a background one's calls are not the turn's.
+  const isTurnWork = (e: Entry): boolean =>
+    e.status === 'run' && e.task === undefined && e.agentId === undefined && e.station !== 'model' && e.station !== 'you'
+  if (board.entries.some(isTurnWork)) return 'running'
   return board.phase ?? 'idle'
 }
 
@@ -1133,10 +1143,9 @@ export function describeNow(board: Board, t: Strings, now: number): NowLine {
     // A wait counts in seconds.
     return { text: `${t.waitingFor(wait.label, formatClock(now - wait.startedAt, t))}${context}`, tone: 'wait', next: 1000 - ((now - wait.startedAt) % 1000) }
   }
-  const answer = state === 'done' ? board.entries.findLast(e => e.mark === 'done') : undefined
-  if (answer !== undefined) {
+  if (state === 'done' && board.answeredAt !== undefined) {
     // The time since the answer counts in seconds for a minute, then in whole minutes.
-    const ms = Math.max(0, now - answer.startedAt)
+    const ms = Math.max(0, now - board.answeredAt)
     const s = Math.max(1, Math.floor(ms / 1000))
     const since = s < 60 ? t.seconds(String(s)) : t.wholeMinutes(Math.floor(s / 60))
     return { text: `${t.yourTurn(since)}${context}`, tone: 'done', next: s < 60 ? 1000 - (ms % 1000) : 60_000 - (ms % 60_000) }
