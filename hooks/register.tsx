@@ -485,16 +485,18 @@ async function openWindow($: EngineInterface, setup: Setup): Promise<{ isOpen: b
   return isOpen ? { isOpen: true, text: setup.t.windowOpened } : { isOpen: false, text: setup.t.windowByHand(command.join(' ')) }
 }
 
-/**
- * Whether the map is the window and not the pane: in Windows Terminal from WSL, where the pane can draw it only in
- * cells. A session in the background has the profile's id though not the tab's.
- */
-async function windowIsTheMap($: EngineInterface, setup: Setup): Promise<boolean> {
-  if (!setup.terminalMap || setup.terminalWindow === 'off' || picture.canShow === true) return false
+/** Whether the session runs from WSL in Windows Terminal. A session in the background has the profile's id though not the tab's. */
+async function inWindowsTerminal($: EngineInterface): Promise<boolean> {
   const distro = (await $.env.get('WSL_DISTRO_NAME')) ?? ''
   const tab = (await $.env.get('WT_SESSION')) ?? ''
   const profile = (await $.env.get('WT_PROFILE_ID')) ?? ''
   return distro !== '' && (tab !== '' || profile !== '')
+}
+
+/** Whether the map is the window and not the pane: in Windows Terminal from WSL, where the pane can draw it only in cells. */
+async function windowIsTheMap($: EngineInterface, setup: Setup): Promise<boolean> {
+  if (!setup.terminalMap || setup.terminalWindow === 'off' || picture.canShow === true) return false
+  return inWindowsTerminal($)
 }
 
 /**
@@ -566,11 +568,11 @@ async function stopSharing($: EngineInterface): Promise<void> {
 }
 
 /**
- * Every session in a terminal keeps a small status file in one folder, `lot-map-sessions`, so that `/workmap all` and
+ * Every session with a surface keeps a small status file in one folder of the person's own, so that `/workmap all` and
  * renderer/view.mjs --all can show them side by side. It is written when the status changes and every five seconds,
  * and goes with the session.
  */
-const overview: { timer?: Timer; cwd: string; startedAt: number; json: string; wroteAt: number; file?: string } = {
+const overview: { timer?: Timer; dir?: string; cwd: string; startedAt: number; json: string; wroteAt: number; file?: string } = {
   cwd: '',
   startedAt: 0,
   json: '',
@@ -585,17 +587,26 @@ const SESSION_GONE_MS = 3_600_000
 /** A status that has not changed is written again this often, so that its `updatedAt` shows the session lives. */
 const HEARTBEAT_MS = 5000
 
-async function sessionsDir($: EngineInterface): Promise<string> {
-  return `${await tmpDir($)}/lot-map-sessions`
+/**
+ * The status files' folder, the person's own: in XDG_RUNTIME_DIR, else in ~/.cache. With neither, as on Windows,
+ * there is none and no status is kept. A path that is not absolute counts as not set.
+ */
+async function sessionsDir($: EngineInterface): Promise<string | undefined> {
+  const runtime = (await $.env.get('XDG_RUNTIME_DIR')) ?? ''
+  if (runtime.startsWith('/')) return `${runtime}/lot-map-sessions`
+  const home = (await $.env.get('HOME')) ?? ''
+  return home.startsWith('/') ? `${home}/.cache/lot-map/sessions` : undefined
 }
 
 /** Writes the session's status when it has changed, and at least every five seconds. */
 async function writeStatus($: EngineInterface, setup: Setup): Promise<void> {
   await quietly(async () => {
+    const dir = overview.dir
+    if (dir === undefined) return
     const state = await read($, board)
     const now = await $.clock.now()
     const id = (await quietly(() => $.session.id())) ?? ''
-    const file = `${await sessionsDir($)}/${/^[\w-]+$/.test(id) ? id : fallbackId}.json`
+    const file = `${dir}/${/^[\w-]+$/.test(id) ? id : fallbackId}.json`
     // After a /clear the session goes on under another id: the old file goes.
     if (overview.file !== undefined && overview.file !== file) await quietly(() => $.process.run(['rm', '-f', '--', overview.file ?? '']))
     const status = stateOf(state)
@@ -622,7 +633,8 @@ async function writeStatus($: EngineInterface, setup: Setup): Promise<void> {
 /** Takes away the status files of sessions killed without an end: those not written for an hour, and no other file. */
 async function sweepSessions($: EngineInterface): Promise<void> {
   await quietly(async () => {
-    const dir = await sessionsDir($)
+    const dir = overview.dir
+    if (dir === undefined) return
     const now = await $.clock.now()
     for (const entry of await $.fs.list(dir)) {
       if (entry.kind !== 'file' || !/^[\w-]+\.json$/.test(entry.name)) continue
@@ -637,12 +649,17 @@ async function sweepSessions($: EngineInterface): Promise<void> {
   })
 }
 
-/** Starts keeping the status, once: from a session's start when it has a surface, else from the attach. */
+/** Starts keeping the status, once: from a session's start when it has a surface, else from the attach; never without a folder. */
 async function startStatus($: EngineInterface, setup: Setup, cwd?: string): Promise<void> {
   if (cwd !== undefined) overview.cwd = cwd
   if (overview.timer !== undefined) return
+  const dir = await sessionsDir($)
+  overview.dir = dir
+  if (dir === undefined) return
   overview.startedAt = await $.clock.now()
-  overview.timer = $.clock.every(1000, () => void writeStatus($, setup))
+  // The folder is made the person's alone before the first write; one already there keeps its mode.
+  await quietly(() => $.process.run(['mkdir', '-p', '-m', '700', '--', dir]))
+  if (overview.timer === undefined) overview.timer = $.clock.every(1000, () => void writeStatus($, setup))
 }
 
 /** Stops keeping the status and takes the file away. */
@@ -654,8 +671,8 @@ async function stopStatus($: EngineInterface): Promise<void> {
 }
 
 /** The tiles of the sessions that live, waiting first, as `/workmap all` answers them outside Windows Terminal. */
-async function overviewText($: EngineInterface, setup: Setup): Promise<string> {
-  const dir = await sessionsDir($)
+async function overviewText($: EngineInterface, setup: Setup, dir: string | undefined): Promise<string> {
+  if (dir === undefined) return setup.t.overviewNone
   const now = await $.clock.now()
   const entries = (await quietly(() => $.fs.list(dir))) ?? []
   const texts: string[] = []
@@ -669,8 +686,9 @@ async function overviewText($: EngineInterface, setup: Setup): Promise<string> {
 /** `/workmap all`: in Windows Terminal a window beside this one, running view.mjs --all; elsewhere the tiles as text. */
 async function showOverview($: EngineInterface, setup: Setup): Promise<string> {
   if (overview.timer !== undefined) await writeStatus($, setup)
-  if (((await $.env.get('WSL_DISTRO_NAME')) ?? '') === '') return overviewText($, setup)
-  const { isOpen, command } = await splitTab($, ['--all', await sessionsDir($)], false)
+  const dir = await sessionsDir($)
+  if (dir === undefined || !(await inWindowsTerminal($))) return overviewText($, setup, dir)
+  const { isOpen, command } = await splitTab($, ['--all', dir], false)
   return isOpen ? setup.t.overviewOpened : setup.t.windowByHand(command.join(' '))
 }
 
@@ -725,7 +743,7 @@ export const register: Register = (on, options) => {
     lastContext = undefined
     // A -p run or the SDK shows nowhere: it keeps no status.
     if (e.surface !== null) {
-      await startStatus($, setup, e.cwd)
+      await quietly(() => startStatus($, setup, e.cwd))
       void sweepSessions($)
     } else overview.cwd = e.cwd
     // With no surface attached yet an open has nowhere to go; session.attach opens the pane then. A roster that
@@ -743,7 +761,7 @@ export const register: Register = (on, options) => {
   on('session.attach', async ($, e, next) => {
     if (!windowed.isMap) windowed.isMap = e.surface === 'terminal' && (await quietly(() => windowIsTheMap($, setup))) === true
     if (!windowed.isMap) void quietly(() => $.ui.open(opening))
-    await startStatus($, setup)
+    await quietly(() => startStatus($, setup))
     return next(e)
   })
 
@@ -753,8 +771,8 @@ export const register: Register = (on, options) => {
   on('session.end', async ($, e, next) => {
     lastContext = undefined
     const result = await next(e)
-    // A /clear ends the conversation but not the process: the window stays for what comes next.
-    if (e.reason !== 'clear') {
+    // A /clear or a resume ends the conversation but not the process: the window and the status stay for what comes next.
+    if (e.reason !== 'clear' && e.reason !== 'resume') {
       await stopSharing($)
       await stopStatus($)
     }
