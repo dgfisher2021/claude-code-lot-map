@@ -52,6 +52,7 @@ export type Strings = {
   loadingTools: string
   questionForYou: string
   planForYou: string
+  permissionFor: (what: string) => string
   /** The top line while Claude waits on the person, and after an answer: what it waits for or since when, and how long. */
   waitingFor: (label: string, since: string) => string
   yourTurn: (since: string) => string
@@ -140,6 +141,7 @@ const en: Strings = {
   loadingTools: 'loading tools',
   questionForYou: 'question for you',
   planForYou: 'plan for your approval',
+  permissionFor: what => `permission for ${what}`,
   waitingFor: (label, since) => `Needs you: ${label} · ${since}`,
   yourTurn: since => `Done ${since} ago · your turn`,
   notifyWaiting: label => `Needs you: ${label}`,
@@ -221,6 +223,7 @@ const ru: Strings = {
   loadingTools: 'загрузка инструментов',
   questionForYou: 'вопрос тебе',
   planForYou: 'план на твоё одобрение',
+  permissionFor: what => `разрешение на ${what}`,
   waitingFor: (label, since) => `Ждёт тебя: ${label} · ${since}`,
   yourTurn: since => `Готово ${since} назад · твой ход`,
   notifyWaiting: label => `Ждёт тебя: ${label}`,
@@ -302,6 +305,7 @@ const es: Strings = {
   loadingTools: 'cargando herramientas',
   questionForYou: 'pregunta para ti',
   planForYou: 'plan para que lo apruebes',
+  permissionFor: what => `permiso para ${what}`,
   waitingFor: (label, since) => `Te espera: ${label} · ${since}`,
   yourTurn: since => `Listo hace ${since} · te toca`,
   notifyWaiting: label => `Te espera: ${label}`,
@@ -383,6 +387,7 @@ const fr: Strings = {
   loadingTools: 'chargement des outils',
   questionForYou: 'question pour vous',
   planForYou: 'plan à approuver',
+  permissionFor: what => `autorisation pour ${what}`,
   waitingFor: (label, since) => `Vous attend : ${label} · ${since}`,
   yourTurn: since => `Terminé il y a ${since} · à vous`,
   notifyWaiting: label => `Vous attend : ${label}`,
@@ -464,6 +469,7 @@ const de: Strings = {
   loadingTools: 'Werkzeuge werden geladen',
   questionForYou: 'Frage an dich',
   planForYou: 'Plan zur Freigabe',
+  permissionFor: what => `Freigabe für ${what}`,
   waitingFor: (label, since) => `Braucht dich: ${label} · ${since}`,
   yourTurn: since => `Fertig vor ${since} · du bist dran`,
   notifyWaiting: label => `Braucht dich: ${label}`,
@@ -545,6 +551,7 @@ const it: Strings = {
   loadingTools: 'caricamento strumenti',
   questionForYou: 'domanda per te',
   planForYou: 'piano da approvare',
+  permissionFor: what => `permesso per ${what}`,
   waitingFor: (label, since) => `Ti aspetta: ${label} · ${since}`,
   yourTurn: since => `Fatto ${since} fa · tocca a te`,
   notifyWaiting: label => `Ti aspetta: ${label}`,
@@ -627,6 +634,7 @@ const pt: Strings = {
   loadingTools: 'a carregar ferramentas',
   questionForYou: 'pergunta para ti',
   planForYou: 'plano para aprovares',
+  permissionFor: what => `permissão para ${what}`,
   waitingFor: (label, since) => `Espera por ti: ${label} · ${since}`,
   yourTurn: since => `Pronto há ${since} · é a tua vez`,
   notifyWaiting: label => `Espera por ti: ${label}`,

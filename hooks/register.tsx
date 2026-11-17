@@ -120,11 +120,18 @@ async function finish($: EngineInterface, id: string | undefined, status: Status
     const now = await $.clock.now()
     await update($, board, b => {
       const open = b.entries.find(e => e.id === id && e.status === 'run')
+      // An error after an ask nothing settled is a refusal: the person's no, or the mode's.
+      const refusal = open?.asks === true && status === 'err'
+      const closed = refusal ? 'block' : status
       return {
         ...b,
         ...patch,
-        entries: b.entries.map(e => (e === open ? { ...e, status, endedAt: now, ...(exit === undefined ? {} : { exit }) } : e)),
-        ...(open !== undefined ? tally(b, open.station, status, open.agentId) : {}),
+        entries: b.entries.map(e => {
+          if (e !== open) return e
+          const { asks, waits, ...rest } = e
+          return { ...rest, status: closed, endedAt: now, ...(exit === undefined || refusal ? {} : { exit }) }
+        }),
+        ...(open !== undefined ? tally(b, open.station, closed, open.agentId) : {}),
       }
     })
   })
@@ -149,6 +156,37 @@ async function settle($: EngineInterface, task: string, status: Status): Promise
         ...tally(b, open.station, status, open.agentId),
       }
     })
+  })
+}
+
+/** A permission prompt's row: its ask marked, or its ask and wait cleared. */
+async function askOn($: EngineInterface, calls: Map<string, string>, call: string | undefined, isAsked: boolean): Promise<void> {
+  await quietly(async () => {
+    const id = call === undefined ? undefined : calls.get(call)
+    if (id === undefined) return
+    await update($, board, b => ({
+      ...b,
+      entries: b.entries.map(e => {
+        if (e.id !== id || e.status !== 'run') return e
+        // A question or a plan already waits on the person, and the mode's ask is no news. Only a mode's ask is cleared.
+        if (isAsked) return e.waits === true ? e : { ...e, asks: true as const }
+        const { asks, waits, ...rest } = e
+        return e.asks === true ? rest : e
+      }),
+    }))
+  })
+}
+
+/** A second after the ask, a call nothing has settled waits on the person: the row waits, and a notification goes out once. */
+async function waitsOnYou($: EngineInterface, setup: Setup, calls: Map<string, string>, call: string): Promise<void> {
+  await quietly(async () => {
+    const id = calls.get(call)
+    const open = id === undefined ? undefined : (await read($, board)).entries.find(x => x.id === id && x.status === 'run' && x.asks === true)
+    if (open === undefined) return
+    await update($, board, b => ({ ...b, entries: b.entries.map(x => (x.id === open.id ? { ...x, waits: true as const } : x)) }))
+    const { t } = setup
+    if (setup.notify)
+      void quietly(() => $.ui.notify(t.notifyWaiting(t.permissionFor(`${t.stations[open.station]}: ${open.label}`)), { title: t.title, key: 'lot-map-wait' }))
   })
 }
 
@@ -455,6 +493,9 @@ export const register: Register = (on, options) => {
   // Loses nothing across a reload that matters: a reload never lands in the middle of a call.
   const refused = new Set<string>()
 
+  // A call's id to its row's, until the call answers: where a permission prompt finds its row.
+  const calls = new Map<string, string>()
+
   // The model the main loop last ran on: in this session, or else in the last session in this folder.
   // The one thing the map keeps between sessions, and only its name.
   let lastModel: string | undefined
@@ -628,6 +669,10 @@ export const register: Register = (on, options) => {
         ...(waits ? { waits: true as const } : {}),
       })
     })
+    if (id !== undefined && e.tool_use_id !== undefined) {
+      calls.set(e.tool_use_id, id)
+      keepNewest(calls, REFUSALS_KEPT)
+    }
     // A call other than the plan's own counts as work on the task in progress, a subagent's as well.
     if (!PLAN_TOOLS.has(String(e.tool))) {
       await quietly(() =>
@@ -663,7 +708,31 @@ export const register: Register = (on, options) => {
     } catch (failure) {
       await finish($, id, 'err')
       throw failure
+    } finally {
+      if (e.tool_use_id !== undefined) calls.delete(e.tool_use_id)
     }
+  })
+
+  // The mode put the call to a decider: a person's dialog, or auto mode's classifier. A second unsettled reads as needs you.
+  on('tool.check', async ($, e, next) => {
+    const verdict = await next(e)
+    if (verdict.decision === 'ask' && e.tool_use_id !== undefined) {
+      const call = e.tool_use_id
+      await askOn($, calls, call, true)
+      $.clock.after(1000, () => void waitsOnYou($, setup, calls, call))
+    }
+    return verdict
+  })
+
+  // The classifier decides at the judge, and a call that runs was allowed: neither waits on a person.
+  on('tool.judge', async ($, e, next) => {
+    await askOn($, calls, e.tool_use_id, false)
+    return next(e)
+  })
+
+  on('tool.run', async ($, e, next) => {
+    await askOn($, calls, e.tool_use_id, false)
+    return next(e)
   })
 
   // On a Team or Enterprise login a guard of the organisation's sends these five events on past every mod, with a
