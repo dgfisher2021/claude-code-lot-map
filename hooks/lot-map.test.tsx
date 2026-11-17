@@ -1642,12 +1642,22 @@ test("the count keeps the session's errors and shows what this turn added", asyn
   for (const command of ['make d', 'make e']) await $.tool.call({ tool: 'Bash', command, description: command } as never)
   const drawn = await svg()
   expect(drawn).toContain('5<tspan')
-  expect(drawn).toContain('+2')
+  // The turn's share is fainter than the count.
+  expect(drawn).toContain('<tspan fill-opacity="0.55"> +2</tspan>')
   expect(drawn).toContain('1✕')
   // The red badge went with the message; the session's error stayed.
   expect(drawn).not.toMatch(/r="7\.5" fill="#[0-9a-f]{6}"\/>/)
   expect(drawn).toContain('<title>Shell: 5 calls this session · 2 this turn · 1 error in this session</title>')
   await ui.unmount()
+})
+
+test('every legend line is short, and holds no control character', () => {
+  for (const language of ['en', 'ru', 'es', 'fr', 'de', 'it', 'pt']) {
+    for (const line of stringsFor(language).legend) {
+      expect(line.length).toBeLessThanOrEqual(110)
+      expect(/[\u0000-\u001f\u007f-\u009f]/.test(line)).toBe(false)
+    }
+  }
 })
 
 test('a first turn shows no +N, its count being all of it', () => {
