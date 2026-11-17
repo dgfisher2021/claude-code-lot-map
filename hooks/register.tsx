@@ -11,6 +11,7 @@ import {
   feedLines,
   firstLine,
   framedMap,
+  keepNewest,
   memoryIds,
   PLAN_TOOLS,
   pinnedLines,
@@ -28,6 +29,8 @@ const PANE = 'lot-map'
 /** The terminal map's Raster or Image, by the key a repaint names it with. */
 const MAP = 'map'
 const KEEP = 80
+/** How many refusals are remembered until their calls come by: a call that never comes would stay for the whole session. */
+const REFUSALS_KEPT = 64
 const CREW = 12
 
 // Change the tag when a field of Entry or Board changes: it declines what an earlier version stored.
@@ -220,14 +223,15 @@ const picture: {
   written: string
 } = { generation: 0, isRunning: false, isStopping: false, isRefused: false, isShown: false, written: '' }
 
-/** Whether the terminal draws an Image as a picture, as Claude Code decides it: kitty, Ghostty, iTerm2, or forced. */
+/** Whether the terminal draws an Image as a picture, as Claude Code decides it: kitty, Ghostty, or forced. Never iTerm2: it keeps every frame in memory. */
 async function showsPictures($: EngineInterface): Promise<boolean> {
+  const program = (await $.env.get('TERM_PROGRAM')) ?? ''
+  if (program === 'iTerm.app' || (await $.env.get('LC_TERMINAL')) === 'iTerm2') return false
   if ((await $.env.get('CLAUDE_CODE_FORCE_TERMINAL_IMAGES')) === '1') return true
   if (((await $.env.get('TMUX')) ?? '') !== '') return false
   const term = (await $.env.get('TERM')) ?? ''
-  const program = (await $.env.get('TERM_PROGRAM')) ?? ''
   const kitty = (await $.env.get('KITTY_WINDOW_ID')) ?? ''
-  return term === 'xterm-kitty' || term === 'xterm-ghostty' || program === 'ghostty' || program === 'iTerm.app' || kitty !== ''
+  return term === 'xterm-kitty' || term === 'xterm-ghostty' || program === 'ghostty' || kitty !== ''
 }
 
 const frameSource = (dir: string, generation: number) => ({ file: `${dir}/frame.png`, format: 'png' as const, generation })
@@ -663,7 +667,10 @@ export const register: Register = (on, options) => {
       const decided = await next(e)
       const endedAt = (await quietly(() => $.clock.now())) ?? startedAt
       if (decided.deny !== undefined) {
-        if (e.tool_use_id !== undefined) refused.add(e.tool_use_id)
+        if (e.tool_use_id !== undefined) {
+          refused.add(e.tool_use_id)
+          keepNewest(refused, REFUSALS_KEPT)
+        }
         await begin($, { station: 'hooks', label: (setup.hookReasons ? firstLine(decided.deny) : '') || t.stopped(e.tool), status: 'block', startedAt })
       } else if (decided.ask !== undefined) {
         await begin($, { station: 'hooks', label: t.askedPermission(e.tool), status: 'ok', startedAt, endedAt })
