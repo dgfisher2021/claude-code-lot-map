@@ -453,6 +453,8 @@ export const register: Register = (on, options) => {
   // The one thing the map keeps between sessions, and only its name.
   let lastModel: string | undefined
   let modelKey = 'model'
+  /** The context's fill at the last measurement; forgotten at a session's start and end, so a /clear marks nothing. */
+  let lastContext: number | undefined
 
   const opening = { id: PANE, title: t.title, ...(setup.terminalMap ? { columns: MAP_COLUMNS, rows: MAP_ROWS } : {}) }
 
@@ -464,7 +466,11 @@ export const register: Register = (on, options) => {
     windowed.isAsked = false
     // A -p run or the SDK draws nowhere (surface null): no window.
     windowed.isMap = e.surface === 'terminal' && (await quietly(() => windowIsTheMap($, setup))) === true
-    if (!windowed.isMap) void quietly(() => $.ui.open(opening))
+    lastContext = undefined
+    // With no surface attached yet an open has nowhere to go; session.attach opens the pane then. A roster that
+    // cannot be read is tried as before.
+    const surfaces = await quietly(() => $.session.surfaces())
+    if (!windowed.isMap && (surfaces === undefined || surfaces.length > 0)) void quietly(() => $.ui.open(opening))
     await quietly(async () => {
       modelKey = `model:${e.cwd}`
       const kept = await $.store.get(modelKey)
@@ -473,10 +479,17 @@ export const register: Register = (on, options) => {
     return next(e)
   })
 
+  on('session.attach', async ($, e, next) => {
+    if (!windowed.isMap) windowed.isMap = e.surface === 'terminal' && (await quietly(() => windowIsTheMap($, setup))) === true
+    if (!windowed.isMap) void quietly(() => $.ui.open(opening))
+    return next(e)
+  })
+
   on('command.run', { command: 'lot-map' }, ($, e) => runCommand($, e.args, setup, opening))
   on('command.run', { command: 'workmap' }, ($, e) => runCommand($, e.args, setup, opening))
 
   on('session.end', async ($, e, next) => {
+    lastContext = undefined
     const result = await next(e)
     // A /clear ends the conversation but not the process: the window stays for what comes next.
     if (e.reason !== 'clear') await stopSharing($)
@@ -642,21 +655,25 @@ export const register: Register = (on, options) => {
     }
   })
 
-  on('classic.PreToolUse', async ($, e, next) => {
-    const startedAt = (await quietly(() => $.clock.now())) ?? 0
-    const decided = await next(e)
-    const endedAt = (await quietly(() => $.clock.now())) ?? startedAt
-    if (decided.deny !== undefined) {
-      if (e.tool_use_id !== undefined) refused.add(e.tool_use_id)
-      await begin($, { station: 'hooks', label: (setup.hookReasons ? firstLine(decided.deny) : '') || t.stopped(e.tool), status: 'block', startedAt })
-    } else if (decided.ask !== undefined) {
-      await begin($, { station: 'hooks', label: t.askedPermission(e.tool), status: 'ok', startedAt, endedAt })
-    } else if (endedAt - startedAt >= 400) {
-      // A check that took a moment is worth seeing; the instant ones are not.
-      await begin($, { station: 'hooks', label: t.checkBefore(e.tool), status: 'ok', startedAt, endedAt })
-    }
-    return decided
-  })
+  // On a Team or Enterprise login a guard of the organisation's sends these five events on past every mod, with a
+  // notice in the transcript each time. With `guardedHooks` off the mod adds no hook on them.
+  if (setup.guardedHooks) {
+    on('classic.PreToolUse', async ($, e, next) => {
+      const startedAt = (await quietly(() => $.clock.now())) ?? 0
+      const decided = await next(e)
+      const endedAt = (await quietly(() => $.clock.now())) ?? startedAt
+      if (decided.deny !== undefined) {
+        if (e.tool_use_id !== undefined) refused.add(e.tool_use_id)
+        await begin($, { station: 'hooks', label: (setup.hookReasons ? firstLine(decided.deny) : '') || t.stopped(e.tool), status: 'block', startedAt })
+      } else if (decided.ask !== undefined) {
+        await begin($, { station: 'hooks', label: t.askedPermission(e.tool), status: 'ok', startedAt, endedAt })
+      } else if (endedAt - startedAt >= 400) {
+        // A check that took a moment is worth seeing; the instant ones are not.
+        await begin($, { station: 'hooks', label: t.checkBefore(e.tool), status: 'ok', startedAt, endedAt })
+      }
+      return decided
+    })
+  }
 
   // A notification delivered into a running turn starts no turn of its own; this is where it is seen.
   on('prompt.submit', async ($, e, next) => {
@@ -668,42 +685,56 @@ export const register: Register = (on, options) => {
     return next(e)
   })
 
-  on('classic.UserPromptSubmit', async ($, e, next) => {
-    const result = await next(e)
-    await noteContext($, result.additionalContext, t.toMessage, setup)
-    return result
-  })
-
-  on('classic.SessionStart', async ($, e, next) => {
-    const result = await next(e)
-    await noteContext($, result.additionalContext, t.atStart, setup)
-    return result
-  })
-
-  on('skill.prompt', async ($, e, next) => {
-    const result = await next(e)
-    // A skill the model called is already on the map as its tool call; this one catches a typed slash command.
-    await quietly(async () => {
-      const now = await $.clock.now()
-      await update($, board, b => {
-        const label = clean(e.skill)
-        if (b.entries.some(x => x.station === 'skills' && x.status === 'run' && x.label === label)) return b
-        const entry: Entry = { id: newId(now), station: 'skills', label, from: 'core', startedAt: now, endedAt: now, status: 'ok' }
-        return { ...b, entries: kept([...b.entries, entry]), counts: { ...b.counts, skills: (b.counts.skills ?? 0) + 1 } }
-      })
+  if (setup.guardedHooks) {
+    on('classic.UserPromptSubmit', async ($, e, next) => {
+      const result = await next(e)
+      await noteContext($, result.additionalContext, t.toMessage, setup)
+      return result
     })
-    return result
-  })
 
-  on('session.compact', async ($, e, next) => {
-    const before = (await quietly(() => read($, board)))?.phase
-    const id = await begin($, { station: 'model', label: t.compacting, patch: { phase: 'compacting' } })
-    try {
-      return await next(e)
-    } finally {
-      await finish($, id, 'ok', await contextOf($))
-      await quietly(() => update($, board, b => ({ ...b, phase: before })))
-    }
+    on('classic.SessionStart', async ($, e, next) => {
+      const result = await next(e)
+      await noteContext($, result.additionalContext, t.atStart, setup)
+      return result
+    })
+
+    on('skill.prompt', async ($, e, next) => {
+      const result = await next(e)
+      // A skill the model called is already on the map as its tool call; this one catches a typed slash command.
+      await quietly(async () => {
+        const now = await $.clock.now()
+        await update($, board, b => {
+          const label = clean(e.skill)
+          if (b.entries.some(x => x.station === 'skills' && x.status === 'run' && x.label === label)) return b
+          const entry: Entry = { id: newId(now), station: 'skills', label, from: 'core', startedAt: now, endedAt: now, status: 'ok' }
+          return { ...b, entries: kept([...b.entries, entry]), counts: { ...b.counts, skills: (b.counts.skills ?? 0) + 1 } }
+        })
+      })
+      return result
+    })
+
+    on('session.compact', async ($, e, next) => {
+      const before = (await quietly(() => read($, board)))?.phase
+      const id = await begin($, { station: 'model', label: t.compacting, patch: { phase: 'compacting' } })
+      try {
+        return await next(e)
+      } finally {
+        await finish($, id, 'ok', await contextOf($))
+        await quietly(() => update($, board, b => ({ ...b, phase: before })))
+      }
+    })
+  }
+
+  // Without session.compact the mark of a compaction is a sharp fall of the context between two measurements.
+  on('session.measure', async ($, e, next) => {
+    await quietly(async () => {
+      const percent = e.context.percent
+      if (typeof percent !== 'number') return
+      const fell = lastContext !== undefined && lastContext - percent >= 30
+      lastContext = percent
+      if (!setup.guardedHooks && fell) await begin($, { station: 'model', label: t.compacted, status: 'ok' })
+    })
+    return next(e)
   })
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {

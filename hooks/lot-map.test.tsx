@@ -1777,3 +1777,91 @@ test('a map the terminal no longer holds stops asking to be painted', async ($, 
   await clock.advance(30_000)
   expect(asked).toBe(settled)
 })
+
+test('guardedHooks is on unless switched off, in either spelling', () => {
+  expect(setupFrom({}).guardedHooks).toBe(true)
+  expect(setupFrom({ guardedHooks: 'nonsense' }).guardedHooks).toBe(true)
+  expect(setupFrom({ guardedHooks: false }).guardedHooks).toBe(false)
+  expect(setupFrom({ guardedHooks: 'false' }).guardedHooks).toBe(false)
+})
+
+test('with guardedHooks off no hook of the five leaves a row, and a refused call reads as failed', { options: { ...OWN, guardedHooks: false } }, async ($, on) => {
+  on('clock.now', () => ({ value: 1_000_000 }))
+  on('classic.PreToolUse', () => ({ deny: 'JUDGE: found key sk-private\nCommand: secret' }))
+  on('classic.UserPromptSubmit', () => ({ additionalContext: ['• [#1971 excerpt] тайный текст записи'] }))
+  on('classic.SessionStart', () => ({ additionalContext: ['• [#277 excerpt] ещё'] }))
+  on('skill.prompt', (_, e) => ({ text: e.text }) as never)
+  on('session.compact', () => ({ skip: 'test' }) as never)
+  on('tool.call', () => ({ result: {} }))
+  let kept: Board = { entries: [], counts: {} }
+  on('state.set', ((_: unknown, e: { value?: { value?: Board } }, next: (e: unknown) => unknown) => ((kept = e.value?.value ?? kept), next(e))) as never)
+
+  await $.classic.SessionStart({ source: 'startup' } as never)
+  await $.classic.UserPromptSubmit({ prompt: 'привет', permission_mode: 'default' } as never)
+  await $.skill.prompt({ skill: 'deploy', text: '' } as never)
+  await $.session.compact({ trigger: 'manual', messages: [{ role: 'user', text: 'kept', toolUses: [] }] } as never)
+  await $.tool.call({ tool: 'Bash', command: 'git status', description: 'Показать статус' })
+
+  // Without its hook on classic.PreToolUse the mod cannot tell a refusal from an error.
+  expect(kept.entries.filter(e => e.station === 'shell').map(e => e.status)).toEqual(['err'])
+
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  expect((await ui.find({ type: 'Text', text: /Показать статус/ }))?.text).toMatch(/^✕ /)
+  expect(await ui.find({ type: 'Text', text: /Хуки|deploy|#1971|#277|JUDGE|sk-private/ })).toBeUndefined()
+  expect(await ui.find({ type: 'Text', text: new RegExp(SETUP.t.compacting) })).toBeUndefined()
+  await ui.unmount()
+})
+
+test('with guardedHooks off a sharp fall of the context marks a compaction, and a /clear does not', { options: { ...OWN, guardedHooks: false } }, async ($, on) => {
+  on('clock.now', () => ({ value: 1_000_000 }))
+  on('command.register', () => ({ value: { command: 'lot-map' } }))
+  on('ui.open', () => ({ value: { isPlaced: true } }))
+  on('session.start', (_, e) => ({ cwd: e.cwd }))
+  on('session.end', () => ({ sessionId: 'test' }))
+  on('session.measure', (_, e) => ({ changed: e.changed }))
+  let kept: Board = { entries: [], counts: {} }
+  on('state.set', ((_: unknown, e: { value?: { value?: Board } }, next: (e: unknown) => unknown) => ((kept = e.value?.value ?? kept), next(e))) as never)
+  const marks = () => kept.entries.filter(e => e.station === 'model' && e.label === SETUP.t.compacted)
+  const measure = (percent: number) => $.session.measure({ context: { percent }, rateLimits: [], changed: ['context'] } as never)
+
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await measure(80)
+  await measure(60)
+  expect(marks()).toHaveLength(0)
+  await measure(20)
+  expect(marks().map(e => e.status)).toEqual(['ok'])
+
+  await measure(80)
+  await $.session.end({ reason: 'clear' } as never)
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await measure(0)
+  expect(marks()).toHaveLength(1)
+})
+
+test('with guardedHooks on no row comes from session.measure', { options: OWN }, async ($, on) => {
+  on('clock.now', () => ({ value: 1_000_000 }))
+  on('session.measure', (_, e) => ({ changed: e.changed }))
+  let kept: Board = { entries: [], counts: {} }
+  on('state.set', ((_: unknown, e: { value?: { value?: Board } }, next: (e: unknown) => unknown) => ((kept = e.value?.value ?? kept), next(e))) as never)
+  await $.session.measure({ context: { percent: 80 }, rateLimits: [], changed: ['context'] } as never)
+  await $.session.measure({ context: { percent: 10 }, rateLimits: [], changed: ['context'] } as never)
+  expect(kept.entries.filter(e => e.label === SETUP.t.compacted)).toHaveLength(0)
+})
+
+test('a session that starts with no surface opens its pane when one attaches', async ($, on) => {
+  const opens: string[] = []
+  on('clock.now', () => ({ value: 1_000_000 }))
+  on('command.register', () => ({ value: { command: 'lot-map' } }))
+  on('session.surfaces', () => ({ value: [] }) as never)
+  on('ui.open', (_, e) => {
+    opens.push(e.id)
+    return { value: { isPlaced: true } }
+  })
+  on('session.start', (_, e) => ({ cwd: e.cwd }))
+  on('session.attach', (_, e) => ({ clientId: e.clientId }) as never)
+
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  expect(opens).toEqual([])
+  await $.session.attach({ surface: 'desktop', clientId: 'desktop:default' } as never)
+  expect(opens).toEqual(['lot-map'])
+})

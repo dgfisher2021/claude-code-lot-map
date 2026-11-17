@@ -38,6 +38,8 @@ export type Setup = {
   hookRecords: boolean
   /** Whether the first line of a hook's refusal is shown. Off, the row names only the tool. */
   hookReasons: boolean
+  /** Whether the mod listens to the five events an organisation's guard keeps a mod away from. Off, it adds no hook on them. */
+  guardedHooks: boolean
   theme: 'auto' | 'dark' | 'light'
   /** Whether the map paints its own ground, or leaves the surface it lies on showing through. */
   background: 'solid' | 'transparent'
@@ -77,6 +79,7 @@ export function setupFrom(options: Readonly<Record<string, unknown>> = {}): Setu
     memoryLabels,
     hookRecords: options.hookRecords === true,
     hookReasons: options.hookReasons === true,
+    guardedHooks: !(options.guardedHooks === false || options.guardedHooks === 'false'),
     theme: options.theme === 'dark' || options.theme === 'light' ? options.theme : 'auto',
     background: options.background === 'transparent' ? 'transparent' : 'solid',
     colors: colorsFrom(options.colors),

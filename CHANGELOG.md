@@ -2,6 +2,11 @@
 
 What changed in each version of lot-map, newest first. To get a new version, see [Updating](README.md#updating).
 
+## 0.11.0 (2026-11-17)
+
+- New option `guardedHooks`, on by default. On a Team or Enterprise login an organisation's guard skips five of the mod's hooks and the transcript gets a notice each time; turn it off and the mod adds no hook on them. The map then loses the Hooks station, the records a hook adds, the row of a typed slash command and the mark of a compaction, which it takes in its place from a sharp fall of the context (never at a `/clear`).
+- Fixed: where no surface is attached at the start, as in the desktop app, the pane is no longer opened into nothing; it opens when a surface attaches.
+
 ## 0.10.0 (2026-11-16)
 
 - `/workmap` is a second name for `/lot-map`: the same pane or window, and `/workmap window` as `/lot-map window`.
