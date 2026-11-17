@@ -197,18 +197,19 @@ const bare = (e: Entry): Entry => {
   return rest
 }
 
-/** A permission prompt's row: its ask marked, or its ask and wait cleared. */
+/** A permission prompt's row: its ask marked, or its ask and wait cleared and the moment it was allowed kept. */
 async function askOn($: EngineInterface, calls: Map<string, string>, call: string | undefined, isAsked: boolean): Promise<void> {
   await quietly(async () => {
     const id = call === undefined ? undefined : calls.get(call)
     if (id === undefined) return
+    const now = await $.clock.now()
     await update($, board, b => ({
       ...b,
       entries: b.entries.map(e => {
         if (e.id !== id || e.status !== 'run') return e
         // A question or a plan already waits on the person, and the mode's ask is no news. Only a mode's ask is cleared.
         if (isAsked) return e.waits === true ? e : { ...e, asks: true as const }
-        return e.asks === true ? bare(e) : e
+        return e.asks === true ? { ...bare(e), ranAt: now } : e
       }),
     }))
   })

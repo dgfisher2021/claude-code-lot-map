@@ -1455,6 +1455,30 @@ test('a call that ran after the ask and then failed stays an error', async ($, o
   await ui.unmount()
 })
 
+test('a call allowed after a long permission prompt runs long only from when it was allowed', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  const t = stringsFor('en')
+  const kept = keepBoard(on as never)
+  const held = askedCall(on)
+  for (const id of ['d1', 'd2', 'd3']) {
+    const done = $.tool.call({ tool: 'Bash', command: 'make lint', description: 'Lint', tool_use_id: id } as never)
+    await clock.advance(1000)
+    held.release()
+    await done
+  }
+  const calling = $.tool.call(SHELL)
+  await clock.settle()
+  await held.ask($)
+  await clock.advance(120_000)
+  await held.settle($)
+  const lines = () => warningsOf(kept.board, clock.now(), t).map(w => w.line)
+  expect(lines()).toEqual([])
+  await clock.advance(61_000)
+  expect(lines()).toEqual([t.runningLong('Shell', 'Build it', '1 min 1 s', '1.0 s')])
+  held.release()
+  await calling
+})
+
 test('a question or a plan for the person makes the session wait on them, and the top line says for how long', async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
   const held = heldTool(on)
@@ -2917,6 +2941,16 @@ test('background work and a wait on the person never warn', () => {
   // Finished background rows do not make the usual time.
   const slow = [0, 1, 2].map(i => call(`s${i}`, 'shell', 'dev', i, { endedAt: 600_000, task: 'x' }))
   expect(warningsOf({ entries: [...slow, call('r', 'shell', 'x', 0, { status: 'run' })], counts: {} }, 90_000, t)).toEqual([])
+})
+
+test("a call's usual time runs from when it was allowed, not from its permission prompt", () => {
+  const t = stringsFor('en')
+  // Each allowed after a two-minute prompt, then a second's work.
+  const done = [0, 1, 2].map(i => call(`d${i}`, 'shell', 'ls', i * 200_000, { ranAt: i * 200_000 + 120_000, endedAt: i * 200_000 + 121_000 }))
+  const now = 1_000_000
+  const running = (extra: Partial<Entry>) => ({ entries: [...done, call('r', 'shell', 'make build', now - 90_000, { status: 'run', ...extra })], counts: {} })
+  expect(warningsOf(running({}), now, t)).toEqual([{ station: 'shell', line: t.runningLong('Shell', 'make build', '1 min 30 s', '1.0 s') }])
+  expect(warningsOf(running({ ranAt: now - 30_000 }), now, t)).toEqual([])
 })
 
 test('a warned station wears its ring on the map', () => {

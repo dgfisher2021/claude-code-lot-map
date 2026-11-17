@@ -24,6 +24,8 @@ export type Entry = {
   waits?: true
   /** The mode asked about the call and nothing has settled it yet: a permission prompt may be open. */
   asks?: true
+  /** When the call was allowed after an ask: its running time counts from here. */
+  ranAt?: number
   /** A failed shell command's exit code: a number, nothing of its output. */
   exit?: number
   /** The person's message this call came under: the `n` of a `TurnSummary`. */
