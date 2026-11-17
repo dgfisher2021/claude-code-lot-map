@@ -13,6 +13,7 @@ import {
   PULSE_MS,
   RIPPLE_MS,
   STATIONS,
+  STILL_STEP_MS,
   SWITCH_MS,
   TRAIL_FADE_MS,
   TRAIL_HOLD_MS,
@@ -396,9 +397,9 @@ export function mapSize(bodyColumns: number, bodyRows: number, placement: 'dock'
   return rows >= 20 && bodyColumns >= columns + 32 ? { columns, rows, isBeside: true } : undefined
 }
 
-/** How soon the map wants its next frame: often while something flies, seldom while it only breathes; with reduced motion, always seldom. */
+/** How soon the map wants its next frame: often while something flies, seldom while it only breathes; with reduced motion, every five seconds at most. */
 export function paceOf(board: Board, now: number, setup: Setup): number {
-  if (setup.motion === 'reduced') return 250
+  if (setup.motion === 'reduced') return STILL_STEP_MS
   const { recent, flights, returns, beams, anyRunning } = motionOf(board, now)
   const done = recent.filter(e => e.mark === 'done').pop()
   const isSwitching = board.switchedAt !== undefined && now - board.switchedAt < SWITCH_MS
@@ -456,9 +457,11 @@ export function paintMap(board: Board, now: number, setup: Setup, columns: numbe
     const { running, isLit, isAlarm, fade, span } = states[i] ?? stationState(st.id, recent, board, now)
     const [main, hot] = st.id === 'memory' ? [c.mem, c.memHot] : [c.accent, c.hot]
     const color = isAlarm ? c.red : main
-    if (isLit || isAlarm) cv.disc(p, NODE + 10, color, running.length > 0 && !isAlarm ? 0.16 : 0.3 * (1 - fade / span))
+    if (isLit || isAlarm) cv.disc(p, NODE + 10, color, running.length > 0 && !isAlarm ? 0.16 : isStill ? 0.3 : 0.3 * (1 - fade / span))
     if (running.length > 0) {
-      const elapsed = now - Math.min(...running.map(e => e.startedAt))
+      const ran = now - Math.min(...running.map(e => e.startedAt))
+      // Standing still, the hands step every five seconds.
+      const elapsed = isStill ? ran - (ran % STILL_STEP_MS) : ran
       const beat = (elapsed % 1400) / 1400
       if (!isStill) cv.ring(p, NODE + 15 * beat, 1.3, color, 0.9 * (1 - beat))
       cv.ring(p, NODE + Math.max(4, 1.5 / s), 2.2, hot, 1, (elapsed % 60_000) / 60_000)
@@ -527,7 +530,7 @@ export function paintMap(board: Board, now: number, setup: Setup, columns: numbe
     cv.disc(p, NODE, c.raised)
     cv.ring(p, NODE, 1.2, c.line)
     if (running.length > 0) cv.ring(p, NODE, 1.2, color)
-    else if (isLit || isAlarm) cv.ring(p, NODE, 1.2, color, 1 - fade / span)
+    else if (isLit || isAlarm) cv.ring(p, NODE, 1.2, color, isStill ? 1 : 1 - fade / span)
 
     const sign = warned.has(st.id) ? c.accent : isAlarm ? c.red : isLit ? hot : st.id === 'memory' && count > 0 ? main : c.ash
     if (hasSigns) words.push({ col: Math.floor(colOf(p.x)), row: Math.floor(rowOf(p.y)), parts: [{ text: SIGNS[st.id], fg: sign }] })

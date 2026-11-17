@@ -3,7 +3,7 @@ import { expect, mock, test } from 'claude-code/testing'
 
 import type { Board } from '../types'
 import type { Entry, TurnSummary } from '../types'
-import { COLOR_NAMES, TRAIL_FADE_MS, TRAIL_HOLD_MS, changedLine, classify, clean, describeNow, drawMap, feedLines, firstLine, foldRows, formatMs, framedMap, keepNewest, memoryIds, motionOf, paletteOf, pinnedLines, routeOf, setupFrom, stateOf, taskNotice, taskOf, warningsOf } from './map'
+import { COLOR_NAMES, GLOW_MS, TRAIL_FADE_MS, TRAIL_HOLD_MS, changedLine, classify, clean, describeNow, drawMap, feedLines, firstLine, foldRows, formatMs, framedMap, keepNewest, memoryIds, motionOf, paletteOf, pinnedLines, routeOf, setupFrom, stateOf, stillChangeIn, taskNotice, taskOf, warningsOf } from './map'
 import { mapSize, paceOf, paintMap } from './raster'
 import { stringsFor } from './text'
 import { layout } from '../renderer/layout.mjs'
@@ -1200,8 +1200,8 @@ test('with motion reduced nothing on the map moves by itself', () => {
   expect(framedMap(board, NOW, still, 920, 860)).toContain('data-motion="reduced"')
   expect(framedMap(board, NOW, still, 920, 860)).not.toContain('data-running')
   expect(framedMap(board, NOW, setupFrom(), 920, 860)).toContain('data-running="1"')
-  expect(paceOf(board, NOW, still)).toBe(250)
-  expect(paceOf(BUSY, NOW, still)).toBe(250)
+  expect(paceOf(board, NOW, still)).toBe(5000)
+  expect(paceOf(BUSY, NOW, still)).toBe(5000)
   expect(paceOf(BUSY, NOW, setupFrom())).toBe(40)
   // Nothing flies in the cells either: no pulse, return or beam, and the picture differs from the full one.
   const flying: Board = { entries: [at('files', 300)], counts: { files: 1 } }
@@ -1212,13 +1212,31 @@ test('with motion reduced nothing on the map moves by itself', () => {
   expect(setupFrom({ motion: 'none' }).motion).toBe('full')
 })
 
+test('under reduced motion a mark is on or off, never faded, and the cells hold still within a step', () => {
+  const still = setupFrom({ motion: 'reduced' })
+  const ended: Board = { entries: [at('files', 1000)], counts: { files: 1 } }
+  const glow = /r="32" fill="#e1ac6e" opacity="\.3"\/>/
+  // A call ended a second ago: the glow is wholly on, and wholly gone once its span has passed.
+  expect(drawMap(ended, NOW, still)).toMatch(glow)
+  expect(drawMap(ended, NOW + 2000, still)).toMatch(glow)
+  expect(drawMap(ended, NOW + GLOW_MS, still)).not.toContain('r="32"')
+  expect(stillChangeIn(ended, NOW)).toBe(GLOW_MS - 800)
+  // A running call: its hands step every five seconds, so two paints within one step are the same.
+  const running: Board = { entries: [at('shell', 10_000, { status: 'run', endedAt: undefined })], counts: { shell: 1 } }
+  expect(paintMap(running, NOW, still, 60, 28)).toBe(paintMap(running, NOW + 3000, still, 60, 28))
+  expect(paintMap(running, NOW, still, 60, 28)).not.toBe(paintMap(running, NOW + 5000, still, 60, 28))
+  expect(drawMap(running, NOW, still)).toBe(drawMap(running, NOW + 3000, still))
+  expect(stillChangeIn(running, NOW)).toBe(5000)
+  expect(stillChangeIn({ entries: [], counts: {} }, NOW)).toBeUndefined()
+})
+
 test('the contrast theme meets its ratios', () => {
   const c = paletteOf(setupFrom({ theme: 'contrast' }))
   for (const name of ['text', 'label', 'accent', 'active', 'error'] as const) {
     const key = COLOR_NAMES[name] as keyof typeof c
     expect(contrast(c[key], c.ground)).toBeGreaterThanOrEqual(name === 'text' || name === 'label' ? 7 : 4.5)
   }
-  for (const key of ['mem', 'memHot', 'dim', 'trail'] as const) expect(contrast(c[key], c.ground)).toBeGreaterThanOrEqual(4.5)
+  for (const key of ['mem', 'memHot', 'dim', 'trail', 'line', 'spoke'] as const) expect(contrast(c[key], c.ground)).toBeGreaterThanOrEqual(4.5)
   // A colour of your own still wins, and no light rules ride along.
   expect(paletteOf(setupFrom({ theme: 'contrast', colors: 'accent=#ff0000' })).accent).toBe('#ff0000')
   expect(setupFrom({ theme: 'contrast' }).theme).toBe('contrast')

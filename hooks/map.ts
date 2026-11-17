@@ -180,7 +180,7 @@ const CONTRAST: Palette = {
   ground: '#000000',
   raised: '#0d0f14',
   line: '#8a909c',
-  spoke: '#3b404b',
+  spoke: '#7c828e',
   bone: '#ffffff',
   ash: '#e0e3e8',
   dim: '#b4b9c2',
@@ -240,6 +240,24 @@ function colorsFrom(v: unknown): Partial<Palette> {
     out[key] = hex.length === 4 ? `#${hex[1]}${hex[1]}${hex[2]}${hex[2]}${hex[3]}${hex[3]}` : hex
   }
   return out
+}
+
+/** With reduced motion the clock hands step this often, and the marks that fade switch off instead. */
+export const STILL_STEP_MS = 5000
+
+/** Under reduced motion, how long until the map next changes by itself: a lit mark going out, a trail leg going, a clock hand stepping. */
+export function stillChangeIn(board: Board, now: number): number | undefined {
+  const recent = board.entries.slice(-40)
+  const waits: number[] = []
+  for (const s of STATIONS) {
+    const { running, isLit, isAlarm, fade, span } = stationState(s.id, recent, board, now)
+    if (running.length > 0) {
+      const elapsed = now - Math.min(...running.map(e => e.startedAt))
+      waits.push(STILL_STEP_MS - (elapsed % STILL_STEP_MS))
+    } else if (isLit || isAlarm) waits.push(span - fade)
+  }
+  for (const leg of legsOf(recent, now)) if (leg.age < TRAIL_HOLD_MS) waits.push(TRAIL_HOLD_MS - leg.age)
+  return waits.length > 0 ? Math.max(1, Math.min(...waits)) : undefined
 }
 
 const FONT = 'font-family="SF Mono, ui-monospace, Menlo, monospace"'
@@ -471,7 +489,7 @@ function station(s: (typeof STATIONS)[number], i: number, { entries, board, now,
       running.length > 0 && !isAlarm
         ? `<circle cx="${x}" cy="${y}" r="${NODE + 10}" fill="${color}" opacity=".16"/>`
         : isStill
-          ? `<circle cx="${x}" cy="${y}" r="${NODE + 10}" fill="${color}" opacity="${n1(0.3 * (1 - fade / span))}"/>`
+          ? `<circle cx="${x}" cy="${y}" r="${NODE + 10}" fill="${color}" opacity=".3"/>`
           : `<circle cx="${x}" cy="${y}" r="${NODE + 10}" fill="${color}" opacity="0">` +
             `<animate attributeName="opacity" values=".3;0" begin="${clock(-fade)}" dur="${clock(span)}" fill="freeze"/></circle>`
   }
@@ -487,7 +505,9 @@ function station(s: (typeof STATIONS)[number], i: number, { entries, board, now,
     }
     // Two hands of a clock around the node: the inner one goes round in a minute, the outer one in ten.
     const hand = (r: number, width: number, lapMs: number, isOnce: boolean): string => {
-      const done = isOnce ? Math.min(elapsed, lapMs) : elapsed % lapMs
+      // Standing still, the hands step every five seconds.
+      const held = isStill ? elapsed - (elapsed % STILL_STEP_MS) : elapsed
+      const done = isOnce ? Math.min(held, lapMs) : held % lapMs
       const ring = `<circle cx="${x}" cy="${y}" r="${r}" fill="none" stroke="${hot}" stroke-width="${width}" pathLength="1" stroke-dasharray="1 1" transform="rotate(-90 ${x} ${y})"`
       if (isStill) return `${ring} stroke-dashoffset="${n1(1 - done / lapMs)}"/>`
       return `${ring} stroke-dashoffset="1"><animate attributeName="stroke-dashoffset" values="1;0" begin="${clock(-done)}" dur="${clock(lapMs)}" ${isOnce ? 'fill="freeze"' : 'repeatCount="indefinite"'}/></circle>`
@@ -502,7 +522,7 @@ function station(s: (typeof STATIONS)[number], i: number, { entries, board, now,
       ? `${lit}/>`
       : isLit || isAlarm
         ? isStill
-          ? `${lit} opacity="${n1(1 - fade / span)}"/>`
+          ? `${lit}/>`
           : `${lit} opacity="0"><animate attributeName="opacity" values="1;0" begin="${clock(-fade)}" dur="${clock(span)}" fill="freeze"/></circle>`
         : ''
   const glyphColor = isAlarm ? c.red : isLit ? hot : s.id === 'memory' && count > 0 ? main : c.ash
