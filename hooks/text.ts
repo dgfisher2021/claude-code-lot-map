@@ -70,6 +70,7 @@ export type Strings = {
   /** Claude's plan over the rows: how many of how many tasks are done, and the calls a finished task took. */
   planHeader: (done: number, total: number) => string
   planCalls: (n: number) => string
+  turnHeader: (n: number, time: string, calls: number, errors: number) => string
 }
 
 const en: Strings = {
@@ -124,6 +125,7 @@ const en: Strings = {
     'Rows: ● running · done ✕ failed ⊘ refused ◆ model change; +N folds repeats, exit N is a shell exit.',
     'Word under the centre: what the session is doing; needs you blinks.',
     'Red dot circling Agents: a subagent whose call failed or was refused.',
+    'Turn header, bold: your message, its time, calls and errors. Earlier turns fold to their headers.',
   ],
   callsHere: n => `${n} ${n === 1 ? 'call' : 'calls'} this session`,
   errorsHere: n => `${n} ${n === 1 ? 'error' : 'errors'} since your last message`,
@@ -132,6 +134,8 @@ const en: Strings = {
   errorsInSession: n => `${n} ${n === 1 ? 'error' : 'errors'} in this session`,
   planHeader: (done, total) => `Plan ${done}/${total}`,
   planCalls: n => `${n} ${n === 1 ? 'call' : 'calls'}`,
+  turnHeader: (n, time, calls, errors) =>
+    [`Turn ${n}`, time, `${calls} ${calls === 1 ? 'call' : 'calls'}`, ...(errors > 0 ? [`${errors} ${errors === 1 ? 'error' : 'errors'}`] : [])].join(' · '),
   context: 'context',
   andMore: n => ` and ${n} more`,
   webSearch: 'web search',
@@ -206,6 +210,7 @@ const ru: Strings = {
     'Строки: ● идёт · готово ✕ ошибка ⊘ отклонено ◆ смена модели; +N сворачивает повторы, код N — выход.',
     'Слово под центром: что делает сессия; «ждёт тебя» мигает.',
     'Красная точка у Агентов: субагент, чей вызов упал или был отклонён.',
+    'Заголовок запроса, жирным: твоё сообщение, время, вызовы и ошибки. Прошлые запросы свёрнуты до заголовков.',
   ],
   callsHere: n => `вызовов за сессию: ${n}`,
   errorsHere: n => `ошибок с последнего сообщения: ${n}`,
@@ -214,6 +219,7 @@ const ru: Strings = {
   errorsInSession: n => `ошибок за сессию: ${n}`,
   planHeader: (done, total) => `План ${done}/${total}`,
   planCalls: n => `вызовов: ${n}`,
+  turnHeader: (n, time, calls, errors) => [`Запрос ${n}`, time, `вызовов: ${calls}`, ...(errors > 0 ? [`ошибок: ${errors}`] : [])].join(' · '),
   context: 'контекст',
   andMore: n => ` и ещё ${n}`,
   webSearch: 'поиск в сети',
@@ -288,6 +294,7 @@ const es: Strings = {
     'Filas: ● en curso · hecho ✕ falló ⊘ rechazado ◆ cambio de modelo; +N agrupa repeticiones, exit N = salida.',
     'Palabra bajo el centro: lo que hace la sesión; «te espera» parpadea.',
     'Punto rojo en Agentes: un subagente con una llamada fallida o rechazada.',
+    'Encabezado de turno, en negrita: tu mensaje, su tiempo, llamadas y errores. Los turnos previos se pliegan.',
   ],
   callsHere: n => `${n} llamadas en esta sesión`,
   errorsHere: n => `${n} errores desde tu último mensaje`,
@@ -296,6 +303,10 @@ const es: Strings = {
   errorsInSession: n => `${n} errores en esta sesión`,
   planHeader: (done, total) => `Plan ${done}/${total}`,
   planCalls: n => `${n} llamadas`,
+  turnHeader: (n, time, calls, errors) =>
+    [`Turno ${n}`, time, `${calls} ${calls === 1 ? 'llamada' : 'llamadas'}`, ...(errors > 0 ? [`${errors} ${errors === 1 ? 'error' : 'errores'}`] : [])].join(
+      ' · ',
+    ),
   context: 'contexto',
   andMore: n => ` y ${n} más`,
   webSearch: 'búsqueda web',
@@ -370,6 +381,7 @@ const fr: Strings = {
     'Lignes : ● en cours · fait ✕ échec ⊘ refusé ◆ modèle changé ; +N regroupe les répétitions, exit N = code.',
     'Mot sous le centre : ce que fait la session ; « vous attend » clignote.',
     "Point rouge autour d'Agents : un sous-agent dont un appel a échoué ou a été refusé.",
+    'En-tête de tour, en gras : ton message, sa durée, appels et erreurs. Les tours passés se replient.',
   ],
   callsHere: n => `${n} appels pendant la session`,
   errorsHere: n => `${n} erreurs depuis votre dernier message`,
@@ -378,6 +390,10 @@ const fr: Strings = {
   errorsInSession: n => `${n} erreurs pendant la session`,
   planHeader: (done, total) => `Plan ${done}/${total}`,
   planCalls: n => `${n} appels`,
+  turnHeader: (n, time, calls, errors) =>
+    [`Tour ${n}`, time, `${calls} ${calls === 1 ? 'appel' : 'appels'}`, ...(errors > 0 ? [`${errors} ${errors === 1 ? 'erreur' : 'erreurs'}`] : [])].join(
+      ' · ',
+    ),
   context: 'contexte',
   andMore: n => ` et ${n} de plus`,
   webSearch: 'recherche web',
@@ -452,6 +468,7 @@ const de: Strings = {
     'Zeilen: ● läuft · fertig ✕ Fehler ⊘ abgelehnt ◆ Modellwechsel; +N fasst Wiederholungen, Code N = Exit-Code.',
     'Wort unter der Mitte: was die Sitzung gerade tut; „braucht dich“ blinkt.',
     'Roter Punkt bei Agenten: ein Subagent, dessen Aufruf fehlschlug oder abgelehnt wurde.',
+    'Rundenkopf, fett: deine Nachricht, ihre Zeit, Aufrufe und Fehler. Frühere Runden schrumpfen auf ihren Kopf.',
   ],
   callsHere: n => `${n} Aufrufe in dieser Sitzung`,
   errorsHere: n => `${n} Fehler seit deiner letzten Nachricht`,
@@ -460,6 +477,8 @@ const de: Strings = {
   errorsInSession: n => `${n} Fehler in dieser Sitzung`,
   planHeader: (done, total) => `Plan ${done}/${total}`,
   planCalls: n => `${n} Aufrufe`,
+  turnHeader: (n, time, calls, errors) =>
+    [`Runde ${n}`, time, `${calls} ${calls === 1 ? 'Aufruf' : 'Aufrufe'}`, ...(errors > 0 ? [`${errors} Fehler`] : [])].join(' · '),
   context: 'Kontext',
   andMore: n => ` und ${n} weitere`,
   webSearch: 'Websuche',
@@ -534,6 +553,7 @@ const it: Strings = {
     'Righe: ● in corso · fatto ✕ fallito ⊘ rifiutato ◆ cambio di modello; +N raggruppa i ripetuti, exit N = uscita.',
     'Parola sotto il centro: cosa sta facendo la sessione; «ti aspetta» lampeggia.',
     'Punto rosso su Agenti: un subagente con una chiamata fallita o rifiutata.',
+    'Intestazione del turno, in grassetto: il tuo messaggio, tempo, chiamate ed errori. I turni passati si piegano.',
   ],
   callsHere: n => `${n} chiamate nella sessione`,
   errorsHere: n => `${n} errori dal tuo ultimo messaggio`,
@@ -542,6 +562,10 @@ const it: Strings = {
   errorsInSession: n => `${n} errori nella sessione`,
   planHeader: (done, total) => `Piano ${done}/${total}`,
   planCalls: n => `${n} chiamate`,
+  turnHeader: (n, time, calls, errors) =>
+    [`Turno ${n}`, time, `${calls} ${calls === 1 ? 'chiamata' : 'chiamate'}`, ...(errors > 0 ? [`${errors} ${errors === 1 ? 'errore' : 'errori'}`] : [])].join(
+      ' · ',
+    ),
   context: 'contesto',
   andMore: n => ` e altri ${n}`,
   webSearch: 'ricerca web',
@@ -617,6 +641,7 @@ const pt: Strings = {
     'Linhas: ● em curso · feito ✕ falhou ⊘ recusado ◆ mudança de modelo; +N junta repetições, exit N = saída.',
     'Palavra sob o centro: o que a sessão está a fazer; «espera por ti» pisca.',
     'Ponto vermelho em Agentes: um subagente com uma chamada falhada ou recusada.',
+    'Cabeçalho do turno, em negrito: sua mensagem, tempo, chamadas e erros. Turnos anteriores se recolhem.',
   ],
   callsHere: n => `${n} chamadas nesta sessão`,
   errorsHere: n => `${n} erros desde a tua última mensagem`,
@@ -625,6 +650,10 @@ const pt: Strings = {
   errorsInSession: n => `${n} erros nesta sessão`,
   planHeader: (done, total) => `Plano ${done}/${total}`,
   planCalls: n => `${n} chamadas`,
+  turnHeader: (n, time, calls, errors) =>
+    [`Turno ${n}`, time, `${calls} ${calls === 1 ? 'chamada' : 'chamadas'}`, ...(errors > 0 ? [`${errors} ${errors === 1 ? 'erro' : 'erros'}`] : [])].join(
+      ' · ',
+    ),
   context: 'contexto',
   andMore: n => ` e mais ${n}`,
   webSearch: 'pesquisa na web',

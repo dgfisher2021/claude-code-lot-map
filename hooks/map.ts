@@ -1,6 +1,6 @@
 // What the map knows: which station an action belongs to, what to call it, and how to draw the board.
 // Nothing here touches the engine.
-import type { Board, Entry, PlanItem, StationId, Status } from '../types'
+import type { Board, Entry, PlanItem, StationId, Status, TurnSummary } from '../types'
 import { clean, formatMs, shortModel } from './classify'
 import { stringsFor } from './text'
 import type { Strings } from './text'
@@ -819,11 +819,49 @@ export function planLines(plan: readonly PlanItem[] = [], t: Strings): FeedLine[
 /** A row of the feed as written: at work, finished, gone wrong, refused, a change of model, or plain words. */
 export type FeedLine = { line: string; tone: 'run' | 'ok' | 'bad' | 'block' | 'switch' | 'plain'; isBold?: true }
 
-/** The feed's rows as the pane and the map window write them, the station names in a column as wide as the longest. */
-export function feedLines(entries: readonly Entry[], t: Strings, agentNames: Readonly<Record<string, string>> = {}): FeedLine[] {
-  const column = columnOf(t)
+/** The most lines the rows take, headers included. */
+const FEED_MAX = 16
+
+/** How many earlier turns keep a header. */
+const EARLIER = 4
+
+/**
+ * The feed's rows as the pane and the map window write them, the station names in a column as wide as the longest.
+ * With turns: the open turn's header, its rows, then the headers of up to four earlier turns, in 16 lines in all.
+ */
+export function feedLines(
+  entries: readonly Entry[],
+  t: Strings,
+  agentNames: Readonly<Record<string, string>> = {},
+  turns: readonly TurnSummary[] = [],
+): FeedLine[] {
+  const open = turns[turns.length - 1]
   // Work still going in the background is pinned above the rows, not listed among them.
-  return foldRows(entries.filter(e => !isPinned(e))).map(({ entry, times, tookMs }) => {
+  const shown = entries.filter(e => !isPinned(e))
+  if (open === undefined) return rowLines(foldRows(shown), t, agentNames)
+  const from = Math.max(0, turns.length - 1 - EARLIER)
+  // An entry with no turn goes with the open one.
+  const mine = shown.filter(e => e.turn === undefined || e.turn === open.n)
+  const newest = mine.reduce((m, e) => Math.max(m, e.endedAt ?? e.startedAt), open.startedAt)
+  const header = {
+    line: t.turnHeader(open.n, formatMs((open.endedAt ?? newest) - open.startedAt, t), open.calls, open.errors),
+    tone: 'plain' as const,
+    isBold: true as const,
+  }
+  const heads = turns
+    .slice(from, -1)
+    .map((x, i): FeedLine => {
+      // A turn never closed ran until the next began.
+      const end = x.endedAt ?? turns[from + i + 1]?.startedAt ?? x.startedAt
+      return { line: t.turnHeader(x.n, formatMs(end - x.startedAt, t), x.calls, x.errors), tone: 'ok' }
+    })
+    .reverse()
+  return [header, ...rowLines(foldRows(mine, FEED_MAX - 1 - heads.length), t, agentNames), ...heads]
+}
+
+function rowLines(rows: readonly Row[], t: Strings, agentNames: Readonly<Record<string, string>>): FeedLine[] {
+  const column = columnOf(t)
+  return rows.map(({ entry, times, tookMs }) => {
     const isSwitch = entry.mark === 'switch'
     const mark = isSwitch ? '◆' : entry.status === 'run' ? '●' : entry.status === 'ok' ? '·' : entry.status === 'block' ? '⊘' : '✕'
     const took = entry.endedAt === undefined ? t.running : tookMs > 0 ? formatMs(tookMs, t) : ''

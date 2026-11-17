@@ -26,7 +26,12 @@ export type Entry = {
   asks?: true
   /** A failed shell command's exit code: a number, nothing of its output. */
   exit?: number
+  /** The person's message this call came under: the `n` of a `TurnSummary`. */
+  turn?: number
 }
+
+/** One message of the person's and what followed it: when, how many calls counted, how many ended in error. */
+export type TurnSummary = { n: number; startedAt: number; endedAt?: number; calls: number; errors: number }
 
 /** A task of Claude's own plan: its subject as Claude wrote it, cut short, and the work done while it was in progress. */
 export type PlanItem = {
@@ -70,6 +75,8 @@ export type Board = {
   answeredAt?: number
   /** Claude's own plan, as its task tools set it. */
   plan?: PlanItem[]
+  /** The person's messages this session as turns, the last twelve; the newest is the open one. */
+  turns?: TurnSummary[]
 }
 
 declare module 'claude-code' {

@@ -2,7 +2,7 @@ import type { On } from 'claude-code'
 import { expect, mock, test } from 'claude-code/testing'
 
 import type { Board } from '../types'
-import type { Entry } from '../types'
+import type { Entry, TurnSummary } from '../types'
 import { COLOR_NAMES, TRAIL_FADE_MS, TRAIL_HOLD_MS, classify, clean, drawMap, feedLines, firstLine, foldRows, formatMs, keepNewest, memoryIds, pinnedLines, routeOf, setupFrom, stateOf, taskNotice, taskOf } from './map'
 import { mapSize, paceOf, paintMap } from './raster'
 import { stringsFor } from './text'
@@ -1821,7 +1821,7 @@ test("/workmap help and /lot-map help answer the legend in the session's languag
   expect(answer.split('\n')).toEqual(stringsFor('ru').legend)
   expect(answer).toContain('Память')
   expect((await $.command.run({ command: 'lot-map', args: 'help' } as never)).text).toBe(answer)
-  for (const language of ['en', 'ru', 'es', 'fr', 'de', 'it', 'pt']) expect(stringsFor(language).legend.length).toBe(10)
+  for (const language of ['en', 'ru', 'es', 'fr', 'de', 'it', 'pt']) expect(stringsFor(language).legend.length).toBe(11)
 })
 
 test("the count keeps the session's errors and shows what this turn added", async ($, on) => {
@@ -2591,3 +2591,62 @@ for (const [what, variables] of [
     await ui.unmount()
   })
 }
+
+test("the rows open with this turn's header and keep only headers of earlier turns", async ($, on) => {
+  mock.clock(on, { now: NOW })
+  on('turn.start', (_, e) => ({ turnId: e.turnId }) as never)
+  const answers: unknown[] = [{ result: {} }, { result: {}, isError: true, text: 'Exit code 1' }]
+  on('tool.call', () => (answers.shift() ?? { result: {} }) as never)
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  const text = async (pattern: RegExp) => (await ui.find({ type: 'Text', text: pattern }))?.text
+  await $.turn.start({ text: 'first', turnId: 't1' } as never)
+  for (const command of ['make a', 'make b', 'make c']) await $.tool.call({ tool: 'Bash', command, description: command } as never)
+  await $.turn.start({ text: 'second', turnId: 't2' } as never)
+  for (const file_path of ['/a/one.ts', '/a/two.ts']) await $.tool.call({ tool: 'Read', file_path } as never)
+  expect(await text(/^Turn 2 · /)).toMatch(/ · 2 calls$/)
+  expect(await text(/^Turn 1 · /)).toMatch(/ · 3 calls · 1 error$/)
+  expect((await ui.find({ type: 'Text', text: /^Turn 2 · / }))?.props.bold).toBe(true)
+  expect(await text(/two\.ts/)).toBeDefined()
+  expect(await text(/make [abc]/)).toBeUndefined()
+  await ui.unmount()
+})
+
+test("a turn a background task's notification starts opens no header", async ($, on) => {
+  mock.clock(on, { now: NOW })
+  on('turn.start', (_, e) => ({ turnId: e.turnId }) as never)
+  on('tool.call', () => ({ result: {} }) as never)
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  const text = async (pattern: RegExp) => (await ui.find({ type: 'Text', text: pattern }))?.text
+  await $.turn.start({ text: 'first', turnId: 't1' } as never)
+  await $.tool.call({ tool: 'Bash', command: 'make a', description: 'make a' } as never)
+  await $.turn.start({ text: NOTICE('b1', 'completed'), turnId: 't2' } as never)
+  await $.tool.call({ tool: 'Bash', command: 'make b', description: 'make b' } as never)
+  // Both calls count on the person's turn, which stays the open one with its rows.
+  expect(await text(/^Turn 1 · /)).toMatch(/ · 2 calls$/)
+  expect(await text(/^Turn 2/)).toBeUndefined()
+  expect(await text(/make b/)).toBeDefined()
+  await ui.unmount()
+})
+
+test('the open-turn header goes first and bold, then its rows, then the last four earlier headers, dim, in 16 lines', () => {
+  const t = stringsFor('en')
+  const turn = (n: number, more: Partial<TurnSummary> = {}): TurnSummary => ({ n, startedAt: n * 1000, endedAt: n * 1000 + 500, calls: n, errors: 0, ...more })
+  const turns = [1, 2, 3, 4, 5, 6, 7].map(n => turn(n))
+  const mine = Array.from({ length: 20 }, (_, i) => entry(i % 2 === 0 ? 'files' : 'shell', 7000 + i, { turn: 7, label: `row ${i}` }))
+  const old = entry('shell', 1500, { turn: 6, label: 'old row' })
+  const lines = feedLines([old, ...mine], t, {}, turns)
+  expect(lines.length).toBe(16)
+  expect(lines[0]).toMatchObject({ tone: 'plain', isBold: true })
+  expect(lines[0]?.line).toMatch(/^Turn 7 · .* · 7 calls$/)
+  expect(lines.slice(1, 12).every(l => /row \d+/.test(l.line))).toBe(true)
+  expect(lines.slice(12).map(l => l.line.split(' · ')[0])).toEqual(['Turn 6', 'Turn 5', 'Turn 4', 'Turn 3'])
+  expect(lines.slice(12).every(l => l.tone === 'ok' && l.isBold === undefined)).toBe(true)
+  expect(lines.some(l => l.line.includes('old row'))).toBe(false)
+  // An open turn's time runs to its newest call's end; a header names its errors only when there are some.
+  const two = [turn(1, { errors: 1, calls: 1 }), turn(2, { startedAt: 5000, endedAt: undefined })]
+  const open = feedLines([entry('files', 5000, { turn: 2, endedAt: 5300 })], t, {}, two)
+  expect(open[0]?.line).toBe('Turn 2 · 300 ms · 2 calls')
+  expect(open[2]?.line).toBe('Turn 1 · 500 ms · 1 call · 1 error')
+  // No turns: the rows are as before.
+  expect(feedLines(mine.slice(0, 2), t).map(l => l.isBold)).toEqual([undefined, undefined])
+})

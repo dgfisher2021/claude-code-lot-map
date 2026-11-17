@@ -176,7 +176,7 @@ function rows() {
     for (const { line, tone } of Array.isArray(feed.pinned) ? feed.pinned : []) lines.push(`${TONES[tone] ?? ''}${fitLine(String(line))}\x1b[0m`)
     const listed = Array.isArray(feed.rows) ? feed.rows : []
     if (listed.length === 0) lines.push(`\x1b[2m${fitLine(String(feed.empty ?? ''))}\x1b[0m`)
-    for (const { line, tone } of listed) lines.push(`${TONES[tone] ?? ''}${fitLine(String(line))}\x1b[0m`)
+    for (const { line, tone, isBold } of listed) lines.push(`${isBold === true ? '\x1b[1m' : ''}${TONES[tone] ?? ''}${fitLine(String(line))}\x1b[0m`)
   }
   let text = ''
   for (let i = 0; i < size.feedRows; i++) text += `\x1b[${size.feedTop + i};1H\x1b[2K${lines[i] ?? ''}`
