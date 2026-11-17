@@ -2650,3 +2650,18 @@ test('the open-turn header goes first and bold, then its rows, then the last fou
   // No turns: the rows are as before.
   expect(feedLines(mine.slice(0, 2), t).map(l => l.isBold)).toEqual([undefined, undefined])
 })
+
+test("a background task's failure counts on the turn that started it", async ($, on) => {
+  mock.clock(on, { now: NOW })
+  on('turn.start', (_, e) => ({ turnId: e.turnId }) as never)
+  on('tool.call', () => ({ result: { stdout: '', stderr: '', interrupted: false, backgroundTaskId: 'b2' } }) as never)
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  const text = async (pattern: RegExp) => (await ui.find({ type: 'Text', text: pattern }))?.text
+  await $.turn.start({ text: 'first', turnId: 't1' } as never)
+  await $.tool.call({ tool: 'Bash', command: 'make', description: 'make', run_in_background: true } as never)
+  await $.turn.start({ text: 'second', turnId: 't2' } as never)
+  await $.turn.start({ text: NOTICE('b2', 'failed'), turnId: 't3' } as never)
+  expect(await text(/^Turn 1 · /)).toMatch(/ · 1 call · 1 error$/)
+  expect(await text(/^Turn 2 · /)).toMatch(/ · 0 calls$/)
+  await ui.unmount()
+})
