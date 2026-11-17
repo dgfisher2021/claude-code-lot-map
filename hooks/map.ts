@@ -1011,17 +1011,17 @@ export function warningsOf(board: Board, now: number, t: Strings): Warning[] {
     if (streak >= LOOP_MIN) out.push({ station: last.station, line: t.failedInARow(t.stations[last.station], last.label, streak) })
   }
 
-  // A call far past its station's median.
+  // A call far past its station's median, each timed from when it was allowed to run.
   for (const e of own) {
     // A foreground subagent is work meant to run long.
     if (e.status !== 'run' || isPatient(e) || e.station === 'agents') continue
     const took = own
       .filter(x => x.station === e.station && x.endedAt !== undefined && (x.status === 'ok' || x.status === 'err') && x.task === undefined)
-      .map(x => (x.endedAt ?? x.startedAt) - x.startedAt)
+      .map(x => (x.endedAt ?? x.startedAt) - (x.ranAt ?? x.startedAt))
       .sort((a, b) => a - b)
     if (took.length < 3) continue
     const median = took[Math.floor(took.length / 2)] ?? 0
-    const elapsed = now - e.startedAt
+    const elapsed = now - (e.ranAt ?? e.startedAt)
     if (elapsed > LONG_MS && elapsed > LONG_TIMES * median) {
       out.push({ station: e.station, line: t.runningLong(t.stations[e.station], e.label, formatClock(elapsed, t), formatMs(median, t)) })
     }
