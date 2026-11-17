@@ -1865,3 +1865,383 @@ test('a session that starts with no surface opens its pane when one attaches', a
   await $.session.attach({ surface: 'desktop', clientId: 'desktop:default' } as never)
   expect(opens).toEqual(['lot-map'])
 })
+
+test('the browser reached from a cloud session lands on Browser, with a label like the local one', () => {
+  const seen = (tool: string, input: Record<string, unknown>) => classify(tool, input, STRANGER)
+  expect(seen('mcp__remote-devices__Claude_Browser__navigate', { url: 'https://user:private@a.b/x?q=1' })).toEqual({ station: 'browser', label: 'a.b' })
+  expect(seen('mcp__remote-devices__Claude_Browser__get_page_text', {})).toEqual({ station: 'browser', label: 'get page text' })
+  expect(seen('mcp__remote-devices__Claude_Browser__computer', { action: 'type', text: 'private' })).toEqual({ station: 'browser', label: 'computer' })
+  // Only the browser: the server's other tools stay where they were.
+  expect(seen('mcp__remote-devices__computer_screenshot', {}).station).toBe('web')
+})
+
+test('built-in tools land by what they are for, labelled by their name alone', () => {
+  // Every input carries words of its own: none of them may reach the label.
+  const content = {
+    subject: 'private',
+    description: 'private',
+    prompt: 'private',
+    plan: 'private',
+    query: 'private',
+    message: 'private',
+    uri: 'private',
+    server: 'private',
+  }
+  const seen = (tool: string) => {
+    const { station, label } = classify(tool, content, STRANGER)
+    return `${station} ${label}`
+  }
+
+  for (const tool of [
+    'TaskCreate',
+    'TaskUpdate',
+    'TaskList',
+    'TaskGet',
+    'TodoWrite',
+    'EnterPlanMode',
+    'PushNotification',
+    'ReportFindings',
+    'SendUserMessage',
+    'FetchInboxMessage',
+    'SendFeedback',
+    'ProposeGoal',
+    'propose_skills',
+    'WrapUp',
+    'ShowOnboardingRolePicker',
+    'OfferChromeSetup',
+    'ReadWidgetContext',
+    'EndConversation',
+  ])
+    expect(seen(tool)).toBe(`you ${tool}`)
+  // The fork's own: a plan for approval reads in words, not by the tool's name.
+  expect(seen('ExitPlanMode')).toBe(`you ${STRANGER.t.planForYou}`)
+
+  for (const tool of [
+    'CronCreate',
+    'CronDelete',
+    'CronList',
+    'ScheduleWakeup',
+    'RemoteTrigger',
+    'ListAgents',
+    'SubagentHandback',
+    'SendFile',
+    'Poll',
+    'Yield',
+    'ReadNotifications',
+  ])
+    expect(seen(tool)).toBe(`agents ${tool}`)
+
+  for (const tool of [
+    'ListSkills',
+    'SearchSkills',
+    'SuggestSkills',
+    'ListPlugins',
+    'SearchPlugins',
+    'SuggestPluginInstall',
+    'ListConnectors',
+    'SearchMcpRegistry',
+    'SuggestConnectors',
+    'WaitForMcpServers',
+  ])
+    expect(seen(tool)).toBe(`skills ${tool}`)
+
+  for (const tool of [
+    'ArtifactComments',
+    'ArtifactData',
+    'SendToProject',
+    'SendToProjectContext',
+    'Projects',
+    'ClaudeDesign',
+    'DesignSync',
+    'ShareOnboardingGuide',
+    'PublishPlugin',
+    'ListMcpResourcesTool',
+    'ReadMcpResourceTool',
+    'ReadMcpResourceDirTool',
+  ])
+    expect(seen(tool)).toBe(`web ${tool}`)
+
+  for (const tool of ['LSP']) expect(seen(tool)).toBe(`files ${tool}`)
+
+  // They work with git, or run code: Shell, as before.
+  for (const tool of ['EnterWorktree', 'ExitWorktree', 'REPL', 'AppifactRepl']) expect(seen(tool)).toBe(`shell ${tool}`)
+})
+
+test("an MCP server's resources are memory when the server is a memory server, and never show the resource's address", () => {
+  const seen = (tool: string, server: string, setup = STRANGER) => {
+    const { station, label } = classify(tool, { server, uri: 'file:///Users/a/private.md' }, setup)
+    return `${station} ${label}`
+  }
+  for (const tool of ['ListMcpResourcesTool', 'ReadMcpResourceTool', 'ReadMcpResourceDirTool']) {
+    expect(seen(tool, 'memory')).toBe(`memory ${tool}`)
+    expect(seen(tool, 'github')).toBe(`web ${tool}`)
+    // A server named in the person's options counts as theirs.
+    expect(seen(tool, 'recall', SETUP)).toBe(`memory ${tool}`)
+  }
+  // Listing every server's resources names none: the call is no memory call.
+  expect(classify('ListMcpResourcesTool', {}, STRANGER).station).toBe('web')
+})
+
+const stationOf = (command: string, tool = 'Bash') => classify(tool, { command }, STRANGER).station
+
+test('a command inside a loop, a condition, a group or a negation is still the command', () => {
+  expect(stationOf('for u in a b; do curl $u; done')).toBe('web')
+  expect(stationOf('if curl -sf x; then echo ok; fi')).toBe('web')
+  expect(stationOf('if test -f a; then echo ok; else wget x; fi')).toBe('web')
+  expect(stationOf('while ! curl -sf x; do sleep 1; done')).toBe('web')
+  expect(stationOf('until ping -c1 host; do sleep 1; done')).toBe('web')
+  expect(stationOf('! curl x')).toBe('web')
+  expect(stationOf('{ curl x; }')).toBe('web')
+  expect(stationOf('(cd /tmp && curl x)')).toBe('web')
+  // The words of the construct are no commands: a loop over files that only reads them is files.
+  expect(stationOf('for f in *.md; do cat $f; done')).toBe('files')
+  expect(stationOf('if grep -q x a.txt; then echo yes; fi')).toBe('files')
+  expect(stationOf('while read line; do echo $line; done')).toBe('shell')
+  expect(stationOf('for i in 1 2 3; do make test; done')).toBe('shell')
+  // A file named like a keyword is an argument, not a construct.
+  expect(stationOf('cat do then fi')).toBe('files')
+})
+
+test('a command handed to a shell, to eval or to watch is the command that counts', () => {
+  expect(stationOf('bash -c "curl https://x.y"')).toBe('web')
+  expect(stationOf("sh -c 'wget x'")).toBe('web')
+  expect(stationOf('zsh -lc "git fetch && make"')).toBe('web')
+  expect(stationOf('eval "curl x"')).toBe('web')
+  expect(stationOf('watch -n 5 curl x')).toBe('web')
+  expect(stationOf('find . -exec sh -c "curl x" ;')).toBe('web')
+  expect(stationOf('sudo bash -c "apt-get update && apt-get install -y jq"')).toBe('web')
+  expect(stationOf("bash -c 'cat a | sort'")).toBe('files')
+  expect(stationOf('bash -c "make build"')).toBe('shell')
+  // A script is not a command line: what it does is not read.
+  expect(stationOf('bash deploy.sh curl')).toBe('shell')
+  // Shells inside shells stop being read at some depth, and nothing breaks.
+  expect(stationOf(`bash -c "bash -c 'bash -c \\"bash -c curl\\"'"`)).not.toBe('files')
+})
+
+test('the text of a here-document is no command, whatever it says', () => {
+  expect(stationOf('cat <<EOF > f\ncurl x\nEOF')).toBe('files')
+  expect(stationOf("cat <<'EOF' > notes.md\nsome text\nwget y\nEOF")).toBe('files')
+  expect(stationOf('cat <<-EOF > f\n\tcurl x\n\tEOF')).toBe('files')
+  expect(stationOf('python3 - <<"PY"\nimport os\ncurl = 1\nPY')).toBe('shell')
+  // What follows the here-document is read again.
+  expect(stationOf('cat <<EOF > f\ntext\nEOF\ncurl x')).toBe('web')
+  expect(stationOf('cat <<A > a; cat <<B > b\none\nA\ncurl\nB\nls')).toBe('files')
+  // One that never ends is all text.
+  expect(stationOf('cat <<EOF > f\ncurl x')).toBe('files')
+  // A here-string is one word, and a shift is arithmetic.
+  expect(stationOf('grep x <<< "curl"')).toBe('files')
+  expect(stationOf('echo $((1 << 2)); curl x')).toBe('web')
+  // PowerShell has no here-documents of this kind.
+  expect(stationOf('Get-Content a.txt', 'PowerShell')).toBe('files')
+})
+
+test('a command line is read up to a length, and a long one costs no more than that', () => {
+  // Past the first eight thousand characters nothing is read: the label and the station come from what stands before.
+  const long = `ls ${'a'.repeat(9000)}; curl x`
+  expect(stationOf(long)).toBe('files')
+  expect(stationOf(`curl x; ls ${'a'.repeat(9000)}`)).toBe('web')
+  const pipes = 'x|'.repeat(100_000)
+  for (let i = 0; i < 3; i++) stationOf(pipes)
+  const t0 = performance.now()
+  stationOf(pipes)
+  const ms = performance.now() - t0
+  expect(ms).toBeLessThan(100)
+  const doc = `cat <<EOF > f\n${'line of text here\n'.repeat(11_000)}EOF\ncurl x`
+  for (let i = 0; i < 3; i++) stationOf(doc)
+  const t1 = performance.now()
+  // The command after a long here-document is still seen.
+  expect(stationOf(doc)).toBe('web')
+  const docMs = performance.now() - t1
+  expect(docMs).toBeLessThan(100)
+})
+
+test('more commands that reach the network are known by name or by subcommand', () => {
+  for (const c of [
+    'pip3.12 install x',
+    'pip3 download x',
+    'bun i',
+    'yarn',
+    'yarn --frozen-lockfile',
+    'git submodule update --init',
+    'git remote update',
+    'svn checkout u',
+    'hg clone u',
+    'kubectl get pods',
+    'aws s3 ls',
+    'gcloud auth list',
+    'az login',
+    'terraform apply',
+    'helm install x ./chart',
+    'nmap host',
+    'http GET x.y',
+    'openssl s_client -connect x:443',
+    'deno install',
+  ]) {
+    expect([c, stationOf(c)]).toEqual([c, 'web'])
+  }
+  // The same programs at work on what is already here stay on Shell.
+  for (const c of [
+    'yarn build',
+    'git submodule status',
+    'git remote -v',
+    'terraform fmt',
+    'helm template .',
+    'openssl sha256 a.bin',
+    'deno run a.ts',
+    'svn status',
+    'bunx cowsay',
+    'npx cowsay',
+  ]) {
+    expect([c, stationOf(c)]).toEqual([c, 'shell'])
+  }
+})
+
+test('serverStations puts a server on each station the person may name, and the row still reads server: tool', () => {
+  const put = (station: string) => setupFrom({ serverStations: [`srv=${station}`] })
+  for (const station of ['files', 'shell', 'web', 'browser', 'agents', 'skills', 'you']) {
+    expect(classify('mcp__srv__list_things', { query: 'private' }, put(station))).toEqual({ station, label: 'srv: list things' })
+  }
+  // A string works as well as a list, and the other servers stay where they were.
+  const two = setupFrom({ serverStations: 'srv=files, other = skills' })
+  expect(classify('mcp__srv__read', {}, two).station).toBe('files')
+  expect(classify('mcp__other__read', {}, two).station).toBe('skills')
+  expect(classify('mcp__third__read', {}, two).station).toBe('web')
+  // What the person sets wins over the mod's own route for a server it knows.
+  expect(classify('mcp__Claude_Browser__navigate', { url: 'https://a.b/c' }, setupFrom({ serverStations: ['Claude_Browser=web'] }))).toEqual({
+    station: 'web',
+    label: 'Claude_Browser: navigate',
+  })
+  // The server's resources follow it.
+  expect(classify('ReadMcpResourceTool', { server: 'srv', uri: 'private://x' }, put('files'))).toEqual({ station: 'files', label: 'ReadMcpResourceTool' })
+})
+
+test('serverStations ignores an entry whose station is unknown, or is memory, the model or hooks', () => {
+  const odd = setupFrom({ serverStations: ['a=nowhere', 'b=memory', 'c=model', 'd=hooks', 'e=', '=files', 'no-equals', 'f=files'] })
+  expect([...odd.serverStations]).toEqual([['f', 'files']])
+  expect(classify('mcp__a__x', {}, odd).station).toBe('web')
+  expect(classify('mcp__b__x', {}, odd).station).toBe('web')
+  expect(setupFrom({}).serverStations.size).toBe(0)
+  expect(setupFrom({ serverStations: 7 }).serverStations.size).toBe(0)
+})
+
+test('a server named in memoryServers and in serverStations goes to Memory', () => {
+  const both = setupFrom({ memoryServers: ['recall'], serverStations: ['recall=files'] })
+  expect(classify('mcp__recall__search', {}, both)).toEqual({ station: 'memory', label: 'search' })
+  expect(classify('ReadMcpResourceTool', { server: 'recall' }, both).station).toBe('memory')
+})
+
+test('what parts two commands parts them only outside quotes', () => {
+  // A pattern, a script or a filter with `|` or `;` in it is one argument of a command that works on files.
+  for (const c of [
+    'grep -E "ssh|curl" log.txt',
+    'grep -rn "foo|bar" src',
+    'rg "push|pull" .',
+    'sed "s/a/b/; s/curl/x/" f',
+    "awk '{print $1; }' f",
+    "jq '.a | .b' f.json",
+    'cat f | grep -E "wget|nc"',
+    `bash -c "grep -E 'a|b' f"`,
+    'find . -name "*.ts" -exec grep -l "a|b" {} \\;',
+    "find . -exec grep -l 'a;b' {} ';'",
+  ]) {
+    expect([c, stationOf(c)]).toEqual([c, 'files'])
+  }
+  // Text that names a network command runs none.
+  for (const c of [
+    'git commit -m "fix: retry; curl fallback"',
+    'echo "a; wget b"',
+    'echo "for u; do curl; done"',
+    `echo "it's; curl"`,
+    'echo "a \\" ; curl x"',
+    'echo a\\; curl',
+    "echo $'it\\'s; curl x'",
+    'make # then; curl x',
+    "make # don't; curl x",
+  ]) {
+    expect([c, stationOf(c)]).toEqual([c, 'shell'])
+  }
+  // Outside the quotes the same characters still part commands, and a command after a comment's line is read.
+  for (const c of [
+    'grep "a" f && curl x',
+    'echo "a"; curl x',
+    "make # don't\ncurl x",
+    'echo a\\\\; curl x',
+    'bash -c "echo \\"hi\\"; curl x"',
+    'sleep 5 & curl x',
+    'make |& curl -T - x',
+  ]) {
+    expect([c, stationOf(c)]).toEqual([c, 'web'])
+  }
+  // Sending output somewhere ends no command, and a backslash at a line's end joins two lines.
+  expect(stationOf('ls a 2>&1')).toBe('files')
+  expect(stationOf('ls a &> out.txt')).toBe('files')
+  expect(stationOf('git \\\n  push origin main')).toBe('web')
+  // Double quotes do not stop a command inside them from running; single quotes do.
+  expect(stationOf('echo "$(curl x)"')).toBe('web')
+  expect(stationOf('echo "now `curl x` done"')).toBe('web')
+  expect(stationOf('git commit -m "$(date); $(curl x)"')).toBe('web')
+  expect(stationOf("echo '$(curl x)'")).toBe('shell')
+  expect(stationOf("echo '`curl x`'")).toBe('shell')
+  // The text beside a command run inside quotes is still text.
+  expect(stationOf('echo "$(date) curl x"')).toBe('shell')
+  // A line handed to a shell in single quotes is run by that shell, and what it runs inside is found.
+  expect(stationOf("bash -c 'echo $(curl x)'")).toBe('web')
+  expect(stationOf('case $1 in a) curl x ;; esac')).toBe('web')
+  // PowerShell: a backslash is a path's, and a backtick keeps the character after it.
+  expect(stationOf('Select-String "a|b" f.txt', 'PowerShell')).toBe('files')
+  expect(stationOf('Write-Host "a; curl b"', 'PowerShell')).toBe('shell')
+  expect(stationOf('Get-Content "C:\\dir\\"; curl x', 'PowerShell')).toBe('web')
+  expect(stationOf('Write-Host a`; curl', 'PowerShell')).toBe('shell')
+  expect(stationOf('& "C:\\Program Files\\Git\\cmd\\git.exe" push', 'PowerShell')).toBe('web')
+})
+
+test("a here-document handed to a shell is that shell's script", () => {
+  for (const c of [
+    'bash <<EOF\ncurl x\nEOF',
+    "bash -s <<'EOF'\nset -e\nwget y\nEOF",
+    'sudo sh <<EOF\napt-get update\nEOF',
+    'echo start && zsh <<-EOF\n\tgit push\n\tEOF',
+    'bash <<EOF\necho hi',
+  ]) {
+    if (c.endsWith('hi')) expect([c, stationOf(c)]).toEqual([c, 'shell'])
+    else expect([c, stationOf(c)]).toEqual([c, 'web'])
+  }
+  // The word that ends it is no command, and what follows is read as before.
+  expect(stationOf('bash <<EOF\necho hi\nEOF')).toBe('shell')
+  expect(stationOf('bash <<EOF\necho hi\nEOF\ncurl x')).toBe('web')
+  // A shell that was given a script, or a line with -c, reads the here-document as that script's input: text.
+  expect(stationOf('bash deploy.sh <<EOF\ncurl x\nEOF')).toBe('shell')
+  expect(stationOf('bash -c "cat > f" <<EOF\ncurl x\nEOF')).toBe('files')
+  // Another language's script is not read, and neither is text piped on to a shell.
+  expect(stationOf('python3 - <<PY\nimport os\ncurl = 1\nPY')).toBe('shell')
+  expect(stationOf('cat <<EOF | bash\ncurl x\nEOF')).toBe('shell')
+})
+
+test('the command docker runs in a container is the command that counts', () => {
+  for (const c of [
+    'docker exec c curl x',
+    'docker exec -it -u root c curl x',
+    'docker run alpine wget x',
+    'docker run --rm -v "$PWD:/w" -w /w alpine wget x',
+    'docker run --rm alpine sh -c "curl x"',
+    'docker compose exec web curl x',
+    'docker compose run --rm web npm install',
+    'docker -H tcp://h:2375 exec c curl y',
+    'docker container exec c ping h',
+    'sudo docker exec c curl x',
+  ]) {
+    expect([c, stationOf(c)]).toEqual([c, 'web'])
+  }
+  // A name or a value that reads like a command is not one, and a command that stays in the container is Shell.
+  for (const c of [
+    'docker exec c ls',
+    'docker run --name curl alpine ls',
+    'docker run -e A=1 --network=host img git status',
+    'docker run alpine',
+    'docker ps',
+    'docker exec c cat /etc/hosts',
+    'docker logs curl',
+  ]) {
+    expect([c, stationOf(c)]).toEqual([c, 'shell'])
+  }
+})
