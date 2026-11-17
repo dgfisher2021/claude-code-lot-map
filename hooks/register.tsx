@@ -727,8 +727,8 @@ export const register: Register = (on, options) => {
   // The one thing the map keeps between sessions, and only its name.
   let lastModel: string | undefined
   let modelKey = 'model'
-  /** The context's fill at the last measurement; forgotten at a session's start and end, so a /clear marks nothing. */
-  let lastContext: number | undefined
+  /** The context's fill and window at the last measurement; forgotten at a session's start and end, so a /clear marks nothing. */
+  let lastContext: { percent: number; window: number } | undefined
 
   const opening = { id: PANE, title: t.title, ...(setup.terminalMap ? { columns: MAP_COLUMNS, rows: MAP_ROWS } : {}) }
 
@@ -1075,10 +1075,11 @@ export const register: Register = (on, options) => {
       await update($, board, b => ({ ...b, limits: limits.length > 0 ? limits : undefined, cost: e.cost?.usd }))
     })
     await quietly(async () => {
-      const percent = e.context.percent
+      const { percent, window } = e.context
       if (typeof percent !== 'number') return
-      const fell = lastContext !== undefined && lastContext - percent >= 30
-      lastContext = percent
+      // A switch to a model with another window moves the fill with no compaction.
+      const fell = lastContext !== undefined && lastContext.window === window && lastContext.percent - percent >= 30
+      lastContext = { percent, window }
       if (!setup.guardedHooks && fell) await begin($, { station: 'model', label: t.compacted, status: 'ok' })
     })
     return next(e)

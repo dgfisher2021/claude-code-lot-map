@@ -2160,11 +2160,23 @@ test('with guardedHooks off a sharp fall of the context marks a compaction, and 
   await measure(20)
   expect(marks().map(e => e.status)).toEqual(['ok'])
 
+  // A /clear raises session.end alone: the reset is there.
   await measure(80)
   await $.session.end({ reason: 'clear' } as never)
-  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
   await measure(0)
   expect(marks()).toHaveLength(1)
+})
+
+test('with guardedHooks off a switch to a model with a larger window is no compaction', { options: { ...OWN, guardedHooks: false } }, async ($, on) => {
+  on('clock.now', () => ({ value: 1_000_000 }))
+  const kept = keepBoard(on as never)
+  const measure = (percent: number, window: number) => $.session.measure({ context: { percent, window }, rateLimits: [], changed: ['context'] } as never)
+  await measure(80, 200_000)
+  await measure(16, 1_000_000)
+  expect(kept.board.entries.filter(e => e.label === SETUP.t.compacted)).toHaveLength(0)
+  await measure(90, 1_000_000)
+  await measure(20, 1_000_000)
+  expect(kept.board.entries.filter(e => e.label === SETUP.t.compacted)).toHaveLength(1)
 })
 
 test('with guardedHooks on no row comes from session.measure', { options: OWN }, async ($, on) => {
