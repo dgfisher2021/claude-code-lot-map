@@ -27,14 +27,16 @@ const TONES = {
   block: '\x1b[38;2;230;150;70m',
   ok: '\x1b[2m',
 }
+/** A tone's colour; a name from a file that is not one of ours has none. */
+const toneOf = tone => (typeof tone === 'string' && Object.hasOwn(TONES, tone) ? TONES[tone] : '')
 const CLEAR = '\x1b[H\x1b[J'
 
 /** The tile whose rows show, by its file; none while the tiles do. */
 let opened
 
-/** Cuts a line to the window's width, by characters. */
+/** Cuts a line to the window's width, by characters, with every control character out: the files are anyone's to write. */
 const fitLine = text =>
-  Array.from(String(text))
+  Array.from(String(text ?? '').replace(/[\u0000-\u001f\u007f-\u009f]/g, ''))
     .slice(0, out.columns || 80)
     .join('')
 
@@ -84,7 +86,7 @@ function screen(list) {
           const feed = JSON.parse(readFileSync(join(tile.live, 'feed.json'), 'utf8'))
           for (const line of Array.isArray(feed.warnings) ? feed.warnings : []) lines.push(`${TONES.run}${fitLine(line)}\x1b[0m`)
           for (const { line, tone, isBold } of Array.isArray(feed.rows) ? feed.rows : []) {
-            lines.push(`${isBold === true ? '\x1b[1m' : ''}${TONES[tone] ?? ''}${fitLine(line)}\x1b[0m`)
+            lines.push(`${isBold === true ? '\x1b[1m' : ''}${toneOf(tone)}${fitLine(line)}\x1b[0m`)
           }
         } catch {
           lines.push('', '\x1b[2mThis session has no window.\x1b[0m')

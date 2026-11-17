@@ -3,10 +3,11 @@ import { expect, mock, test } from 'claude-code/testing'
 
 import type { Board } from '../types'
 import type { Entry, TurnSummary } from '../types'
-import { COLOR_NAMES, TRAIL_FADE_MS, TRAIL_HOLD_MS, changedLine, classify, clean, drawMap, feedLines, firstLine, foldRows, formatMs, keepNewest, memoryIds, pinnedLines, routeOf, setupFrom, stateOf, taskNotice, taskOf, warningsOf } from './map'
+import { COLOR_NAMES, TRAIL_FADE_MS, TRAIL_HOLD_MS, changedLine, classify, clean, describeNow, drawMap, feedLines, firstLine, foldRows, formatMs, keepNewest, memoryIds, pinnedLines, routeOf, setupFrom, stateOf, taskNotice, taskOf, warningsOf } from './map'
 import { mapSize, paceOf, paintMap } from './raster'
 import { stringsFor } from './text'
 import { layout } from '../renderer/layout.mjs'
+import { tileText, tilesFrom } from './overview'
 
 const PANE = {
   plugin: 'lot-map',
@@ -2949,8 +2950,8 @@ test('a loop warns only while it goes on', () => {
 })
 
 /** A folder of sessions' status files, as the engine's fs sees it: file name to its text. */
-function fakeSessionFolder(on: On, files: Record<string, string>): void {
-  on('fs.list', () => ({ value: Object.keys(files).map(name => ({ name, kind: 'file', size: 1, mtimeMs: 0, isLink: false })) }) as never)
+function fakeSessionFolder(on: On, files: Record<string, string>, mtimes: Record<string, number> = {}): void {
+  on('fs.list', () => ({ value: Object.keys(files).map(name => ({ name, kind: 'file', size: 1, mtimeMs: mtimes[name] ?? 0, isLink: false })) }) as never)
   on('fs.read', (_, e) => ({ value: files[e.path.split('/').at(-1) ?? ''] ?? '' }) as never)
 }
 
@@ -3027,18 +3028,25 @@ test('/workmap all outside Windows Terminal answers the tiles as text, waiting f
   mock.env(on, { TMPDIR: '/tmp' })
   const runs = fakeHost(on)
   on('fs.write', () => ({ value: undefined }))
+  // The top line as the session writes it: the context is the tile's own figure, so it is not in the words.
+  const said = (board: Board) => describeNow(board, stringsFor('en'), NOW, false).text
   const tile = (name: string, state: string, word: string, now: string, ago: number) =>
     JSON.stringify({ name, state, word, now, context: 42, startedAt: NOW - 125_000, updatedAt: NOW - ago })
   fakeSessionFolder(on, {
     'a-1.json': tile('zeta', 'running', 'running', 'Shell: make', 1000),
-    'b-2.json': tile('beta', 'idle', 'idle', 'Nothing is running.', 2000),
+    'b-2.json': tile('beta', 'idle', 'idle', said({ entries: [], counts: {}, context: 42 }), 2000),
     'c-3.json': tile('omega', 'waiting', 'needs you', 'Needs you: permission', 3000),
     'd-4.json': tile('alpha', 'running', 'running', 'Files: a.ts', 4000),
     'e-5.json': tile('gone', 'running', 'running', 'old', 16_000),
+    'f-6.json': '{not json',
+    'g-7.json': 'null',
   })
   const lines = String((await $.command.run({ command: 'workmap', args: 'all' } as never)).text).split('\n')
   expect(lines.map(line => line.split('  ')[0])).toEqual(['omega', 'alpha', 'zeta', 'beta'])
   expect(lines[0]).toBe('omega  needs you  Needs you: permission  42%  2 min 5 s')
+  // The context shows once.
+  expect(lines[3]).toBe('beta  idle  Nothing is running.  42%  2 min 5 s')
+  expect(describeNow({ entries: [], counts: {}, context: 42 }, stringsFor('en'), NOW).text).toContain('context 42%')
   expect(runs.some(argv => argv[0] === 'wt.exe')).toBe(false)
 })
 
@@ -3054,4 +3062,65 @@ test('/workmap all in Windows Terminal opens the overview window, with no Chromi
   expect(wt.slice(0, 13)).toEqual(['wt.exe', '-w', '0', 'split-pane', '--vertical', '--size', '0.45', 'wsl.exe', '-d', 'Ubuntu', '--', 'env', '/usr/bin/node'])
   expect(wt[13]).toMatch(/\/renderer\/view\.mjs$/)
   expect(wt.slice(14)).toEqual(['--all', '/tmp/lot-map-sessions'])
+})
+
+test('a corrupt file or one that fails does not stop the sweep, and an old corrupt file goes', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  mock.env(on, { TMPDIR: '/tmp' })
+  const runs = fakeHost(on)
+  on('fs.write', () => ({ value: undefined }))
+  on('session.id', () => ({ value: 'abc-123' }) as never)
+  on('command.register', () => ({ value: { command: 'lot-map' } }))
+  on('ui.open', () => ({ value: { isPlaced: true } }))
+  on('session.start', (_, e) => ({ cwd: e.cwd }))
+  const stale = JSON.stringify({ updatedAt: NOW - 3_700_000 })
+  fakeSessionFolder(
+    on,
+    {
+      'bad-old.json': '{not json',
+      'bad-new.json': '{not json',
+      'null-old.json': 'null',
+      'stale-3.json': stale,
+      'young-4.json': JSON.stringify({ updatedAt: NOW - 1000 }),
+    },
+    { 'bad-old.json': NOW - 3_700_000, 'bad-new.json': NOW - 1000, 'null-old.json': NOW - 3_700_000 },
+  )
+  await $.session.start({ cwd: '/home/u/p', surface: 'terminal', isInteractive: true })
+  await clock.settle()
+  const removed = runs.filter(argv => argv[0] === 'rm').map(argv => argv[3])
+  expect(removed.sort()).toEqual(['/tmp/lot-map-sessions/bad-old.json', '/tmp/lot-map-sessions/null-old.json', '/tmp/lot-map-sessions/stale-3.json'])
+  await $.session.end({ reason: 'other' } as never)
+})
+
+test('a tile cannot drive the terminal: control characters are taken out of its words', () => {
+  const t = stringsFor('en')
+  const [tile] = tilesFrom([JSON.stringify({ name: 'a\x1b[2Jb', word: 'x\x07', now: 'n\x9b', state: 'idle', startedAt: NOW, updatedAt: NOW })], NOW)
+  expect(tileText(tile as never, NOW, t)).toBe('a[2Jb  x  n  0 s')
+})
+
+test('a status write still running when the session ends does not bring the file back', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  mock.env(on, { TMPDIR: '/tmp' })
+  const runs = fakeHost(on)
+  let release = () => {}
+  const gate = new Promise<void>(resolve => (release = resolve))
+  const written: string[] = []
+  on('fs.write', async (_, e) => {
+    await gate
+    written.push(e.path)
+    return { value: undefined }
+  })
+  on('session.id', () => ({ value: 'abc-123' }) as never)
+  on('command.register', () => ({ value: { command: 'lot-map' } }))
+  on('ui.open', () => ({ value: { isPlaced: true } }))
+  on('session.start', (_, e) => ({ cwd: e.cwd }))
+  fakeSessionFolder(on, {})
+  await $.session.start({ cwd: '/home/u/p', surface: 'terminal', isInteractive: true })
+  await clock.advance(1000)
+  await $.session.end({ reason: 'other' } as never)
+  release()
+  await clock.advance(1000)
+  // Every write that landed after the end was taken away again (the end itself had no file yet to remove).
+  const removals = runs.filter(argv => argv[0] === 'rm' && argv[3] === '/tmp/lot-map-sessions/abc-123.json').length
+  expect(removals).toBe(written.length)
 })

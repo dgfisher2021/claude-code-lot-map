@@ -36,8 +36,13 @@ export function tilesFrom(texts: readonly string[], now: number): Tile[] {
   return tiles.sort((a, b) => (GROUP[a.state] ?? 2) - (GROUP[b.state] ?? 2) || a.name.localeCompare(b.name))
 }
 
+/** A string from a file anyone can write to, with every control character out, so that it cannot drive the terminal. */
+export function plain(text: unknown): string {
+  return String(text ?? '').replace(/[\u0000-\u001f\u007f-\u009f]/g, '')
+}
+
 /** A tile as one line of text: name, state word, the top line, context and time. */
 export function tileText(tile: Tile, now: number, t: Strings): string {
-  const context = tile.context === undefined ? [] : [`${Math.round(tile.context)}%`]
-  return [tile.name, String(tile.word), tile.now, ...context, formatClock(now - tile.startedAt, t)].join('  ')
+  const context = Number.isFinite(tile.context) ? [`${Math.round(tile.context ?? 0)}%`] : []
+  return [plain(tile.name), plain(tile.word), plain(tile.now), ...context, formatClock(now - tile.startedAt, t)].join('  ')
 }
