@@ -2727,7 +2727,7 @@ const call = (id: string, station: Entry['station'], label: string, startedAt: n
 test('the same command failing three times in a row warns, and a success ends it', () => {
   const t = stringsFor('en')
   const fail = (id: string, at: number, extra: Partial<Entry> = {}) => call(id, 'shell', 'make build', at, { status: 'err', endedAt: at + 500, ...extra })
-  const board = (entries: Entry[]): Board => ({ entries, counts: {} })
+  const board = (entries: Entry[]): Board => ({ entries, counts: {}, phase: 'thinking', agents: ['a'] })
   expect(warningsOf(board([fail('1', 1000), fail('2', 2000)]), 5000, t)).toEqual([])
   expect(warningsOf(board([fail('1', 1000), fail('2', 2000), fail('3', 3000)]), 5000, t)).toEqual([
     { station: 'shell', line: t.failedInARow('Shell', 'make build', 3) },
@@ -2783,9 +2783,30 @@ test('background work and a wait on the person never warn', () => {
 
 test('a warned station wears its ring on the map', () => {
   const fail = (id: string, at: number) => call(id, 'shell', 'make build', at, { status: 'err', endedAt: at + 500 })
-  const warned = drawMap({ entries: [fail('1', 1000), fail('2', 2000), fail('3', 3000)], counts: {} }, 4000, STRANGER)
-  const plain = drawMap({ entries: [fail('1', 1000), fail('2', 2000)], counts: {} }, 4000, STRANGER)
+  const warned = drawMap({ entries: [fail('1', 1000), fail('2', 2000), fail('3', 3000)], counts: {}, phase: 'thinking' }, 4000, STRANGER)
+  const plain = drawMap({ entries: [fail('1', 1000), fail('2', 2000)], counts: {}, phase: 'thinking' }, 4000, STRANGER)
   const ring = /<circle [^>]*r="34"[^>]*stroke-dasharray="[^"]+"/
   expect(warned).toMatch(ring)
   expect(plain).not.toMatch(ring)
+})
+
+test('a running call, a model step or a subagent is no quiet turn and no long call', () => {
+  const t = stringsFor('en')
+  const now = 300_000
+  const board = (entries: Entry[]): Board => ({ entries, counts: {}, phase: 'thinking' })
+  expect(warningsOf(board([call('r', 'shell', 'npm test', 60_000, { status: 'run' })]), now, t)).toEqual([])
+  expect(warningsOf(board([call('m', 'model', 'thinking', 60_000, { status: 'run' })]), now, t)).toEqual([])
+  expect(warningsOf(board([call('d', 'files', 'a.ts', 0, { endedAt: 100 })]), now, t)).toEqual([{ line: t.quietFor(4) }])
+  const short = [0, 1, 2].map(i => call(`g${i}`, 'agents', 'Agent', i * 2000, { endedAt: i * 2000 + 1000 }))
+  expect(warningsOf(board([...short, call('r', 'agents', 'Agent', now - 120_000, { status: 'run' })]), now, t).filter(w => w.station === 'agents')).toEqual([])
+})
+
+test('a loop warns only while it goes on', () => {
+  const t = stringsFor('en')
+  const fails = [1, 2, 3].map(i => call(`f${i}`, 'shell', 'make build', i * 1000, { status: 'err', endedAt: i * 1000 + 500 }))
+  expect(warningsOf({ entries: fails, counts: {}, phase: 'done' }, 5000, t)).toEqual([])
+  expect(warningsOf({ entries: fails, counts: {}, phase: 'thinking' }, 5000, t)).toHaveLength(1)
+  const sub = fails.map(e => ({ ...e, agentId: 'a' }))
+  expect(warningsOf({ entries: sub, counts: {}, phase: 'thinking', agents: [] }, 5000, t)).toEqual([])
+  expect(warningsOf({ entries: sub, counts: {}, phase: 'thinking', agents: ['a'] }, 5000, t)).toHaveLength(1)
 })

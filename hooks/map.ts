@@ -974,7 +974,11 @@ export function warningsOf(board: Board, now: number, t: Strings): Warning[] {
   // A loop: the main loop's and each subagent's finished calls, newest first, the same failure from the newest back.
   const loops = new Map<string | undefined, Entry[]>()
   for (const e of own) if (e.status !== 'run') loops.set(e.agentId, [e, ...(loops.get(e.agentId) ?? [])])
-  for (const list of loops.values()) {
+  const state = stateOf(board)
+  const isGoing = (id: string | undefined): boolean =>
+    id === undefined ? ['thinking', 'running', 'waiting'].includes(state) : (board.agents ?? []).includes(id)
+  for (const [id, list] of loops) {
+    if (!isGoing(id)) continue
     const [last] = list
     if (last === undefined || last.status !== 'err') continue
     const n = list.findIndex(e => e.status !== 'err' || e.station !== last.station || e.label !== last.label)
@@ -984,7 +988,8 @@ export function warningsOf(board: Board, now: number, t: Strings): Warning[] {
 
   // A call far past its station's median.
   for (const e of own) {
-    if (e.status !== 'run' || isPatient(e)) continue
+    // A foreground subagent is work meant to run long.
+    if (e.status !== 'run' || isPatient(e) || e.station === 'agents') continue
     const took = own
       .filter(x => x.station === e.station && x.endedAt !== undefined && (x.status === 'ok' || x.status === 'err') && x.task === undefined)
       .map(x => (x.endedAt ?? x.startedAt) - x.startedAt)
@@ -997,9 +1002,8 @@ export function warningsOf(board: Board, now: number, t: Strings): Warning[] {
     }
   }
 
-  // A running turn with nothing starting or ending.
-  const state = stateOf(board)
-  if ((state === 'thinking' || state === 'running') && board.entries.length > 0 && !board.entries.some(e => e.status === 'run' && isPatient(e))) {
+  // A running turn with nothing running and nothing starting or ending.
+  if ((state === 'thinking' || state === 'running') && board.entries.length > 0 && !board.entries.some(e => e.status === 'run')) {
     const newest = Math.max(...board.entries.map(e => Math.max(e.startedAt, e.endedAt ?? 0)))
     if (now - newest >= QUIET_MS) out.push({ line: t.quietFor(Math.floor((now - newest) / 60_000)) })
   }
