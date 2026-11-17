@@ -6,7 +6,7 @@
 // while `/lot-map window` is on. The rows are drawn as text under the picture, as the pane draws them. The window
 // marks itself shown (shown) while it runs, so the session opens no second one.
 // This window runs render.mjs at its own size, draws each frame as Sixel, and closes when the heartbeat stops, or on
-// q or ctrl+c.
+// q or ctrl+c. `--all <sessions folder>` shows every session as tiles instead (overview.mjs).
 
 import { spawn } from 'node:child_process'
 import { readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
@@ -18,6 +18,11 @@ import { inflateSync } from 'node:zlib'
 import { layout } from './layout.mjs'
 
 const live = process.argv[2]
+// --all: every session at a glance, in overview.mjs; this module goes no further.
+if (live === '--all') {
+  await import('./overview.mjs')
+  await new Promise(() => {})
+}
 const here = dirname(fileURLToPath(import.meta.url))
 const out = process.stdout
 /** At most this many pictures a second go to the terminal, and none while it still reads the last. */

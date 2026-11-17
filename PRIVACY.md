@@ -33,7 +33,7 @@ To remove what it keeps, uninstall the plugin.
 ## What it does not do
 
 - It makes no network requests and has no telemetry, analytics or crash reports.
-- It reads no files. It runs no processes and writes no files, except in picture mode and for the map window, below.
+- It reads no files. It runs no processes and writes no files, except in picture mode, for the map window and for the status files of the overview, below.
 - It calls no model and adds nothing to the conversation.
 - It raises no notification unless you turn `notify` on. Then it raises one when Claude asks you a question or puts a plan to you, saying only that it needs you and for what kind of thing ("question for you"), never the question, and one when a turn ends.
 - It changes no tool call, result, prompt or context. It sees what your settings hooks decide about a call, hands that decision on as it was, and decides nothing about permissions itself.
@@ -67,3 +67,12 @@ Installed from this repository, the mod follows its `main` branch, so an update 
 ## Questions
 
 Open an issue: <https://github.com/alexeyw/lot-map/issues>.
+
+## The overview of sessions
+
+Every session in a terminal (not a `-p` or SDK run, which draws nowhere) keeps a status file so that `/workmap all` can show them side by side:
+
+- The folder is `lot-map-sessions` in your temporary directory (`TMPDIR`, else `/tmp`), one `<session id>.json` a session. Each holds the name of the session's folder (the last part of its path), the state word (idle, thinking, running, needs you, compacting, done), the top line's text (which holds only labels and times, as the rows do), the context's fill in percent, the time the session started and the time of the last write, whether any station has errors, and, when the session has a map window, the path of that window's folder.
+- It is written when one of those changes and at least every five seconds.
+- The session removes its file when it ends, but not at a `/clear`. When a session starts, files in that folder not written for an hour (sessions killed without an end) are removed; no other file is touched, by `rm -f` of each file alone.
+- `/workmap all` reads the folder. In Windows Terminal from WSL it runs `wt.exe -w 0 split-pane ... node renderer/view.mjs --all <folder>`, which reads the files younger than 15 seconds and, on a key, the rows in the chosen session's own map window folder; elsewhere it answers the tiles as text.

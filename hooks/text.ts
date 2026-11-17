@@ -46,10 +46,13 @@ export type Strings = {
   windowOpened: string
   windowOpen: string
   windowByHand: (command: string) => string
+  /** After `/workmap all`: the overview opened beside this one, and what it says with no session to show. */
+  overviewOpened: string
+  overviewNone: string
   idle: string
   /** The word under the core: what the session is doing. Fourteen characters at most. */
   states: { idle: string; thinking: string; running: string; waiting: string; compacting: string; done: string }
-  /** `/workmap help`, and `?` in the window: what the map's marks mean. Fourteen lines. */
+  /** `/workmap help`, and `?` in the window: what the map's marks mean. Fifteen lines. */
   legend: string[]
   /** A station's title, for hovering in the app: its calls, its errors and its refusals. */
   callsHere: (n: number) => string
@@ -143,6 +146,8 @@ const en: Strings = {
   windowOpened: 'Map window opened beside this one.',
   windowOpen: 'The map window is already open beside this one.',
   windowByHand: command => `Run this in a pane of a terminal that shows Sixel pictures: ${command}`,
+  overviewOpened: 'Overview window opened beside this one.',
+  overviewNone: 'No sessions to show.',
   idle: 'Nothing is running.',
   states: { idle: 'idle', thinking: 'thinking', running: 'running', waiting: 'needs you', compacting: 'compacting', done: 'done' },
   legend: [
@@ -160,6 +165,7 @@ const en: Strings = {
     '✎ Files changed this session, by name, most edited first; ×N is how many times.',
     'Amber ring and line: a command failing over and over, a call far past its usual time, a quiet turn.',
     'Rings around the centre: context, then the five-hour and weekly limits (red from 90); $ is the cost so far.',
+    'Overview: /workmap all shows every session, the ones that need you first; amber waits, red errors.',
   ],
   callsHere: n => `${n} ${n === 1 ? 'call' : 'calls'} this session`,
   errorsHere: n => `${n} ${n === 1 ? 'error' : 'errors'} since your last message`,
@@ -246,6 +252,8 @@ const ru: Strings = {
   windowOpened: 'Окно с картой открыто рядом.',
   windowOpen: 'Окно с картой уже открыто рядом.',
   windowByHand: command => `Запустите это в панели терминала, который показывает картинки Sixel: ${command}`,
+  overviewOpened: 'Обзор сессий открыт рядом.',
+  overviewNone: 'Нет сессий для показа.',
   idle: 'Сейчас ничего не выполняется.',
   states: { idle: 'ожидание', thinking: 'думает', running: 'работает', waiting: 'ждёт тебя', compacting: 'сжимает', done: 'готово' },
   legend: [
@@ -263,6 +271,7 @@ const ru: Strings = {
     '✎ Файлы, изменённые за сессию, по имени, чаще правленные первыми; ×N — сколько раз.',
     'Янтарное кольцо и строка: команда падает снова и снова, вызов затянулся, ход затих.',
     'Кольца вокруг центра: контекст, затем пятичасовой и недельный лимиты (красный от 90); $ — стоимость.',
+    'Обзор: /workmap all — все сессии, сначала те, что ждут тебя; янтарный — ждёт, красный — ошибки.',
   ],
   callsHere: n => `вызовов за сессию: ${n}`,
   errorsHere: n => `ошибок с последнего сообщения: ${n}`,
@@ -348,6 +357,8 @@ const es: Strings = {
   windowOpened: 'Ventana del mapa abierta al lado.',
   windowOpen: 'La ventana del mapa ya está abierta al lado.',
   windowByHand: command => `Ejecuta esto en un panel de una terminal que muestre imágenes Sixel: ${command}`,
+  overviewOpened: 'Resumen de sesiones abierto al lado.',
+  overviewNone: 'No hay sesiones que mostrar.',
   idle: 'No hay nada en ejecución.',
   states: { idle: 'inactivo', thinking: 'pensando', running: 'trabajando', waiting: 'te espera', compacting: 'compactando', done: 'listo' },
   legend: [
@@ -365,6 +376,7 @@ const es: Strings = {
     '✎ Archivos cambiados en la sesión, por nombre, los más editados primero; ×N son las veces.',
     'Anillo y línea ámbar: un comando que falla sin parar, una llamada muy lenta, un turno en silencio.',
     'Anillos junto al centro: contexto, luego límites de cinco horas y semanal (rojo desde 90); $ es el coste.',
+    'Resumen: /workmap all muestra todas las sesiones, primero las que te esperan; ámbar espera, rojo errores.',
   ],
   callsHere: n => `${n} llamadas en esta sesión`,
   errorsHere: n => `${n} errores desde tu último mensaje`,
@@ -453,6 +465,8 @@ const fr: Strings = {
   windowOpened: 'Fenêtre de la carte ouverte à côté.',
   windowOpen: 'La fenêtre de la carte est déjà ouverte à côté.',
   windowByHand: command => `Lancez ceci dans un volet d'un terminal qui affiche les images Sixel : ${command}`,
+  overviewOpened: 'Aperçu des sessions ouvert à côté.',
+  overviewNone: 'Aucune session à afficher.',
   idle: 'Rien en cours.',
   states: { idle: 'inactif', thinking: 'réfléchit', running: 'travaille', waiting: 'vous attend', compacting: 'compacte', done: 'terminé' },
   legend: [
@@ -470,6 +484,7 @@ const fr: Strings = {
     '✎ Fichiers modifiés dans la session, par nom, les plus modifiés d’abord ; ×N est le nombre de fois.',
     'Anneau et ligne ambre : une commande qui échoue sans cesse, un appel trop long, un tour silencieux.',
     'Anneaux autour du centre : contexte, limites de cinq heures et hebdo (rouge dès 90) ; $ : le coût.',
+    "Aperçu : /workmap all montre toutes les sessions, d'abord celles qui attendent ; ambre attente, rouge erreurs.",
   ],
   callsHere: n => `${n} appels pendant la session`,
   errorsHere: n => `${n} erreurs depuis votre dernier message`,
@@ -558,6 +573,8 @@ const de: Strings = {
   windowOpened: 'Kartenfenster daneben geöffnet.',
   windowOpen: 'Das Kartenfenster ist daneben schon geöffnet.',
   windowByHand: command => `Führen Sie dies in einem Bereich eines Terminals aus, das Sixel-Bilder zeigt: ${command}`,
+  overviewOpened: 'Sitzungsübersicht daneben geöffnet.',
+  overviewNone: 'Keine Sitzungen zum Anzeigen.',
   idle: 'Nichts läuft.',
   states: { idle: 'untätig', thinking: 'denkt nach', running: 'arbeitet', waiting: 'braucht dich', compacting: 'verdichtet', done: 'fertig' },
   legend: [
@@ -575,6 +592,7 @@ const de: Strings = {
     '✎ In der Sitzung geänderte Dateien nach Namen, meistbearbeitete zuerst; ×N ist die Anzahl.',
     'Bernsteinring und -zeile: Befehl scheitert immer wieder, Aufruf dauert zu lange, Zug ist still.',
     'Ringe um die Mitte: Kontext, dann Fünf-Stunden- und Wochenlimit (rot ab 90); $ sind die Kosten.',
+    'Übersicht: /workmap all zeigt alle Sitzungen, zuerst die wartenden; Bernstein wartet, Rot Fehler.',
   ],
   callsHere: n => `${n} Aufrufe in dieser Sitzung`,
   errorsHere: n => `${n} Fehler seit deiner letzten Nachricht`,
@@ -661,6 +679,8 @@ const it: Strings = {
   windowOpened: 'Finestra della mappa aperta accanto.',
   windowOpen: 'La finestra della mappa è già aperta accanto.',
   windowByHand: command => `Esegui questo in un riquadro di un terminale che mostra immagini Sixel: ${command}`,
+  overviewOpened: 'Panoramica delle sessioni aperta accanto.',
+  overviewNone: 'Nessuna sessione da mostrare.',
   idle: 'Niente in esecuzione.',
   states: { idle: 'inattivo', thinking: 'pensa', running: 'lavora', waiting: 'ti aspetta', compacting: 'compatta', done: 'fatto' },
   legend: [
@@ -678,6 +698,7 @@ const it: Strings = {
     '✎ File modificati nella sessione, per nome, i più modificati prima; ×N è il numero di volte.',
     'Anello e riga ambra: un comando che fallisce di continuo, una chiamata troppo lunga, un turno in silenzio.',
     'Anelli attorno al centro: contesto, poi limiti di cinque ore e settimanale (rosso da 90); $ è il costo.',
+    'Panoramica: /workmap all mostra tutte le sessioni, prima quelle in attesa; ambra attesa, rosso errori.',
   ],
   callsHere: n => `${n} chiamate nella sessione`,
   errorsHere: n => `${n} errori dal tuo ultimo messaggio`,
@@ -767,6 +788,8 @@ const pt: Strings = {
   windowOpened: 'Janela do mapa aberta ao lado.',
   windowOpen: 'A janela do mapa já está aberta ao lado.',
   windowByHand: command => `Execute isto num painel de um terminal que mostre imagens Sixel: ${command}`,
+  overviewOpened: 'Visão geral das sessões aberta ao lado.',
+  overviewNone: 'Nenhuma sessão para mostrar.',
   idle: 'Nada em execução.',
   states: { idle: 'parado', thinking: 'a pensar', running: 'a trabalhar', waiting: 'espera por ti', compacting: 'a compactar', done: 'pronto' },
   legend: [
@@ -784,6 +807,7 @@ const pt: Strings = {
     '✎ Arquivos alterados na sessão, por nome, os mais editados primeiro; ×N é o número de vezes.',
     'Anel e linha âmbar: um comando que falha sem parar, uma chamada longa demais, um turno parado.',
     'Anéis em volta do centro: contexto, depois limites de cinco horas e semanal (vermelho desde 90); $ é o custo.',
+    'Visão geral: /workmap all mostra todas as sessões, primeiro as à espera; âmbar espera, vermelho erros.',
   ],
   callsHere: n => `${n} chamadas nesta sessão`,
   errorsHere: n => `${n} erros desde a tua última mensagem`,

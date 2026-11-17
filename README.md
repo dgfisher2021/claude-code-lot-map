@@ -141,6 +141,13 @@ In Windows Terminal from WSL the window is the map: the session opens no pane, a
 - It closes when the session ends, or on `q` or ctrl+c. Closing it leaves the session as it was; `/lot-map window` opens it again. A session switched away from in its tab keeps its window there until it ends or `q`.
 - It needs Node 22 and a Chromium, as pictures do.
 
+#### Every session at a glance
+
+`/workmap all` shows every session on this computer as a tile, those that need you first, then those at work, then the rest, each group by name. A tile has the session's folder name, its state word (amber when it needs you, red when it has errors), the top line, the context's fill and the time since the session started. In Windows Terminal from WSL it opens a window beside this one, with no picture and no Chromium; elsewhere it answers the tiles as text.
+
+- Each session in a terminal writes a small status file to `lot-map-sessions` in your temporary directory, and takes it away when it ends. A tile shows only a session whose file is under 15 seconds old; a `/clear` keeps the file. See [PRIVACY.md](PRIVACY.md#the-overview-of-sessions) for what each file holds.
+- Keys `1` to `9` show that tile's rows, when the session has a map window of its own; `Esc` goes back, `q` closes. The window reads the folder again every second.
+
 ## Options
 
 The install offers them on a screen. Later, use `/config` in a terminal or `claude plugin configure`, then restart the session.

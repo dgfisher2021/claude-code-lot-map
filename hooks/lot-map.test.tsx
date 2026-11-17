@@ -1869,7 +1869,7 @@ test("/workmap help and /lot-map help answer the legend in the session's languag
   expect(answer.split('\n')).toEqual(stringsFor('ru').legend)
   expect(answer).toContain('Память')
   expect((await $.command.run({ command: 'lot-map', args: 'help' } as never)).text).toBe(answer)
-  for (const language of ['en', 'ru', 'es', 'fr', 'de', 'it', 'pt']) expect(stringsFor(language).legend.length).toBe(14)
+  for (const language of ['en', 'ru', 'es', 'fr', 'de', 'it', 'pt']) expect(stringsFor(language).legend.length).toBe(15)
 })
 
 test("the count keeps the session's errors and shows what this turn added", async ($, on) => {
@@ -2946,4 +2946,112 @@ test('a loop warns only while it goes on', () => {
   const sub = fails.map(e => ({ ...e, agentId: 'a' }))
   expect(warningsOf({ entries: sub, counts: {}, phase: 'thinking', agents: [] }, 5000, t)).toEqual([])
   expect(warningsOf({ entries: sub, counts: {}, phase: 'thinking', agents: ['a'] }, 5000, t)).toHaveLength(1)
+})
+
+/** A folder of sessions' status files, as the engine's fs sees it: file name to its text. */
+function fakeSessionFolder(on: On, files: Record<string, string>): void {
+  on('fs.list', () => ({ value: Object.keys(files).map(name => ({ name, kind: 'file', size: 1, mtimeMs: 0, isLink: false })) }) as never)
+  on('fs.read', (_, e) => ({ value: files[e.path.split('/').at(-1) ?? ''] ?? '' }) as never)
+}
+
+test('each session writes its status for the overview, and takes it away when it ends', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  mock.env(on, { TMPDIR: '/tmp' })
+  const runs = fakeHost(on)
+  const written: { path: string; text: string }[] = []
+  on('fs.write', (_, e) => {
+    written.push({ path: e.path, text: e.text })
+    return { value: undefined }
+  })
+  on('session.id', () => ({ value: 'abc-123' }) as never)
+  on('turn.start', (_, e) => ({ turnId: e.turnId }) as never)
+  on('command.register', () => ({ value: { command: 'lot-map' } }))
+  on('ui.open', () => ({ value: { isPlaced: true } }))
+  on('session.start', (_, e) => ({ cwd: e.cwd }))
+  const hour = 3_600_000
+  fakeSessionFolder(on, {
+    'old-1.json': JSON.stringify({ updatedAt: NOW - hour - 1000 }),
+    'young-2.json': JSON.stringify({ updatedAt: NOW - 1000 }),
+    'notes.txt': JSON.stringify({ updatedAt: 0 }),
+  })
+  const file = '/tmp/lot-map-sessions/abc-123.json'
+  const mine = () => written.filter(w => w.path === file).map(w => JSON.parse(w.text))
+
+  await $.session.start({ cwd: '/home/u/projects/lot-map', surface: 'terminal', isInteractive: true })
+  await clock.advance(1000)
+  expect(mine().length).toBe(1)
+  expect(mine()[0]).toMatchObject({ name: 'lot-map', state: 'idle', word: 'idle', startedAt: NOW, fault: false })
+  expect(typeof mine()[0].now).toBe('string')
+  // A session killed without an end leaves a file; an hour on, the next start takes it away, and nothing else.
+  expect(runs.filter(argv => argv[0] === 'rm')).toEqual([['rm', '-f', '--', '/tmp/lot-map-sessions/old-1.json']])
+
+  // Unchanged, it is written again only for the heartbeat, every five seconds.
+  await clock.advance(3000)
+  expect(mine().length).toBe(1)
+  await clock.advance(2000)
+  expect(mine().length).toBe(2)
+  expect(mine()[1].updatedAt).toBeGreaterThan(mine()[0].updatedAt)
+  // A change is written at once.
+  await $.turn.start({ text: 'hello', turnId: 't1' } as never)
+  await clock.advance(1000)
+  expect(mine().at(-1)).toMatchObject({ state: 'thinking', word: 'thinking' })
+
+  await $.session.end({ reason: 'clear' } as never)
+  expect(runs.filter(argv => argv[0] === 'rm').length).toBe(1)
+  await $.session.end({ reason: 'other' } as never)
+  expect(runs.at(-1)).toEqual(['rm', '-f', '--', file])
+  const count = mine().length
+  await clock.advance(10_000)
+  expect(mine().length).toBe(count)
+})
+
+test('a run with no surface writes no status', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  mock.env(on, { TMPDIR: '/tmp' })
+  fakeHost(on)
+  const written: string[] = []
+  on('fs.write', (_, e) => {
+    written.push(e.path)
+    return { value: undefined }
+  })
+  on('session.id', () => ({ value: 'abc-123' }) as never)
+  on('command.register', () => ({ value: { command: 'lot-map' } }))
+  on('session.start', (_, e) => ({ cwd: e.cwd }))
+  await $.session.start({ cwd: '/home/u/p', surface: null, isInteractive: false })
+  await clock.advance(6000)
+  expect(written).toEqual([])
+})
+
+test('/workmap all outside Windows Terminal answers the tiles as text, waiting first', async ($, on) => {
+  mock.clock(on, { now: NOW })
+  mock.env(on, { TMPDIR: '/tmp' })
+  const runs = fakeHost(on)
+  on('fs.write', () => ({ value: undefined }))
+  const tile = (name: string, state: string, word: string, now: string, ago: number) =>
+    JSON.stringify({ name, state, word, now, context: 42, startedAt: NOW - 125_000, updatedAt: NOW - ago })
+  fakeSessionFolder(on, {
+    'a-1.json': tile('zeta', 'running', 'running', 'Shell: make', 1000),
+    'b-2.json': tile('beta', 'idle', 'idle', 'Nothing is running.', 2000),
+    'c-3.json': tile('omega', 'waiting', 'needs you', 'Needs you: permission', 3000),
+    'd-4.json': tile('alpha', 'running', 'running', 'Files: a.ts', 4000),
+    'e-5.json': tile('gone', 'running', 'running', 'old', 16_000),
+  })
+  const lines = String((await $.command.run({ command: 'workmap', args: 'all' } as never)).text).split('\n')
+  expect(lines.map(line => line.split('  ')[0])).toEqual(['omega', 'alpha', 'zeta', 'beta'])
+  expect(lines[0]).toBe('omega  needs you  Needs you: permission  42%  2 min 5 s')
+  expect(runs.some(argv => argv[0] === 'wt.exe')).toBe(false)
+})
+
+test('/workmap all in Windows Terminal opens the overview window, with no Chromium', async ($, on) => {
+  mock.clock(on, { now: NOW })
+  mock.env(on, { WSL_DISTRO_NAME: 'Ubuntu', TMPDIR: '/tmp' })
+  const runs = fakeHost(on)
+  on('fs.write', () => ({ value: undefined }))
+  fakeSessionFolder(on, {})
+  const answer = await $.command.run({ command: 'workmap', args: 'all' } as never)
+  expect(answer.text).toBe('Overview window opened beside this one.')
+  const wt = runs.find(argv => argv[0] === 'wt.exe') ?? []
+  expect(wt.slice(0, 13)).toEqual(['wt.exe', '-w', '0', 'split-pane', '--vertical', '--size', '0.45', 'wsl.exe', '-d', 'Ubuntu', '--', 'env', '/usr/bin/node'])
+  expect(wt[13]).toMatch(/\/renderer\/view\.mjs$/)
+  expect(wt.slice(14)).toEqual(['--all', '/tmp/lot-map-sessions'])
 })
