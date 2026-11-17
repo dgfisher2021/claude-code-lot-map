@@ -2226,6 +2226,8 @@ test('the rate-limit windows and the cost show around the core', async ($, on) =
   expect(stroke(fiveHour)).toBe(contextRing)
   expect(svg).toContain(`<title>${SETUP.t.limitTitle('five_hour', 92, SETUP.t.hoursMinutes(2, 10))}</title>`)
   expect(svg).toContain('>$1.23<')
+  expect(svg).toContain(`<title>${SETUP.t.estimatedCost('$1.23')}</title>`)
+  expect(stringsFor('en').legend.some(line => line.includes('$') && line.includes('estimate'))).toBe(true)
   expect(drawMap({ ...kept.board, limits: [{ kind: 'seven_day', percent: 40.6 }] }, 1_000_000, SETUP)).toContain(SETUP.t.limitTitle('seven_day', 41))
 })
 

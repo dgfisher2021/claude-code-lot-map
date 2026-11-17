@@ -18,7 +18,7 @@ export type Tile = {
 }
 
 /** A status file older than this is a session gone. */
-export const TILE_FRESH_MS = 15_000
+const TILE_FRESH_MS = 15_000
 
 const GROUP: Partial<Record<SessionState, number>> = { waiting: 0, thinking: 1, running: 1 }
 

@@ -6,7 +6,6 @@ import { stringsFor } from './text'
 import type { Strings } from './text'
 
 export { classify, clean, firstLine, formatMs, memoryIds, shortModel } from './classify'
-export type { Classified } from './classify'
 
 // ---- stations ---------------------------------------------------------------------------------
 
@@ -641,7 +640,10 @@ export function drawMap(board: Board, now: number, setup: Setup, isFilling = fal
     state === 'waiting' ? `<animate attributeName="opacity" values="1;.45;1" begin="${clock(-(now % 1200))}" dur="1.2s" repeatCount="indefinite"/>` : ''
   body += `<text x="${CX}" y="${CY + CORE + 17}" text-anchor="middle" ${FONT} font-size="9" paint-order="stroke" stroke="${c.ground}" stroke-width="3.5" stroke-linejoin="round" fill="${stateColor}">${blink}${escapeXml(setup.t.states[state])}</text>`
   const spent = costText(board.cost)
-  if (spent !== undefined) body += `<text x="${CX}" y="${CY + CORE + 28}" text-anchor="middle" ${FONT} font-size="8" fill="${c.dim}">${spent}</text>`
+  // The cost is an estimate, and its title says so.
+  if (spent !== undefined) {
+    body += `<text x="${CX}" y="${CY + CORE + 28}" text-anchor="middle" ${FONT} font-size="8" fill="${c.dim}"><title>${escapeXml(setup.t.estimatedCost(spent))}</title>${spent}</text>`
+  }
 
   // A changed model rings at the core and at its station for a few seconds.
   if (isSwitching) {
@@ -978,7 +980,7 @@ export function stateOf(board: Board): SessionState {
 }
 
 /** A sign that the session looks stuck, and the station it sits at, when it has one. */
-export type Warning = { station?: StationId; line: string }
+type Warning = { station?: StationId; line: string }
 
 const LOOP_MIN = 3
 const LONG_MS = 60_000
