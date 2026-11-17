@@ -166,6 +166,8 @@ function rows() {
   // The top line: a wait on the person in the accent, a finished turn in green.
   const nowTone = { wait: '\x1b[1;38;2;225;172;110m', done: '\x1b[1;38;2;143;191;127m' }[feed.nowTone] ?? '\x1b[1m'
   const lines = [`${nowTone}${fitLine(String(feed.now ?? ''))}\x1b[0m`]
+  // Warnings in amber, under the top line.
+  for (const line of Array.isArray(feed.warnings) ? feed.warnings : []) lines.push(`${TONES.run}${fitLine(String(line))}\x1b[0m`)
   if (showsLegend) {
     for (const line of Array.isArray(feed.legend) ? feed.legend : []) lines.push(...wrapLine(String(line)))
   } else {

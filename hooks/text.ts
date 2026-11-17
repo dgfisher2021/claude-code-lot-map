@@ -35,7 +35,7 @@ export type Strings = {
   idle: string
   /** The word under the core: what the session is doing. Fourteen characters at most. */
   states: { idle: string; thinking: string; running: string; waiting: string; compacting: string; done: string }
-  /** `/workmap help`, and `?` in the window: what the map's marks mean. Twelve lines. */
+  /** `/workmap help`, and `?` in the window: what the map's marks mean. Thirteen lines. */
   legend: string[]
   /** A station's title, for hovering in the app: its calls, its errors and its refusals. */
   callsHere: (n: number) => string
@@ -70,6 +70,10 @@ export type Strings = {
   wholeMinutes: (m: number) => string
   /** A failed shell command's exit code, in its row. */
   exitCode: (n: number) => string
+  /** Warnings under the top line: a command failing again and again, a call running past its usual time, a turn gone quiet. */
+  failedInARow: (station: string, label: string, n: number) => string
+  runningLong: (station: string, label: string, elapsed: string, usual: string) => string
+  quietFor: (minutes: number) => string
   /** Claude's plan over the rows: how many of how many tasks are done, and the calls a finished task took. */
   planHeader: (done: number, total: number) => string
   planCalls: (n: number) => string
@@ -130,6 +134,7 @@ const en: Strings = {
     'Red dot circling Agents: a subagent whose call failed or was refused.',
     'Turn header, bold: your message, its time, calls and errors. Earlier turns fold to their headers.',
     '✎ Files changed this session, by name, most edited first; ×N is how many times.',
+    'Amber ring and line: a command failing over and over, a call far past its usual time, a quiet turn.',
   ],
   callsHere: n => `${n} ${n === 1 ? 'call' : 'calls'} this session`,
   errorsHere: n => `${n} ${n === 1 ? 'error' : 'errors'} since your last message`,
@@ -162,6 +167,9 @@ const en: Strings = {
   minutes: (m, s) => `${m} min ${s} s`,
   wholeMinutes: m => `${m} min`,
   exitCode: n => `exit ${n}`,
+  failedInARow: (s, l, n) => `Failing again and again: ${s} ${l} · ${n} times in a row`,
+  runningLong: (s, l, e, u) => `${s} ${l} has run ${e}, usually ${u}`,
+  quietFor: m => `Nothing has happened for ${m} min`,
 }
 
 const ru: Strings = {
@@ -218,6 +226,7 @@ const ru: Strings = {
     'Красная точка у Агентов: субагент, чей вызов упал или был отклонён.',
     'Заголовок хода, жирным: твоё сообщение, время, вызовы и ошибки. Прошлые ходы свёрнуты до заголовков.',
     '✎ Файлы, изменённые за сессию, по имени, чаще правленные первыми; ×N — сколько раз.',
+    'Янтарное кольцо и строка: команда падает снова и снова, вызов затянулся, ход затих.',
   ],
   callsHere: n => `вызовов за сессию: ${n}`,
   errorsHere: n => `ошибок с последнего сообщения: ${n}`,
@@ -249,6 +258,9 @@ const ru: Strings = {
   minutes: (m, s) => `${m} мин ${s} с`,
   wholeMinutes: m => `${m} мин`,
   exitCode: n => `код ${n}`,
+  failedInARow: (s, l, n) => `Снова и снова падает: ${s} ${l} · ${n} раз подряд`,
+  runningLong: (s, l, e, u) => `${s} ${l} идёт уже ${e}, обычно ${u}`,
+  quietFor: m => `Ничего не происходит уже ${m} мин`,
 }
 
 const es: Strings = {
@@ -305,6 +317,7 @@ const es: Strings = {
     'Punto rojo en Agentes: un subagente con una llamada fallida o rechazada.',
     'Encabezado de turno, en negrita: tu mensaje, su tiempo, llamadas y errores. Los turnos previos se pliegan.',
     '✎ Archivos cambiados en la sesión, por nombre, los más editados primero; ×N son las veces.',
+    'Anillo y línea ámbar: un comando que falla sin parar, una llamada muy lenta, un turno en silencio.',
   ],
   callsHere: n => `${n} llamadas en esta sesión`,
   errorsHere: n => `${n} errores desde tu último mensaje`,
@@ -339,6 +352,9 @@ const es: Strings = {
   minutes: (m, s) => `${m} min ${s} s`,
   wholeMinutes: m => `${m} min`,
   exitCode: n => `exit ${n}`,
+  failedInARow: (s, l, n) => `Falla una y otra vez: ${s} ${l} · ${n} veces seguidas`,
+  runningLong: (s, l, e, u) => `${s} ${l} lleva ${e}, suele tardar ${u}`,
+  quietFor: m => `No pasa nada desde hace ${m} min`,
 }
 
 const fr: Strings = {
@@ -395,6 +411,7 @@ const fr: Strings = {
     "Point rouge autour d'Agents : un sous-agent dont un appel a échoué ou a été refusé.",
     'En-tête de tour, en gras : votre message, sa durée, appels et erreurs. Les tours passés se replient.',
     '✎ Fichiers modifiés dans la session, par nom, les plus modifiés d’abord ; ×N est le nombre de fois.',
+    'Anneau et ligne ambre : une commande qui échoue sans cesse, un appel trop long, un tour silencieux.',
   ],
   callsHere: n => `${n} appels pendant la session`,
   errorsHere: n => `${n} erreurs depuis votre dernier message`,
@@ -429,6 +446,9 @@ const fr: Strings = {
   minutes: (m, s) => `${m} min ${s} s`,
   wholeMinutes: m => `${m} min`,
   exitCode: n => `exit ${n}`,
+  failedInARow: (s, l, n) => `Échoue encore et encore : ${s} ${l} · ${n} fois de suite`,
+  runningLong: (s, l, e, u) => `${s} ${l} dure depuis ${e}, d’ordinaire ${u}`,
+  quietFor: m => `Rien ne se passe depuis ${m} min`,
 }
 
 const de: Strings = {
@@ -485,6 +505,7 @@ const de: Strings = {
     'Roter Punkt bei Agenten: ein Subagent, dessen Aufruf fehlschlug oder abgelehnt wurde.',
     'Zugkopf, fett: deine Nachricht, seine Zeit, Aufrufe und Fehler. Frühere Züge schrumpfen auf ihren Kopf.',
     '✎ In der Sitzung geänderte Dateien nach Namen, meistbearbeitete zuerst; ×N ist die Anzahl.',
+    'Bernsteinring und -zeile: Befehl scheitert immer wieder, Aufruf dauert zu lange, Zug ist still.',
   ],
   callsHere: n => `${n} Aufrufe in dieser Sitzung`,
   errorsHere: n => `${n} Fehler seit deiner letzten Nachricht`,
@@ -517,6 +538,9 @@ const de: Strings = {
   minutes: (m, s) => `${m} Min. ${s} s`,
   wholeMinutes: m => `${m} Min.`,
   exitCode: n => `Code ${n}`,
+  failedInARow: (s, l, n) => `Scheitert immer wieder: ${s} ${l} · ${n} Mal hintereinander`,
+  runningLong: (s, l, e, u) => `${s} ${l} läuft seit ${e}, sonst ${u}`,
+  quietFor: m => `Seit ${m} Min. passiert nichts`,
 }
 
 const it: Strings = {
@@ -573,6 +597,7 @@ const it: Strings = {
     'Punto rosso su Agenti: un subagente con una chiamata fallita o rifiutata.',
     'Intestazione del turno, in grassetto: il tuo messaggio, tempo, chiamate ed errori. I turni passati si piegano.',
     '✎ File modificati nella sessione, per nome, i più modificati prima; ×N è il numero di volte.',
+    'Anello e riga ambra: un comando che fallisce di continuo, una chiamata troppo lunga, un turno in silenzio.',
   ],
   callsHere: n => `${n} chiamate nella sessione`,
   errorsHere: n => `${n} errori dal tuo ultimo messaggio`,
@@ -607,6 +632,9 @@ const it: Strings = {
   minutes: (m, s) => `${m} min ${s} s`,
   wholeMinutes: m => `${m} min`,
   exitCode: n => `exit ${n}`,
+  failedInARow: (s, l, n) => `Fallisce di continuo: ${s} ${l} · ${n} volte di fila`,
+  runningLong: (s, l, e, u) => `${s} ${l} va avanti da ${e}, di solito ${u}`,
+  quietFor: m => `Non succede nulla da ${m} min`,
 }
 
 // European Portuguese.
@@ -664,6 +692,7 @@ const pt: Strings = {
     'Ponto vermelho em Agentes: um subagente com uma chamada falhada ou recusada.',
     'Cabeçalho do turno, em negrito: tua mensagem, tempo, chamadas e erros. Turnos anteriores se recolhem.',
     '✎ Arquivos alterados na sessão, por nome, os mais editados primeiro; ×N é o número de vezes.',
+    'Anel e linha âmbar: um comando que falha sem parar, uma chamada longa demais, um turno parado.',
   ],
   callsHere: n => `${n} chamadas nesta sessão`,
   errorsHere: n => `${n} erros desde a tua última mensagem`,
@@ -698,6 +727,9 @@ const pt: Strings = {
   minutes: (m, s) => `${m} min ${s} s`,
   wholeMinutes: m => `${m} min`,
   exitCode: n => `exit ${n}`,
+  failedInARow: (s, l, n) => `Falha repetidas vezes: ${s} ${l} · ${n} vezes seguidas`,
+  runningLong: (s, l, e, u) => `${s} ${l} roda há ${e}, costuma levar ${u}`,
+  quietFor: m => `Nada acontece há ${m} min`,
 }
 
 const TABLES = new Map<unknown, Strings>([['en', en], ['ru', ru], ['es', es], ['fr', fr], ['de', de], ['it', it], ['pt', pt]])

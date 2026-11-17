@@ -21,8 +21,10 @@ import {
   planLines,
   setupFrom,
   shortModel,
+  stateOf,
   taskNotice,
   taskOf,
+  warningsOf,
 } from './map'
 import type { Setup } from './map'
 import { MAP_COLUMNS, MAP_MIN_COLUMNS, MAP_ROWS, PICTURE_CELL, mapSize, paceOf, paintMap } from './raster'
@@ -401,14 +403,17 @@ async function share($: EngineInterface, setup: Setup): Promise<void> {
     // The rows under the map, as the pane writes them; again when the top line's time moves on.
     const line = describeNow(state, setup.t, now)
     const pinned = pinnedLines(state.entries, now, setup.t)
-    const said = [line.text, ...pinned.map(p => p.line)].join('\n')
+    const warnings = warningsOf(state, now, setup.t)
+    const changed = changedLine(state.changed, setup.t) ?? null
+    const said = [line.text, ...warnings.map(w => w.line), changed?.line ?? '', ...pinned.map(p => p.line)].join('\n')
     if (isChanged || said !== sharing.line) {
       sharing.line = said
       const feed = {
         now: line.text,
         nowTone: line.tone,
         plan: planLines(state.plan, setup.t),
-        changed: changedLine(state.changed, setup.t) ?? null,
+        warnings: warnings.map(w => w.line),
+        changed,
         pinned,
         rows: feedLines(state.entries, setup.t, state.agentNames, state.turns),
         empty: setup.t.nothingYet,
@@ -907,13 +912,21 @@ export const register: Register = (on, options) => {
     // Under it, work still going in the background, with its time: the pane is drawn again as the times move on.
     const changed = changedLine(state.changed, t)
     const pinned = pinnedLines(state.entries, now, t)
-    const next = Math.min(line.next ?? Infinity, pinned.length > 0 ? 1000 - (now % 1000) : Infinity)
+    const warnings = warningsOf(state, now, t)
+    // A running turn is looked at again every five seconds, so a warning comes in time.
+    const isRunning = ['thinking', 'running'].includes(stateOf(state))
+    const next = Math.min(line.next ?? Infinity, pinned.length > 0 ? 1000 - (now % 1000) : Infinity, isRunning ? 5000 - (now % 5000) : Infinity)
     tickLine($, Number.isFinite(next) ? next : undefined)
     const current = (
       <Box flexDirection="column">
         <Text mono size="footnote" color={line.tone === 'wait' ? 'warning' : line.tone === 'done' ? 'success' : undefined} bold={line.tone === 'wait'}>
           {line.text}
         </Text>
+        {warnings.map(w => (
+          <Text mono size="footnote" color="warning">
+            {w.line}
+          </Text>
+        ))}
         {planLines(state.plan, t).map(p => (
           <Text mono size="footnote" color={p.tone === 'run' ? 'claude' : undefined} dimColor={p.tone === 'ok'} bold={p.isBold === true}>
             {p.line}

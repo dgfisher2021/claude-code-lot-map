@@ -410,9 +410,9 @@ export function laneOf(list: readonly Entry[], e: Entry): number {
   return (peers.indexOf(e) - (peers.length - 1) / 2) * 5
 }
 
-type Scene = { entries: Entry[]; board: Board; now: number; c: Palette; names: Strings['stations']; t: Strings }
+type Scene = { entries: Entry[]; board: Board; now: number; c: Palette; names: Strings['stations']; t: Strings; warned: ReadonlySet<StationId> }
 
-function station(s: (typeof STATIONS)[number], i: number, { entries, board, now, c, names, t }: Scene): { under: string; over: string } {
+function station(s: (typeof STATIONS)[number], i: number, { entries, board, now, c, names, t, warned }: Scene): { under: string; over: string } {
   const p = place(i)
   const x = n1(p.x)
   const y = n1(p.y)
@@ -421,6 +421,8 @@ function station(s: (typeof STATIONS)[number], i: number, { entries, board, now,
   const color = isAlarm ? c.red : main
 
   let under = ''
+  // A station that looks stuck wears a dashed ring in the accent colour.
+  if (warned.has(s.id)) under += `<circle cx="${x}" cy="${y}" r="${NODE + 12}" fill="none" stroke="${c.accent}" stroke-width="1.4" stroke-dasharray="4 4"/>`
   if (isLit || isAlarm) {
     under +=
       running.length > 0 && !isAlarm
@@ -547,7 +549,15 @@ export function drawMap(board: Board, now: number, setup: Setup, isFilling = fal
     if (worn > 0) body += `${line} stroke="${s.id === 'memory' ? c.mem : c.accent}" opacity="${n1(worn * 0.55)}"/>`
   })
 
-  const scene: Scene = { entries: recent, board, now, c, names: setup.t.stations, t: setup.t }
+  const scene: Scene = {
+    entries: recent,
+    board,
+    now,
+    c,
+    names: setup.t.stations,
+    t: setup.t,
+    warned: new Set(warningsOf(board, now, setup.t).flatMap(w => (w.station === undefined ? [] : [w.station]))),
+  }
   const drawn = STATIONS.map((s, i) => station(s, i, scene))
   body += drawn.map(d => d.under).join('')
   body += trail(recent, now, c)
@@ -940,6 +950,60 @@ export function stateOf(board: Board): SessionState {
     e.status === 'run' && e.task === undefined && e.agentId === undefined && e.station !== 'model' && e.station !== 'you'
   if (board.entries.some(isTurnWork)) return 'running'
   return board.phase ?? 'idle'
+}
+
+/** A sign that the session looks stuck, and the station it sits at, when it has one. */
+export type Warning = { station?: StationId; line: string }
+
+const LOOP_MIN = 3
+const LONG_MS = 60_000
+const LONG_TIMES = 5
+const QUIET_MS = 180_000
+
+/** Work meant to run long, or to wait on the person, is never stuck. */
+const isPatient = (e: Entry): boolean => e.task !== undefined || e.waits === true || e.asks === true
+
+/**
+ * What looks stuck, at most three: a command failing again and again in one loop, a call running far past its station's
+ * usual time, a running turn with nothing new for three minutes.
+ */
+export function warningsOf(board: Board, now: number, t: Strings): Warning[] {
+  const out: Warning[] = []
+  const own = board.entries.filter(e => e.station !== 'model' && e.station !== 'you')
+
+  // A loop: the main loop's and each subagent's finished calls, newest first, the same failure from the newest back.
+  const loops = new Map<string | undefined, Entry[]>()
+  for (const e of own) if (e.status !== 'run') loops.set(e.agentId, [e, ...(loops.get(e.agentId) ?? [])])
+  for (const list of loops.values()) {
+    const [last] = list
+    if (last === undefined || last.status !== 'err') continue
+    const n = list.findIndex(e => e.status !== 'err' || e.station !== last.station || e.label !== last.label)
+    const streak = n === -1 ? list.length : n
+    if (streak >= LOOP_MIN) out.push({ station: last.station, line: t.failedInARow(t.stations[last.station], last.label, streak) })
+  }
+
+  // A call far past its station's median.
+  for (const e of own) {
+    if (e.status !== 'run' || isPatient(e)) continue
+    const took = own
+      .filter(x => x.station === e.station && x.endedAt !== undefined && (x.status === 'ok' || x.status === 'err') && x.task === undefined)
+      .map(x => (x.endedAt ?? x.startedAt) - x.startedAt)
+      .sort((a, b) => a - b)
+    if (took.length < 3) continue
+    const median = took[Math.floor(took.length / 2)] ?? 0
+    const elapsed = now - e.startedAt
+    if (elapsed > LONG_MS && elapsed > LONG_TIMES * median) {
+      out.push({ station: e.station, line: t.runningLong(t.stations[e.station], e.label, formatClock(elapsed, t), formatMs(median, t)) })
+    }
+  }
+
+  // A running turn with nothing starting or ending.
+  const state = stateOf(board)
+  if ((state === 'thinking' || state === 'running') && board.entries.length > 0 && !board.entries.some(e => e.status === 'run' && isPatient(e))) {
+    const newest = Math.max(...board.entries.map(e => Math.max(e.startedAt, e.endedAt ?? 0)))
+    if (now - newest >= QUIET_MS) out.push({ line: t.quietFor(Math.floor((now - newest) / 60_000)) })
+  }
+  return out.slice(0, 3)
 }
 
 /**
