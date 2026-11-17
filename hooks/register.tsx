@@ -272,7 +272,7 @@ async function frame($: EngineInterface, setup: Setup): Promise<void> {
     const state = await read($, board)
     const now = await $.clock.now()
     const cells = paintMap(state, now, setup, size.columns, size.rows)
-    wait = paceOf(state, now)
+    wait = paceOf(state, now, setup)
     if (cells === reel.painted) return
     // Refused is refused, whether the answer says so or the call rejects.
     const { deny } = await $.ui.blit({ requestId: PANE, key: MAP, cells, columns: size.columns, rows: size.rows }).catch((failure: unknown) => ({ deny: String(failure) }))
