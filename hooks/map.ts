@@ -650,23 +650,51 @@ export type Row = { entry: Entry; times: number; tookMs: number }
 
 const isPlain = (e: Entry): boolean => e.status === 'ok' && e.mark === undefined
 
-/** The newest rows first. Finished calls that follow one another at one station fold into a single row. */
+/**
+ * The newest rows first. Finished calls that follow one another at one station fold into a single row.
+ * A call still running is never pushed out by what came after it: past the last row it stays, as the last rows,
+ * in place of the oldest finished ones. Such rows take half the list at most; with more still running than that,
+ * the last stands for the rest, as a folded row does.
+ */
 export function foldRows(entries: readonly Entry[], max = 16): Row[] {
   const rows: Row[] = []
+  const running: Row[] = []
+  // Set once a row was left out: from there on nothing is a neighbour of the last row.
+  let isCut = false
+  const held = Math.max(1, Math.floor(max / 2))
   for (let i = entries.length - 1; i >= 0; i--) {
     const e = entries[i]
     if (e === undefined) continue
     const took = e.endedAt === undefined ? 0 : Math.max(0, e.endedAt - e.startedAt)
     const last = rows[rows.length - 1]
-    if (last !== undefined && isPlain(e) && isPlain(last.entry) && last.entry.station === e.station && last.entry.from === e.from) {
+    if (!isCut && last !== undefined && isPlain(e) && isPlain(last.entry) && last.entry.station === e.station && last.entry.from === e.from) {
       last.times++
       last.tookMs += took
       continue
     }
-    if (rows.length === max) break
+    if (rows.length >= max) {
+      // Past the list's end only what still runs counts.
+      isCut = true
+      if (e.status !== 'run') continue
+      const oldest = running[running.length - 1]
+      if (running.length < held || oldest === undefined) running.push({ entry: e, times: 1, tookMs: took })
+      else oldest.times++
+      continue
+    }
     rows.push({ entry: e, times: 1, tookMs: took })
   }
-  return rows
+  return running.length === 0 ? rows : [...rows.slice(0, max - running.length), ...running]
+}
+
+/**
+ * Keeps the newest `max` of what a set or a map holds and drops the rest: both hand their keys back in the order
+ * they were added. For what the mod remembers between two events and may never be asked for again.
+ */
+export function keepNewest(kept: { readonly size: number; keys(): IterableIterator<string>; delete(key: string): boolean }, max: number): void {
+  for (const key of kept.keys()) {
+    if (kept.size <= max) break
+    kept.delete(key)
+  }
 }
 
 /** The width of the rows' station column: the longest station name of the language, eight at least. */

@@ -10,6 +10,9 @@ What changed in each version of lot-map, newest first. To get a new version, see
   - The browser reached from a cloud session lands on Browser.
   - Shell commands are read where they belong: a command inside a loop, a condition or a group, one handed to `bash -c` or `eval`, a script given to a shell in a here-document, and the command `docker exec` or `docker run` runs in a container. A separator inside quotes parts nothing, and the text of a here-document is no command. More network commands are known by name or subcommand. A line is read up to its first 8,000 characters.
 - New option `serverStations`: put an MCP server's tools on a station of your choice, each as `server=station`. Memory keeps `memoryServers`.
+- Fixed: a call still running stays in the list of rows however many came after it, as its last rows, taking half the list at most; the map and the list now say the same.
+- Fixed: the refusals the mod remembers until their calls come by are held to the newest 64, so a call that never comes cannot stay for the session.
+- In iTerm2 the picture is off and the map stays in cells (`terminalPicture`): iTerm2 keeps every frame it is sent in memory. The mod knows it by `TERM_PROGRAM`, or `LC_TERMINAL` over ssh or in tmux.
 - Fixed: where no surface is attached at the start, as in the desktop app, the pane is no longer opened into nothing; it opens when a surface attaches.
 
 ## 0.10.0 (2026-11-16)

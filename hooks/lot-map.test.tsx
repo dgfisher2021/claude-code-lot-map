@@ -3,7 +3,7 @@ import { expect, mock, test } from 'claude-code/testing'
 
 import type { Board } from '../types'
 import type { Entry } from '../types'
-import { COLOR_NAMES, TRAIL_FADE_MS, TRAIL_HOLD_MS, classify, clean, drawMap, firstLine, foldRows, formatMs, memoryIds, pinnedLines, routeOf, setupFrom, stateOf, taskNotice, taskOf } from './map'
+import { COLOR_NAMES, TRAIL_FADE_MS, TRAIL_HOLD_MS, classify, clean, drawMap, feedLines, firstLine, foldRows, formatMs, keepNewest, memoryIds, pinnedLines, routeOf, setupFrom, stateOf, taskNotice, taskOf } from './map'
 import { mapSize, paceOf, paintMap } from './raster'
 import { stringsFor } from './text'
 import { layout } from '../renderer/layout.mjs'
@@ -2246,3 +2246,78 @@ test('the command docker runs in a container is the command that counts', () => 
     expect([c, stationOf(c)]).toEqual([c, 'shell'])
   }
 })
+
+test('a call still running stays in the list past the newest rows', () => {
+  const t = stringsFor('en')
+  // Stations alternate so that nothing folds: every entry is a row of its own.
+  const after = Array.from({ length: 20 }, (_, i) => entry(i % 2 === 0 ? 'files' : 'shell', 100 + i))
+  const running = entry('shell', 1, { status: 'run', endedAt: undefined, label: 'Run the long build' })
+  const rows = foldRows([entry('files', 0), running, ...after])
+  expect(rows.length).toBe(16)
+  expect(rows[15]?.entry.label).toBe('Run the long build')
+  expect(rows.slice(0, 15).map(r => r.entry.startedAt)).toEqual(Array.from({ length: 15 }, (_, i) => 119 - i))
+  expect(feedLines([entry('files', 0), running, ...after], t).at(-1)?.line).toContain('Run the long build')
+
+  // Two of them: both stay, the newer above the older.
+  const second = entry('agents', 2, { status: 'run', endedAt: undefined, label: 'Read the docs' })
+  expect(foldRows([running, second, ...after]).slice(14).map(r => r.entry.label)).toEqual(['Read the docs', 'Run the long build'])
+
+  // Ended, it is a row like any other and goes with the rest.
+  const ended = { ...running, status: 'ok' as const, endedAt: 50 }
+  expect(foldRows([ended, ...after]).some(r => r.entry.label === 'Run the long build')).toBe(false)
+
+  // A background task is pinned above the rows, so it takes none of them.
+  const task = entry('agents', 3, { status: 'run', endedAt: undefined, task: 'b1', label: 'Dev server' })
+  expect(feedLines([task, ...after], t).some(l => l.line.includes('Dev server'))).toBe(false)
+})
+
+test('the last row of a full list folds only what stood next to it, not the same station further back', () => {
+  const turns = Array.from({ length: 40 }, (_, i) => entry(i % 2 === 0 ? 'model' : 'shell', i))
+  expect(foldRows(turns).map(r => r.times)).toEqual(Array.from({ length: 16 }, () => 1))
+})
+
+test('what is remembered between two events is held to a count, the oldest dropped first', () => {
+  const refused = new Set<string>()
+  for (let i = 0; i < 100; i++) {
+    refused.add(`call-${i}`)
+    keepNewest(refused, 64)
+  }
+  expect(refused.size).toBe(64)
+  expect(refused.has('call-35')).toBe(false)
+  expect(refused.has('call-36')).toBe(true)
+  expect(refused.has('call-99')).toBe(true)
+  const crew = new Map([
+    ['a', 'one'],
+    ['b', 'two'],
+    ['c', 'three'],
+  ])
+  keepNewest(crew, 2)
+  expect([...crew.keys()]).toEqual(['b', 'c'])
+  keepNewest(crew, 2)
+  expect(crew.size).toBe(2)
+})
+
+for (const [what, variables] of [
+  ['TERM_PROGRAM iTerm.app', { TERM: 'xterm-kitty', TERM_PROGRAM: 'iTerm.app' }],
+  ['LC_TERMINAL iTerm2 over ssh', { LC_TERMINAL: 'iTerm2', TERM: 'xterm-kitty' }],
+  ['LC_TERMINAL iTerm2 inside tmux', { LC_TERMINAL: 'iTerm2', TERM: 'xterm-kitty', TERM_PROGRAM: 'tmux' }],
+] as const) {
+  test(`iTerm2 keeps the map in cells: ${what}`, async ($, on) => {
+    const clock = mock.clock(on, { now: NOW })
+    mock.env(on, variables)
+    on('ui.open', () => ({ value: { isPlaced: true } }))
+    on('command.register', () => ({ value: { command: 'lot-map' } }))
+    on('session.start', (_, e) => ({ cwd: e.cwd }))
+    on('fs.write', () => ({ value: undefined }))
+    on('ui.blit', () => ({ value: {} }))
+    const renderer = fakeRenderer(on)
+
+    await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+    const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+    await clock.settle()
+    expect(renderer.spawned.length).toBe(0)
+    expect(await ui.find({ type: 'Raster' })).toBeDefined()
+    expect(await ui.find({ type: 'Image' })).toBeUndefined()
+    await ui.unmount()
+  })
+}

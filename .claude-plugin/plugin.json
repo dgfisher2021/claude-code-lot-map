@@ -140,7 +140,7 @@
         "off"
       ],
       "default": "auto",
-      "description": "In a terminal that shows pictures (kitty, Ghostty, iTerm2), auto has a headless Chromium paint the map as the app draws it, and the pane shows each frame. It needs Node and Chromium; without them, and with off, the map stays in cells."
+      "description": "In a terminal that shows pictures such as kitty or Ghostty, but not iTerm2, which keeps every frame in memory, auto has a headless Chromium paint the map as the app draws it, and the pane shows each frame. It needs Node and Chromium; without them, and with off, the map stays in cells."
     },
     "terminalWindow": {
       "type": "string",

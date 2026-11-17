@@ -41,14 +41,14 @@ The code that takes names from a call is `classify` in [`hooks/map.ts`](hooks/ma
 
 ## Picture mode
 
-In a terminal that shows pictures (kitty, Ghostty, iTerm2 3.5 and later, or with `CLAUDE_CODE_FORCE_TERMINAL_IMAGES=1`), with `terminalPicture` on `auto`, the default, the map is painted by a browser. While the pane is open:
+In a terminal that shows pictures (kitty, Ghostty, or with `CLAUDE_CODE_FORCE_TERMINAL_IMAGES=1`), with `terminalPicture` on `auto`, the default, the map is painted by a browser. While the pane is open:
 
 - The mod starts `node renderer/render.mjs` from its own folder, and that starts headless Chromium: the first of `chromium`, `chromium-browser`, `google-chrome` on your PATH that runs, or `LOT_MAP_CHROMIUM`.
 - The mod writes the map's drawing, the same SVG the app's pane shows (station names, counts and the labels described above), to `map.svg` in a temporary folder of its own, `lot-map-*` in your temporary directory. The renderer writes each frame there as `frame.png`, which the terminal reads to show it.
 - Chromium shows only that drawing, from a `data:` address with nothing outside it, with its background networking, component updates, sync and pings turned off. Its profile lives in the same folder.
 - The renderer, Chromium and the folder go when the pane closes or the session ends. A folder left by a renderer that was killed is removed the next time one starts.
 
-The mod reads five environment variables to tell whether the terminal shows pictures: `TERM`, `TERM_PROGRAM`, `KITTY_WINDOW_ID`, `TMUX` and `CLAUDE_CODE_FORCE_TERMINAL_IMAGES`. With `terminalPicture` on `off`, or in any other terminal, none of this runs.
+The mod reads six environment variables to tell whether the terminal shows pictures: `TERM`, `TERM_PROGRAM`, `LC_TERMINAL`, `KITTY_WINDOW_ID`, `TMUX` and `CLAUDE_CODE_FORCE_TERMINAL_IMAGES`. With `terminalPicture` on `off`, or in any other terminal, none of this runs. In iTerm2, named by `TERM_PROGRAM` or `LC_TERMINAL`, the picture stays off, since iTerm2 keeps every frame it is sent in memory.
 
 ## The map window
 
