@@ -4,6 +4,8 @@ import type { EngineInterface, Register, Timer } from 'claude-code'
 import type { Board, Entry, StationId, Status, TurnSummary } from '../types'
 import {
   STATIONS,
+  changedItems,
+  changedLine,
   classify,
   clean,
   describeNow,
@@ -34,6 +36,10 @@ const REFUSALS_KEPT = 64
 const CREW = 12
 /** How many turns the board keeps. */
 const TURNS = 12
+/** How many changed files the board keeps. */
+const CHANGED = 40
+/** The calls that change a file. */
+const CHANGING_TOOLS = new Set(['Write', 'Edit', 'NotebookEdit'])
 
 // Change the tag when a field of Entry or Board changes: it declines what an earlier version stored.
 const board = atom({ plugin: 'lot-map', key: 'board' } as const, { entries: [], counts: {} } as Board, { shape: 'board-4' })
@@ -402,6 +408,7 @@ async function share($: EngineInterface, setup: Setup): Promise<void> {
         now: line.text,
         nowTone: line.tone,
         plan: planLines(state.plan, setup.t),
+        changed: changedLine(state.changed, setup.t) ?? null,
         pinned,
         rows: feedLines(state.entries, setup.t, state.agentNames, state.turns),
         empty: setup.t.nothingYet,
@@ -478,8 +485,15 @@ async function showWindow($: EngineInterface, setup: Setup, opening: Opening): P
   return placed.isPlaced ? setup.t.opened : setup.t.cannotOpen(String(placed.reason))
 }
 
+/** `/workmap changed`: every changed file, most edits first, one a line. */
+async function changedFiles($: EngineInterface, setup: Setup): Promise<string> {
+  const items = changedItems((await read($, board)).changed)
+  return items.length === 0 ? setup.t.nothingChanged : items.join('\n')
+}
+
 /** `/lot-map` and `/workmap`: the pane, or in Windows Terminal the window; `window` asks for the window anywhere. */
 async function runCommand($: EngineInterface, args: string, setup: Setup, opening: Opening): Promise<{ text: string }> {
+  if (args.trim() === 'changed') return { text: await changedFiles($, setup) }
   if (args.trim() === 'help') return { text: setup.t.legend.join('\n') }
   if (args.trim() === 'window') return { text: (await openWindow($, setup)).text }
   if (windowed.isMap) return { text: await showWindow($, setup, opening) }
@@ -537,8 +551,8 @@ export const register: Register = (on, options) => {
 
   on('session.start', async ($, e, next) => {
     // Two names for one command: lot-map, as the plugin is called, and workmap.
-    await quietly(() => $.command.register({ name: 'lot-map', description: t.command, argumentHint: '[window | help]' }))
-    await quietly(() => $.command.register({ name: 'workmap', description: t.command, argumentHint: '[window | help]' }))
+    await quietly(() => $.command.register({ name: 'lot-map', description: t.command, argumentHint: '[window | help | changed]' }))
+    await quietly(() => $.command.register({ name: 'workmap', description: t.command, argumentHint: '[window | help | changed]' }))
     picture.canShow = setup.terminalMap && setup.terminalPicture === 'auto' && (await quietly(() => showsPictures($))) === true
     windowed.isAsked = false
     // A -p run or the SDK draws nowhere (surface null): no window.
@@ -728,6 +742,18 @@ export const register: Register = (on, options) => {
           })
         })
       }
+      // A file written or edited is counted by its label, a subagent's as well; a refused or failed call changes nothing.
+      if (CHANGING_TOOLS.has(String(e.tool)) && !wasRefused && ran.isError !== true) {
+        await quietly(() => {
+          const label = classify(e.tool, e as unknown as Record<string, unknown>, setup).label
+          return update($, board, b => {
+            const had = b.changed ?? {}
+            const count = (Object.hasOwn(had, label) ? (had[label] ?? 0) : 0) + 1
+            const others = Object.entries(had).filter(([name]) => name !== label)
+            return { ...b, changed: Object.fromEntries([...others, [label, count]].slice(-CHANGED)) }
+          })
+        })
+      }
       const task = wasRefused || ran.isError === true ? undefined : taskOf(ran.result)
       if (task !== undefined) {
         await background($, id, task)
@@ -879,6 +905,7 @@ export const register: Register = (on, options) => {
     // The top line: a wait on the person stands out, a finished turn reads as theirs.
     const line = describeNow(state, t, now)
     // Under it, work still going in the background, with its time: the pane is drawn again as the times move on.
+    const changed = changedLine(state.changed, t)
     const pinned = pinnedLines(state.entries, now, t)
     const next = Math.min(line.next ?? Infinity, pinned.length > 0 ? 1000 - (now % 1000) : Infinity)
     tickLine($, Number.isFinite(next) ? next : undefined)
@@ -892,6 +919,11 @@ export const register: Register = (on, options) => {
             {p.line}
           </Text>
         ))}
+        {changed === undefined ? null : (
+          <Text mono size="footnote">
+            {changed.line}
+          </Text>
+        )}
         {pinned.map(p => (
           <Text mono size="footnote" color="claude">
             {p.line}

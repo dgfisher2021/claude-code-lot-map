@@ -18,6 +18,7 @@ What changed in each version of lot-map, newest first. To get a new version, see
 - Fixed: where no surface is attached at the start, as in the desktop app, the pane is no longer opened into nothing; it opens when a surface attaches.
 
 - The rows are grouped by turn. Your message opens a turn, whose bold header (`Turn 3 · 12.4 s · 7 calls · 1 error`) leads the list with the turn's rows under it; the four turns before it shrink to dim headers. The list stays within 16 lines. A turn a background task's notification starts opens no header. The legend has one more line.
+- A line under the top line, `✎ 3 files changed: map.ts ×7, text.ts ×2, README.md`, lists the files Claude wrote or edited, by name with their edits, the most edited first, within 100 characters, the rest counted. A call that was refused or failed counts for nothing. `/workmap changed` answers the full list, one a line. The legend has one more line.
 
 ## 0.10.0 (2026-11-16)
 

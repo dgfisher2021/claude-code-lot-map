@@ -816,6 +816,32 @@ export function planLines(plan: readonly PlanItem[] = [], t: Strings): FeedLine[
   return lines
 }
 
+/** The most characters the changed line shows. */
+const CHANGED_MAX = 100
+
+/** The changed files as `name ×N` (no ×1), most edits first; of equal counts, the one changed last. */
+export function changedItems(changed: Readonly<Record<string, number>> = {}): string[] {
+  return Object.keys(changed)
+    .reverse()
+    .sort((a, b) => (changed[b] ?? 0) - (changed[a] ?? 0))
+    .map(name => ((changed[name] ?? 0) > 1 ? `${name} ×${changed[name]}` : name))
+}
+
+/** The files written or edited this session, most edits first, cut between names to 100 characters; the rest counted. */
+export function changedLine(changed: Readonly<Record<string, number>> | undefined, t: Strings): FeedLine | undefined {
+  const items = changedItems(changed)
+  if (items.length === 0) return undefined
+  const head = `✎ ${t.changedFiles(items.length)}: `
+  const more = (rest: number) => (rest > 0 ? t.andMore(rest) : '')
+  const width = (text: string) => Array.from(text).length
+  let shown = 0
+  while (shown < items.length && width(head + items.slice(0, shown + 1).join(', ') + more(items.length - shown - 1)) <= CHANGED_MAX) shown++
+  if (shown > 0) return { line: head + items.slice(0, shown).join(', ') + more(items.length - shown), tone: 'plain' }
+  // Even the first name alone is too long: it is cut, not the line widened.
+  const room = Math.max(1, CHANGED_MAX - width(head) - width(more(items.length - 1)) - 1)
+  return { line: `${head}${Array.from(items[0] ?? '').slice(0, room).join('')}…${more(items.length - 1)}`, tone: 'plain' }
+}
+
 /** A row of the feed as written: at work, finished, gone wrong, refused, a change of model, or plain words. */
 export type FeedLine = { line: string; tone: 'run' | 'ok' | 'bad' | 'block' | 'switch' | 'plain'; isBold?: true }
 

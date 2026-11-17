@@ -10,7 +10,7 @@ Claude Code passes a mod that follows tool calls the whole input of every call: 
 
 The mod does not look for personal data and has no use for it. It takes a name for the row it draws and drops the rest:
 
-- a file: the last two parts of its path;
+- a file: the last two parts of its path; the files Claude wrote or edited are kept by that name with a count, never by their content;
 - a web address: the host alone, without a login, password, path or query;
 - a shell command: the short description Claude wrote for it, or the command's name, never the command line; a failed one also its exit code, never its output;
 - a memory call: the tool's name and a record number or short identifier, never the text or the query;
