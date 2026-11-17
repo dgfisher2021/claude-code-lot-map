@@ -2276,7 +2276,7 @@ test('the last row of a full list folds only what stood next to it, not the same
   expect(foldRows(turns).map(r => r.times)).toEqual(Array.from({ length: 16 }, () => 1))
   // What stood next to it still folds in; a model call further back, past the cut, does not.
   const tail = [entry('model', 0), entry('model', 1), ...Array.from({ length: 15 }, (_, i) => entry(i % 2 === 0 ? 'shell' : 'files', 10 + i))]
-  expect(foldRows([entry('model', -1), ...tail])[15]?.times).toBe(2)
+  expect(foldRows([entry('model', -2), entry('shell', -1), ...tail])[15]?.times).toBe(2)
 })
 
 test('thirty calls still running take half the list, the last of them standing for the rest, and the newest calls keep the other half', () => {
