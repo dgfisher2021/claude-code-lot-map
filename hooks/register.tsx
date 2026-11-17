@@ -71,6 +71,8 @@ type Start = {
   waits?: true
   /** Adds nothing to the station's count: a second view of something already counted. */
   uncounted?: boolean
+  /** Comes ahead of the turn it belongs to, as a settings hook's row at a message: no turn yet, nothing counted on one. */
+  loose?: true
   startedAt?: number
   endedAt?: number
   patch?: Partial<Pick<Board, 'model' | 'step' | 'switchedAt' | 'phase'>>
@@ -126,15 +128,15 @@ async function begin($: EngineInterface, start: Start): Promise<string | undefin
       ...(start.waits === true ? { waits: true as const } : {}),
     }
     await update($, board, b => {
-      const open = b.turns?.[b.turns.length - 1]
+      const open = start.loose ? undefined : b.turns?.[b.turns.length - 1]
       const bad = entry.station !== 'you' ? tally(b, entry.station, entry.status, entry.agentId) : {}
-      const counts = !start.uncounted && entry.station !== 'model' && entry.station !== 'you'
+      const counts = !start.uncounted && !start.loose && entry.station !== 'model' && entry.station !== 'you'
       return {
         ...b,
         ...start.patch,
         entries: kept([...b.entries, open === undefined ? entry : { ...entry, turn: open.n }]),
         counts: start.uncounted ? b.counts : { ...b.counts, [entry.station]: (b.counts[entry.station] ?? 0) + 1 },
-        ...(start.uncounted ? {} : { turnCounts: oneMore(b.turnCounts, entry.station) }),
+        ...(start.uncounted || start.loose ? {} : { turnCounts: oneMore(b.turnCounts, entry.station) }),
         // What a hook brought to memory unasked is counted apart from what was asked for.
         ...(entry.station === 'memory' && entry.from === 'inbound' && !start.uncounted ? { pushed: (b.pushed ?? 0) + 1 } : {}),
         // An interrupted turn lands on the person's own station and is no fault of anything.
@@ -692,19 +694,26 @@ async function showOverview($: EngineInterface, setup: Setup): Promise<string> {
   return isOpen ? setup.t.overviewOpened : setup.t.windowByHand(command.join(' '))
 }
 
-/** What a settings hook added to the context: shown as the hook acting and, when it brought records, as memory. */
-async function noteContext($: EngineInterface, context: readonly string[] | undefined, when: string, setup: Setup): Promise<void> {
+/**
+ * What a settings hook added to the context: shown as the hook acting and, when it brought records, as memory. With
+ * `ahead`, the rows wait loose for the turn the message starts, their ids kept there.
+ */
+async function noteContext($: EngineInterface, context: readonly string[] | undefined, when: string, setup: Setup, ahead?: string[]): Promise<void> {
   const { t } = setup
   const text = (context ?? []).join('\n')
   if (text.trim() === '') return
+  const note = async (start: Start): Promise<void> => {
+    const id = await begin($, ahead === undefined ? start : { ...start, loose: true })
+    if (id !== undefined) ahead?.push(id)
+  }
   const ids = setup.hookRecords ? memoryIds(text) : []
   if (ids.length === 0) {
-    await begin($, { station: 'hooks', label: t.addedContext(when), status: 'ok' })
+    await note({ station: 'hooks', label: t.addedContext(when), status: 'ok' })
     return
   }
-  await begin($, { station: 'hooks', label: t.addedMemory(when), status: 'ok' })
+  await note({ station: 'hooks', label: t.addedMemory(when), status: 'ok' })
   const shown = ids.slice(0, 6).map(id => `#${id}`).join(' ')
-  await begin($, {
+  await note({
     station: 'memory',
     label: t.records(ids.length, `${shown}${ids.length > 6 ? ' …' : ''}`),
     from: 'inbound',
@@ -729,6 +738,11 @@ export const register: Register = (on, options) => {
   let modelKey = 'model'
   /** The context's fill and window at the last measurement; forgotten at a session's start and end, so a /clear marks nothing. */
   let lastContext: { percent: number; window: number } | undefined
+  /**
+   * The rows a person's prompt brought before its turn started, its settings hooks' and a typed skill's: they join the
+   * turn when it starts. Unset while no prompt waits for its turn.
+   */
+  let ahead: string[] | undefined
 
   const opening = { id: PANE, title: t.title, ...(setup.terminalMap ? { columns: MAP_COLUMNS, rows: MAP_ROWS } : {}) }
 
@@ -741,6 +755,7 @@ export const register: Register = (on, options) => {
     // A -p run or the SDK draws nowhere (surface null): no window.
     windowed.isMap = e.surface === 'terminal' && (await quietly(() => windowIsTheMap($, setup))) === true
     lastContext = undefined
+    ahead = undefined
     // A -p run or the SDK shows nowhere: it keeps no status.
     if (e.surface !== null) {
       await quietly(() => startStatus($, setup, e.cwd))
@@ -812,16 +827,24 @@ export const register: Register = (on, options) => {
       // A background task reporting back is no message of the person's.
       if (notice.status !== undefined) await settle($, notice.id, notice.status)
     } else if (e.agentId === undefined && e.text !== '') {
-      // A new message clears what went wrong on the way to the last answer, and opens a turn.
+      // A new message clears what went wrong on the way to the last answer, and opens a turn with the rows it brought ahead.
+      const brought = new Set(ahead ?? [])
+      ahead = undefined
       await quietly(async () => {
         const now = await $.clock.now()
-        await update($, board, b => ({
-          ...b,
-          ...(b.faults === undefined ? {} : { faults: {} }),
-          ...(b.blocks === undefined ? {} : { blocks: {} }),
-          ...(b.turnCounts === undefined ? {} : { turnCounts: {} }),
-          turns: [...(b.turns ?? []), { n: (b.turns?.[b.turns.length - 1]?.n ?? 0) + 1, startedAt: now, calls: 0, errors: 0 }].slice(-TURNS),
-        }))
+        await update($, board, b => {
+          const n = (b.turns?.[b.turns.length - 1]?.n ?? 0) + 1
+          const joined = b.entries.filter(x => brought.has(x.id) && x.station !== 'model' && x.station !== 'you')
+          const turnCounts = joined.reduce<Board['turnCounts']>((c, x) => oneMore(c, x.station), {})
+          return {
+            ...b,
+            ...(b.faults === undefined ? {} : { faults: {} }),
+            ...(b.blocks === undefined ? {} : { blocks: {} }),
+            ...(b.turnCounts === undefined && joined.length === 0 ? {} : { turnCounts }),
+            entries: b.entries.map(x => (brought.has(x.id) ? { ...x, turn: n } : x)),
+            turns: [...(b.turns ?? []), { n, startedAt: now, calls: joined.length, errors: 0 }].slice(-TURNS),
+          }
+        })
       })
       await begin($, { station: 'you', label: t.newMessage, from: 'inbound', status: 'ok' })
       if (windowed.isMap && !windowed.isAsked) void quietly(() => showWindow($, setup, opening))
@@ -1009,10 +1032,14 @@ export const register: Register = (on, options) => {
     })
   }
 
-  // A notification delivered into a running turn starts no turn of its own; this is where it is seen.
+  // A notification delivered into a running turn starts no turn of its own; this is where it is seen. Any other prompt
+  // comes before its turn, and what its settings hooks and a typed skill add waits for that turn.
   on('prompt.submit', async ($, e, next) => {
     await quietly(async () => {
-      if (e.origin?.kind !== 'task-notification') return
+      if (e.origin?.kind !== 'task-notification') {
+        ahead ??= []
+        return
+      }
       const notice = taskNotice(e.text)
       if (notice?.status !== undefined) await settle($, notice.id, notice.status)
     })
@@ -1022,7 +1049,7 @@ export const register: Register = (on, options) => {
   if (setup.guardedHooks) {
     on('classic.UserPromptSubmit', async ($, e, next) => {
       const result = await next(e)
-      await noteContext($, result.additionalContext, t.toMessage, setup)
+      await noteContext($, result.additionalContext, t.toMessage, setup, ahead)
       return result
     })
 
@@ -1034,20 +1061,26 @@ export const register: Register = (on, options) => {
 
     on('skill.prompt', async ($, e, next) => {
       const result = await next(e)
-      // A skill the model called is already on the map as its tool call; this one catches a typed slash command.
+      // A skill the model called is already on the map as its tool call; this one catches a typed slash command, which
+      // waits for the turn its prompt starts, or else counts on the open one.
       await quietly(async () => {
         const now = await $.clock.now()
+        const waiting = ahead
+        let added: string | undefined
         await update($, board, b => {
           const label = clean(e.skill)
-          if (b.entries.some(x => x.station === 'skills' && x.status === 'run' && x.label === label)) return b
           const entry: Entry = { id: newId(now), station: 'skills', label, from: 'core', startedAt: now, endedAt: now, status: 'ok' }
+          added = b.entries.some(x => x.station === 'skills' && x.status === 'run' && x.label === label) ? undefined : entry.id
+          if (added === undefined) return b
+          const open = waiting === undefined ? b.turns?.[b.turns.length - 1] : undefined
           return {
             ...b,
-            entries: kept([...b.entries, entry]),
+            entries: kept([...b.entries, open === undefined ? entry : { ...entry, turn: open.n }]),
             counts: { ...b.counts, skills: (b.counts.skills ?? 0) + 1 },
-            turnCounts: oneMore(b.turnCounts, 'skills'),
+            ...(waiting === undefined ? { turnCounts: oneMore(b.turnCounts, 'skills'), ...inTurn(b, x => ({ ...x, calls: x.calls + 1 })) } : {}),
           }
         })
+        if (added !== undefined) waiting?.push(added)
       })
       return result
     })

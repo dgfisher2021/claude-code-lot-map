@@ -2852,6 +2852,40 @@ test("a turn a background task's notification starts opens no header", async ($,
   await ui.unmount()
 })
 
+test("what a settings hook or a typed skill adds at a message lands on that message's turn", { options: { hookRecords: true } }, async ($, on) => {
+  mock.clock(on, { now: NOW })
+  on('prompt.submit', (_, e) => ({ text: e.text }) as never)
+  on('turn.start', (_, e) => ({ turnId: e.turnId }) as never)
+  on('skill.prompt', (_, e) => ({ text: e.text }) as never)
+  on('tool.call', () => ({ result: {} }) as never)
+  const added = [['a note'], ['• [#12 excerpt] x']]
+  on('classic.UserPromptSubmit', () => ({ additionalContext: added.shift() ?? [] }) as never)
+  // As the engine has it: the prompt and its settings hooks, then a typed skill's text, then the turn.
+  const message = async (text: string, turnId: string, skill?: string) => {
+    await $.prompt.submit({ text, wait: false, origin: { kind: 'composer' } } as never)
+    await $.classic.UserPromptSubmit({ prompt: text, permission_mode: 'default' } as never)
+    if (skill !== undefined) await $.skill.prompt({ skill, text: '' } as never)
+    await $.turn.start({ text, turnId } as never)
+  }
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  const text = async (pattern: RegExp) => (await ui.find({ type: 'Text', text: pattern }))?.text
+  await message('first', 't1')
+  await $.tool.call({ tool: 'Read', file_path: '/a/one.ts' } as never)
+  await message('/deploy', 't2', 'deploy')
+  expect(await text(/^Turn 1 · /)).toMatch(/ · 2 calls$/)
+  expect(await text(/^Turn 2 · /)).toMatch(/ · 3 calls$/)
+  expect(await text(/added memory to the message/)).toBeDefined()
+  expect(await text(/1 record: #12/)).toBeDefined()
+  expect(await text(/Skills +deploy/)).toBeDefined()
+  expect(String((await ui.find({ type: 'Svg' }))?.props.source)).toContain('<title>Hooks: 2 calls this session · 1 this turn</title>')
+  // A background task's notification opens no turn.
+  await $.prompt.submit({ text: NOTICE('b1', 'completed'), wait: false, origin: { kind: 'task-notification' } } as never)
+  await $.turn.start({ text: NOTICE('b1', 'completed'), turnId: 't3' } as never)
+  expect(await text(/^Turn 3/)).toBeUndefined()
+  expect(await text(/^Turn 2 · /)).toMatch(/ · 3 calls$/)
+  await ui.unmount()
+})
+
 test('the open-turn header goes first and bold, then its rows, then the last four earlier headers, dim, in 16 lines', () => {
   const t = stringsFor('en')
   const turn = (n: number, more: Partial<TurnSummary> = {}): TurnSummary => ({ n, startedAt: n * 1000, endedAt: n * 1000 + 500, calls: n, errors: 0, ...more })
