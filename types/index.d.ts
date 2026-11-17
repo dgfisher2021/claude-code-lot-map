@@ -28,6 +28,8 @@ export type Entry = {
   ranAt?: number
   /** A failed shell command's exit code: a number, nothing of its output. */
   exit?: number
+  /** A failed call's first line of error, cleaned and cut. Only with `errorReasons` on. */
+  reason?: string
   /** The person's message this call came under: the `n` of a `TurnSummary`. */
   turn?: number
 }

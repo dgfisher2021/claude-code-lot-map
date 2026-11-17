@@ -43,6 +43,8 @@ export type Setup = {
   hookRecords: boolean
   /** Whether the first line of a hook's refusal is shown. Off, the row names only the tool. */
   hookReasons: boolean
+  /** Whether the first line of a failed call's error is shown on its row. Off, the row says only that it failed. */
+  errorReasons: boolean
   /** Whether the mod listens to the five events an organisation's guard keeps a mod away from. Off, it adds no hook on them. */
   guardedHooks: boolean
   theme: 'auto' | 'dark' | 'light'
@@ -93,6 +95,7 @@ export function setupFrom(options: Readonly<Record<string, unknown>> = {}): Setu
     serverStations,
     hookRecords: options.hookRecords === true,
     hookReasons: options.hookReasons === true,
+    errorReasons: options.errorReasons === true,
     guardedHooks: !(options.guardedHooks === false || options.guardedHooks === 'false'),
     theme: options.theme === 'dark' || options.theme === 'light' ? options.theme : 'auto',
     background: options.background === 'transparent' ? 'transparent' : 'solid',
@@ -932,7 +935,7 @@ function rowLines(rows: readonly Row[], t: Strings, agentNames: Readonly<Record<
     // A subagent's call carries its name, when it is known.
     const agent = entry.agentId === undefined ? undefined : agentNames[entry.agentId]
     const label = agent === undefined ? entry.label : `↳ ${agent} · ${entry.label}`
-    const line = `${mark} ${t.stations[entry.station].padEnd(column)} ${label}${times > 1 ? `  +${times - 1}` : ''}${exit}${took === '' ? '' : `  ${took}`}`
+    const line = `${mark} ${t.stations[entry.station].padEnd(column)} ${label}${times > 1 ? `  +${times - 1}` : ''}${exit}${entry.reason === undefined ? '' : ` — ${entry.reason}`}${took === '' ? '' : `  ${took}`}`
     return { line, tone: isSwitch ? 'switch' : entry.status === 'run' ? 'run' : entry.status === 'ok' ? 'ok' : entry.status === 'block' ? 'block' : 'bad' }
   })
 }
