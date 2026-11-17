@@ -65,7 +65,8 @@ Please translate a language you speak.
 
 | File | What is in it |
 | --- | --- |
-| `hooks/map.ts` | what a call is called and where it lands (`classify`), colours, the drawing, the rows |
+| `hooks/classify.ts` | what a call is called and where it lands (`classify`) |
+| `hooks/map.ts` | colours, the drawing, the rows, the warnings |
 | `hooks/register.tsx` | the hooks and the pane |
 | `hooks/text.ts` | the words, one table per language |
 | `hooks/lot-map.test.tsx` | the tests |
