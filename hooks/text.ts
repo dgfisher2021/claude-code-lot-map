@@ -35,7 +35,7 @@ export type Strings = {
   idle: string
   /** The word under the core: what the session is doing. Fourteen characters at most. */
   states: { idle: string; thinking: string; running: string; waiting: string; compacting: string; done: string }
-  /** `/workmap help`, and `?` in the window: what the map's marks mean. Ten lines. */
+  /** `/workmap help`, and `?` in the window: what the map's marks mean. Twelve lines. */
   legend: string[]
   /** A station's title, for hovering in the app: its calls, its errors and its refusals. */
   callsHere: (n: number) => string
@@ -45,6 +45,9 @@ export type Strings = {
   errorsInSession: (n: number) => string
   context: string
   andMore: (n: number) => string
+  /** The changed line's count, and what /workmap changed answers when nothing was written or edited. */
+  changedFiles: (n: number) => string
+  nothingChanged: string
   webSearch: string
   artifact: string
   workflow: string
@@ -126,6 +129,7 @@ const en: Strings = {
     'Word under the centre: what the session is doing; needs you blinks.',
     'Red dot circling Agents: a subagent whose call failed or was refused.',
     'Turn header, bold: your message, its time, calls and errors. Earlier turns fold to their headers.',
+    '✎ Files changed this session, by name, most edited first; ×N is how many times.',
   ],
   callsHere: n => `${n} ${n === 1 ? 'call' : 'calls'} this session`,
   errorsHere: n => `${n} ${n === 1 ? 'error' : 'errors'} since your last message`,
@@ -138,6 +142,8 @@ const en: Strings = {
     [`Turn ${n}`, time, `${calls} ${calls === 1 ? 'call' : 'calls'}`, ...(errors > 0 ? [`${errors} ${errors === 1 ? 'error' : 'errors'}`] : [])].join(' · '),
   context: 'context',
   andMore: n => ` and ${n} more`,
+  changedFiles: n => `${n} ${n === 1 ? 'file' : 'files'} changed`,
+  nothingChanged: 'No files changed yet.',
   webSearch: 'web search',
   artifact: 'artifact',
   workflow: 'workflow',
@@ -211,6 +217,7 @@ const ru: Strings = {
     'Слово под центром: что делает сессия; «ждёт тебя» мигает.',
     'Красная точка у Агентов: субагент, чей вызов упал или был отклонён.',
     'Заголовок хода, жирным: твоё сообщение, время, вызовы и ошибки. Прошлые ходы свёрнуты до заголовков.',
+    '✎ Файлы, изменённые за сессию, по имени, чаще правленные первыми; ×N — сколько раз.',
   ],
   callsHere: n => `вызовов за сессию: ${n}`,
   errorsHere: n => `ошибок с последнего сообщения: ${n}`,
@@ -222,6 +229,8 @@ const ru: Strings = {
   turnHeader: (n, time, calls, errors) => [`Ход ${n}`, time, `вызовов: ${calls}`, ...(errors > 0 ? [`ошибок: ${errors}`] : [])].join(' · '),
   context: 'контекст',
   andMore: n => ` и ещё ${n}`,
+  changedFiles: n => `изменено файлов: ${n}`,
+  nothingChanged: 'Файлы пока не менялись.',
   webSearch: 'поиск в сети',
   artifact: 'артефакт',
   workflow: 'рабочий процесс',
@@ -295,6 +304,7 @@ const es: Strings = {
     'Palabra bajo el centro: lo que hace la sesión; «te espera» parpadea.',
     'Punto rojo en Agentes: un subagente con una llamada fallida o rechazada.',
     'Encabezado de turno, en negrita: tu mensaje, su tiempo, llamadas y errores. Los turnos previos se pliegan.',
+    '✎ Archivos cambiados en la sesión, por nombre, los más editados primero; ×N son las veces.',
   ],
   callsHere: n => `${n} llamadas en esta sesión`,
   errorsHere: n => `${n} errores desde tu último mensaje`,
@@ -309,6 +319,8 @@ const es: Strings = {
     ),
   context: 'contexto',
   andMore: n => ` y ${n} más`,
+  changedFiles: n => `${n} ${n === 1 ? 'archivo cambiado' : 'archivos cambiados'}`,
+  nothingChanged: 'Ningún archivo cambiado todavía.',
   webSearch: 'búsqueda web',
   artifact: 'artefacto',
   workflow: 'flujo de trabajo',
@@ -382,6 +394,7 @@ const fr: Strings = {
     'Mot sous le centre : ce que fait la session ; « vous attend » clignote.',
     "Point rouge autour d'Agents : un sous-agent dont un appel a échoué ou a été refusé.",
     'En-tête de tour, en gras : votre message, sa durée, appels et erreurs. Les tours passés se replient.',
+    '✎ Fichiers modifiés dans la session, par nom, les plus modifiés d’abord ; ×N est le nombre de fois.',
   ],
   callsHere: n => `${n} appels pendant la session`,
   errorsHere: n => `${n} erreurs depuis votre dernier message`,
@@ -396,6 +409,8 @@ const fr: Strings = {
     ),
   context: 'contexte',
   andMore: n => ` et ${n} de plus`,
+  changedFiles: n => `${n} ${n === 1 ? 'fichier modifié' : 'fichiers modifiés'}`,
+  nothingChanged: 'Aucun fichier modifié pour le moment.',
   webSearch: 'recherche web',
   artifact: 'artefact',
   workflow: 'workflow',
@@ -469,6 +484,7 @@ const de: Strings = {
     'Wort unter der Mitte: was die Sitzung gerade tut; „braucht dich“ blinkt.',
     'Roter Punkt bei Agenten: ein Subagent, dessen Aufruf fehlschlug oder abgelehnt wurde.',
     'Zugkopf, fett: deine Nachricht, seine Zeit, Aufrufe und Fehler. Frühere Züge schrumpfen auf ihren Kopf.',
+    '✎ In der Sitzung geänderte Dateien nach Namen, meistbearbeitete zuerst; ×N ist die Anzahl.',
   ],
   callsHere: n => `${n} Aufrufe in dieser Sitzung`,
   errorsHere: n => `${n} Fehler seit deiner letzten Nachricht`,
@@ -481,6 +497,8 @@ const de: Strings = {
     [`Zug ${n}`, time, `${calls} ${calls === 1 ? 'Aufruf' : 'Aufrufe'}`, ...(errors > 0 ? [`${errors} Fehler`] : [])].join(' · '),
   context: 'Kontext',
   andMore: n => ` und ${n} weitere`,
+  changedFiles: n => `${n} ${n === 1 ? 'Datei geändert' : 'Dateien geändert'}`,
+  nothingChanged: 'Noch keine Dateien geändert.',
   webSearch: 'Websuche',
   artifact: 'Artefakt',
   workflow: 'Workflow',
@@ -554,6 +572,7 @@ const it: Strings = {
     'Parola sotto il centro: cosa sta facendo la sessione; «ti aspetta» lampeggia.',
     'Punto rosso su Agenti: un subagente con una chiamata fallita o rifiutata.',
     'Intestazione del turno, in grassetto: il tuo messaggio, tempo, chiamate ed errori. I turni passati si piegano.',
+    '✎ File modificati nella sessione, per nome, i più modificati prima; ×N è il numero di volte.',
   ],
   callsHere: n => `${n} chiamate nella sessione`,
   errorsHere: n => `${n} errori dal tuo ultimo messaggio`,
@@ -568,6 +587,8 @@ const it: Strings = {
     ),
   context: 'contesto',
   andMore: n => ` e altri ${n}`,
+  changedFiles: n => `${n} ${n === 1 ? 'file modificato' : 'file modificati'}`,
+  nothingChanged: 'Ancora nessun file modificato.',
   webSearch: 'ricerca web',
   artifact: 'artefatto',
   workflow: 'workflow',
@@ -642,6 +663,7 @@ const pt: Strings = {
     'Palavra sob o centro: o que a sessão está a fazer; «espera por ti» pisca.',
     'Ponto vermelho em Agentes: um subagente com uma chamada falhada ou recusada.',
     'Cabeçalho do turno, em negrito: tua mensagem, tempo, chamadas e erros. Turnos anteriores se recolhem.',
+    '✎ Arquivos alterados na sessão, por nome, os mais editados primeiro; ×N é o número de vezes.',
   ],
   callsHere: n => `${n} chamadas nesta sessão`,
   errorsHere: n => `${n} erros desde a tua última mensagem`,
@@ -656,6 +678,8 @@ const pt: Strings = {
     ),
   context: 'contexto',
   andMore: n => ` e mais ${n}`,
+  changedFiles: n => `${n} ${n === 1 ? 'arquivo alterado' : 'arquivos alterados'}`,
+  nothingChanged: 'Nenhum arquivo alterado ainda.',
   webSearch: 'pesquisa na web',
   artifact: 'artefacto',
   workflow: 'workflow',

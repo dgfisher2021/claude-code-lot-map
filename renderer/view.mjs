@@ -173,6 +173,7 @@ function rows() {
     for (const { line, tone, isBold } of Array.isArray(feed.plan) ? feed.plan : []) {
       lines.push(`${isBold === true ? '\x1b[1m' : ''}${TONES[tone] ?? ''}${fitLine(String(line))}\x1b[0m`)
     }
+    if (feed.changed) lines.push(`${TONES[feed.changed.tone] ?? ''}${fitLine(String(feed.changed.line))}\x1b[0m`)
     for (const { line, tone } of Array.isArray(feed.pinned) ? feed.pinned : []) lines.push(`${TONES[tone] ?? ''}${fitLine(String(line))}\x1b[0m`)
     const listed = Array.isArray(feed.rows) ? feed.rows : []
     if (listed.length === 0) lines.push(`\x1b[2m${fitLine(String(feed.empty ?? ''))}\x1b[0m`)

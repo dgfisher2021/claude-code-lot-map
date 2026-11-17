@@ -75,6 +75,8 @@ export type Board = {
   answeredAt?: number
   /** Claude's own plan, as its task tools set it. */
   plan?: PlanItem[]
+  /** A changed file's label to how many times it was written or edited; the 40 most recently changed. */
+  changed?: Record<string, number>
   /** The person's messages this session as turns, the last twelve; the newest is the open one. */
   turns?: TurnSummary[]
 }

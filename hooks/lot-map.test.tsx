@@ -3,7 +3,7 @@ import { expect, mock, test } from 'claude-code/testing'
 
 import type { Board } from '../types'
 import type { Entry, TurnSummary } from '../types'
-import { COLOR_NAMES, TRAIL_FADE_MS, TRAIL_HOLD_MS, classify, clean, drawMap, feedLines, firstLine, foldRows, formatMs, keepNewest, memoryIds, pinnedLines, routeOf, setupFrom, stateOf, taskNotice, taskOf } from './map'
+import { COLOR_NAMES, TRAIL_FADE_MS, TRAIL_HOLD_MS, changedLine, classify, clean, drawMap, feedLines, firstLine, foldRows, formatMs, keepNewest, memoryIds, pinnedLines, routeOf, setupFrom, stateOf, taskNotice, taskOf } from './map'
 import { mapSize, paceOf, paintMap } from './raster'
 import { stringsFor } from './text'
 import { layout } from '../renderer/layout.mjs'
@@ -1123,6 +1123,53 @@ test('a long subject with emoji and CJK is cut to 60 characters and kept clean',
   await ui.unmount()
 })
 
+test('files written and edited are listed by name with their edits; refused and failed ones are not', async ($, on) => {
+  mock.clock(on, { now: NOW })
+  on('command.register', (_, e) => ({ value: { command: e.name } }))
+  const answers: unknown[] = [{ result: {} }, { result: {} }, { result: {} }, { deny: 'not here' }, { result: {}, isError: true, text: 'no' }]
+  on('tool.call', () => (answers.shift() ?? { result: {} }) as never)
+  on('session.start', (_, e) => ({ cwd: e.cwd }))
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  expect(await ui.find({ type: 'Text', text: /^✎/ })).toBeUndefined()
+  expect((await $.command.run({ command: 'workmap', args: 'changed' } as never)).text).toBe('No files changed yet.')
+  await $.tool.call({ tool: 'Write', file_path: '/p/a/b.ts', content: 'x' } as never)
+  await $.tool.call({ tool: 'Edit', file_path: '/p/a/b.ts', old_string: 'x', new_string: 'y' } as never)
+  await $.tool.call({ tool: 'Edit', file_path: '/p/a/b.ts', old_string: 'y', new_string: 'z' } as never)
+  await $.tool.call({ tool: 'Edit', file_path: '/p/c.ts', old_string: 'x', new_string: 'y' } as never).catch(() => undefined)
+  await $.tool.call({ tool: 'NotebookEdit', notebook_path: '/p/n.ipynb', new_source: 'x' } as never)
+  await $.tool.call({ tool: 'Read', file_path: '/p/d.ts' } as never)
+  expect((await ui.find({ type: 'Text', text: /^✎/ }))?.text).toBe('✎ 1 file changed: a/b.ts ×3')
+  expect((await $.command.run({ command: 'workmap', args: 'changed' } as never)).text).toBe('a/b.ts ×3')
+  await ui.unmount()
+})
+
+test('a long or wide file name never widens the changed line', async ($, on) => {
+  mock.clock(on, { now: NOW })
+  on('tool.call', () => ({ result: {} }) as never)
+  const t = stringsFor('de')
+  const wide = `${'界🙂'.repeat(100)}.ts`
+  const long = changedLine({ [`d/${wide}`]: 4 }, t)
+  expect(Array.from(long?.line ?? '').length).toBeLessThanOrEqual(100)
+  expect(long?.line).toMatch(/^✎ 1 Datei geändert: d\/界🙂.*…$/u)
+  // Many files: whole entries only, the rest counted, the line within 100 characters.
+  const many = Object.fromEntries(Array.from({ length: 30 }, (_, i) => [`src/file-${i}.ts`, 30 - i]))
+  const line = changedLine(many, t)?.line ?? ''
+  expect(Array.from(line).length).toBeLessThanOrEqual(100)
+  expect(line).toMatch(/src\/file-0\.ts ×30, src\/file-1\.ts ×29/)
+  expect(line).toMatch(/ und \d+ weitere$/)
+  expect(line).not.toMatch(/×1\b/)
+  expect(changedLine({ 'a.ts': 1 }, stringsFor('en'))).toEqual({ line: '✎ 1 file changed: a.ts', tone: 'plain' })
+  expect(changedLine({}, t)).toBeUndefined()
+  expect(changedLine(undefined, t)).toBeUndefined()
+  // In the pane, an emoji and CJK name 200 characters long stays within it.
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await $.tool.call({ tool: 'Write', file_path: `/p/${wide}`, content: 'x' } as never)
+  const shown = (await ui.find({ type: 'Text', text: /^✎/ }))?.text ?? ''
+  expect(Array.from(shown).length).toBeLessThanOrEqual(100)
+  await ui.unmount()
+})
+
 test('past five pieces of background work, the rest are counted', () => {
   const job = (i: number): Entry => ({ id: `b${i}`, station: 'shell', label: `job ${i}`, from: 'core', startedAt: NOW, status: 'run', task: `t${i}` })
   const going = Array.from({ length: 7 }, (_, i) => job(i))
@@ -1761,6 +1808,7 @@ test('/lot-map window keeps the live map for a window of its own and opens it be
   const feed = JSON.parse(written.find(w => w.path === `${dir}/feed.json`)?.text ?? '{}')
   expect(feed.rows).toEqual([{ line: '· Files    b/content.py', tone: 'ok' }])
   expect(typeof feed.now).toBe('string')
+  expect(feed.changed).toBeNull()
 
   // An unchanged board is not written again; a new call is.
   await clock.advance(1000)
@@ -1821,7 +1869,7 @@ test("/workmap help and /lot-map help answer the legend in the session's languag
   expect(answer.split('\n')).toEqual(stringsFor('ru').legend)
   expect(answer).toContain('Память')
   expect((await $.command.run({ command: 'lot-map', args: 'help' } as never)).text).toBe(answer)
-  for (const language of ['en', 'ru', 'es', 'fr', 'de', 'it', 'pt']) expect(stringsFor(language).legend.length).toBe(11)
+  for (const language of ['en', 'ru', 'es', 'fr', 'de', 'it', 'pt']) expect(stringsFor(language).legend.length).toBe(12)
 })
 
 test("the count keeps the session's errors and shows what this turn added", async ($, on) => {
