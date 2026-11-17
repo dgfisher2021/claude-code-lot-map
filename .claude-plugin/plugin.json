@@ -156,7 +156,7 @@
       "type": "boolean",
       "title": "Notify when Claude needs you",
       "default": false,
-      "description": "Raise a notification when Claude asks you a question or puts a plan to you, and when a turn ends. Useful for sessions running in the background."
+      "description": "Raise a notification when Claude asks you a question or puts a plan to you, when a permission prompt has waited on you for a second (naming the call, as its row does), and when a turn ends. Useful for sessions running in the background."
     },
     "windowRows": {
       "type": "number",

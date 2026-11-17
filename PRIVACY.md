@@ -2,7 +2,7 @@
 
 lot-map is a mod for Claude Code that draws a map of the work in a pane beside the chat. It runs inside Claude Code on your computer. There is no lot-map service, no account and no server: nothing the mod sees leaves your machine through it.
 
-This page describes version 0.8.2. It changes only together with the code, and the [changelog](CHANGELOG.md) says when it did.
+This page describes version 0.11.0. It changes only together with the code, and the [changelog](CHANGELOG.md) says when it did.
 
 ## What the mod is handed
 
@@ -24,7 +24,7 @@ The mod does not look for personal data and has no use for it. It takes a name f
 ## What it keeps
 
 - **During a session:** the rows of the map, the counters under the stations and the last model step, in Claude Code's state for the session. They are gone when the session ends.
-- **Usage figures:** the context's fill and the categories of its window, the five-hour and weekly rate-limit windows with their reset times, and the session's estimated cost. The mod reads them and keeps the windows and the cost with the rows for the session; it writes none of them anywhere.
+- **Usage figures:** the context's fill and the categories of its window, the five-hour and weekly rate-limit windows with their reset times, and the session's estimated cost. The mod reads them and keeps the windows and the cost with the rows for the session. The map's drawing carries the cost and the windows' figures and reset times, as the pane shows them, so `map.svg` in picture mode and for the map window holds them too; the overview's status file holds the context's fill. It sends none of them anywhere.
 - **Between sessions:** one value per folder, the name of the model last used there, so that the map can show a change of model. It is stored under the folder's full path in Claude Code's own store for the plugin, on your computer. A folder's path usually contains your account name.
 - **Your options** (language, colours, memory servers and the rest) are kept by Claude Code in your settings, as for any plugin.
 
@@ -33,12 +33,12 @@ To remove what it keeps, uninstall the plugin.
 ## What it does not do
 
 - It makes no network requests and has no telemetry, analytics or crash reports.
-- It reads no files. It runs no processes and writes no files, except in picture mode, for the map window and for the status files of the overview, below.
+- It reads no files but the status files of the overview. It runs no processes and writes no files, except in picture mode, for the map window and for those status files, below.
 - It calls no model and adds nothing to the conversation.
-- It raises no notification unless you turn `notify` on. Then it raises one when Claude asks you a question or puts a plan to you, saying only that it needs you and for what kind of thing ("question for you"), never the question, and one when a turn ends.
+- It raises no notification unless you turn `notify` on. Then it raises one when Claude asks you a question or puts a plan to you, saying only that it needs you and for what kind of thing ("question for you"), never the question; one when a permission prompt has waited on you for a second, with the call's label as its row shows it ("Needs you: permission for Shell: Run the tests"); and one when a turn ends.
 - It changes no tool call, result, prompt or context. It sees what your settings hooks decide about a call, hands that decision on as it was, and decides nothing about permissions itself.
 
-The code that takes names from a call is `classify` in [`hooks/map.ts`](hooks/map.ts); the hooks are in [`hooks/register.tsx`](hooks/register.tsx).
+The code that takes names from a call is `classify` in [`hooks/classify.ts`](hooks/classify.ts); the hooks are in [`hooks/register.tsx`](hooks/register.tsx).
 
 ## Picture mode
 
@@ -70,9 +70,9 @@ Open an issue: <https://github.com/alexeyw/lot-map/issues>.
 
 ## The overview of sessions
 
-Every session in a terminal (not a `-p` or SDK run, which draws nowhere) keeps a status file so that `/workmap all` can show them side by side:
+Every session with a surface, a terminal or the app (not a `-p` or SDK run, which draws nowhere), keeps a status file so that `/workmap all` can show them side by side:
 
-- The folder is `lot-map-sessions` in your temporary directory (`TMPDIR`, else `/tmp`), one `<session id>.json` a session. Each holds the name of the session's folder (the last part of its path), the state word (idle, thinking, running, needs you, compacting, done), the top line's text (which holds only labels and times, as the rows do), the context's fill in percent, the time the session started and the time of the last write, whether any station has errors, and, when the session has a map window, the path of that window's folder.
+- The folder is your own: `lot-map-sessions` in `XDG_RUNTIME_DIR` when that is set, else `.cache/lot-map/sessions` in `HOME`, the only two variables it reads for this. With neither, as on Windows, no status is written and `/workmap all` has no session to show. Before the first write the mod runs `mkdir -p -m 700 -- <folder>`, so that a folder it makes is readable by you alone. One `<session id>.json` a session. Each holds the name of the session's folder (the last part of its path), the state word (idle, thinking, running, needs you, compacting, done), the top line's text (which holds only labels and times, as the rows do), the context's fill in percent, the time the session started and the time of the last write, whether any station has errors, and, when the session has a map window, the path of that window's folder.
 - It is written when one of those changes and at least every five seconds.
-- The session removes its file when it ends, but not at a `/clear`. When a session starts, files in that folder not written for an hour (sessions killed without an end) are removed; no other file is touched, by `rm -f` of each file alone.
-- `/workmap all` reads the folder. In Windows Terminal from WSL it runs `wt.exe -w 0 split-pane ... node renderer/view.mjs --all <folder>`, which reads the files younger than 15 seconds and, on a key, the rows in the chosen session's own map window folder; elsewhere it answers the tiles as text.
+- The session removes its file when it ends, but not at a `/clear` or a resume, after which the session goes on. When a session starts, files in that folder not written for an hour (sessions killed without an end) are removed; no other file is touched, by `rm -f` of each file alone.
+- `/workmap all` reads the folder. In Windows Terminal from WSL (`WSL_DISTRO_NAME` set, and `WT_SESSION` or `WT_PROFILE_ID`) it runs `wt.exe -w 0 split-pane ... node renderer/view.mjs --all <folder>`, which reads the files younger than 15 seconds and, on a key, the rows in the chosen session's own map window folder; elsewhere it answers the tiles as text.
