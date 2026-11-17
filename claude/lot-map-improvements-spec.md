@@ -1,6 +1,6 @@
 # lot-map improvements: the map and the task list
 
-Status: proposal, no code. Written 2026-11-16 against lot-map 0.9.0 (fork `main`). The items are in three waves, numbered in the order they would be built.
+Status: wave 1 shipped in 0.10.0 (PR #5, 2026-11-16). Wave 2 was updated on 2026-11-17 with what wave 1 left and what upstream has fixed since; see [Left after wave 1](#left-after-wave-1). Written 2026-11-16 against lot-map 0.9.0 (fork `main`). The items are in three waves, numbered in the order they would be built.
 
 ## Goal
 
@@ -12,7 +12,7 @@ Make lot-map the one place to glance at for any Claude Code session. Within two 
 4. **What has it changed?**
 5. **What is it costing:** context, rate limits, money?
 
-Today it answers question 2 well. It answers questions 1, 4 and 5 only in part, through faults, worn spokes and the context ring. It doesn't answer question 3 at all.
+Before wave 1 it answered question 2 well, questions 1, 4 and 5 only in part, and question 3 not at all. Since 0.10.0 it answers questions 1 to 3, except a permission prompt waiting on you (item 13). Questions 4 and 5 are wave 2's.
 
 ## Principles to keep
 
@@ -21,7 +21,7 @@ Today it answers question 2 well. It answers questions 1, 4 and 5 only in part, 
 - **Glance first, detail on demand.** The default view stays calm, and detail comes from a key, a command or a hover.
 - **One model, every surface.** The app, the docked pane, the cell map and the Sixel window all show the same state.
 
-## Today, in brief
+## Before wave 1 (0.9.0), in brief
 
 **Map:**
 
@@ -41,18 +41,18 @@ Today it answers question 2 well. It answers questions 1, 4 and 5 only in part, 
 
 ## The waves
 
-- **Wave 1, now (1–10):** `/workmap` command, core state, needs you, exit codes, blocked vs failed, subagent failures, legend, background pinned, plan checklist, window favours the map.
-- **Wave 2, next (11–17):** session fault total, this turn's `+N`, rows by turn, files changed, stuck warnings, usage gauges, every session at a glance.
-- **Wave 3, later (18–28):** error first line, more rows on demand, session recap, timeline, context cost per call, subagents apart, MCP station, time share, file satellites, accessibility, full rename to workmap.
+- **Wave 1, done in 0.10.0 (1–10):** `/workmap` command, core state, needs you, exit codes, blocked vs failed, subagent failures, legend, background pinned, plan checklist, window favours the map.
+- **Wave 2, next (11–20):** quiet under an organisation's guard, upstream's fixes ported, permission prompts as needs you, session fault total, this turn's `+N`, rows by turn, files changed, stuck warnings, usage gauges, every session at a glance.
+- **Wave 3, later (21–31):** error first line, more rows on demand, session recap, timeline, context cost per call, subagents apart, MCP station, time share, file satellites, accessibility, full rename to workmap.
 
-## Wave 1: now
+## Wave 1: done in 0.10.0
 
 The biggest glance value for the least work. Every item uses data the mod already sees, and the small fixes come before the legend that explains them.
 
 ### 1. `/workmap` as a second command name (command · effort small)
 
 - Register `/workmap` as a second command name. `/lot-map` keeps working.
-- The plugin stays `lot-map`, and upstream updates keep merging.
+- The plugin stays `lot-map`. Upstream's updates no longer merge cleanly anyway (see [Upstream since the fork](#upstream-since-the-fork)).
 
 Items below write `/workmap`; `/lot-map` works the same.
 
@@ -69,7 +69,7 @@ Items below write `/workmap`; `/lot-map` works the same.
 **What:**
 
 - The top line becomes a banner when Claude is waiting on you, with how long it has waited. That covers:
-  - a permission prompt
+  - a permission prompt (left out of 0.10.0; now item 13)
   - a question (AskUserQuestion)
   - a plan waiting for approval
   - a finished turn
@@ -141,19 +141,119 @@ Items below write `/workmap`; `/lot-map` works the same.
 
 **Why:** in a 53x31 split today the map gets 12 rows and the list 18, so the picture the window exists for is small.
 
+### Left after wave 1
+
+Checked on 2026-11-17 against fork `main` at 0.10.0 (91 tests pass) and upstream `alexeyw/lot-map` `next` at #94.
+
+- **A permission prompt isn't "needs you"** (item 3). Wave 1 used only `tool.check`, which reports an ask before the mode settles it and says nothing when you answer. Now item 13.
+- **Claude's task tools count on Shell.** TaskCreate, TaskUpdate, TaskList, TaskGet and TodoWrite fall through to Shell, as do 47 other built-in tools that upstream now places. Now item 12.
+- **Under an organisation's guard, four marks never show.** On a Team or Enterprise login the organisation's guard (`cc-plugin-sec-default` here) runs ahead of every mod and sends five events past lot-map: `classic.PreToolUse`, `classic.UserPromptSubmit`, `classic.SessionStart`, `skill.prompt` and `session.compact`. It posts a notice for each, about once per hook per session plus once per skill run and per compaction. So on this machine:
+
+  - the core never says "compacting" (item 2)
+  - a call a settings hook refused reads as failed, not blocked (item 5)
+  - a typed slash command makes no row
+  - a record a hook adds to the context makes no row
+
+  Now item 11.
+
+- **Rows aren't tagged with their task** (item 9). The wave 1 plan decided that each task's count of calls and time stands in, since a tag on every row would crowd a 60-column pane. Not carried over.
+- **The dock screenshot** at 60x24, the plan's last check, isn't among the PR's checks. Item 11 changes when the pane opens, so its checks take it.
+
+### Upstream since the fork
+
+The fork took its last upstream commit at #37 (2026-11-12). Since then it is 22 commits ahead of upstream `main` and 43 behind `next`.
+
+**A merge is no longer cheap:**
+
+- Upstream split `hooks/map.ts` into `classify`, `draw`, `feed`, `palette` and `setup`, while wave 1 added 418 lines to `map.ts`.
+- Both sides added a `hooks/raster.ts`, with different code (upstream's 1,305 lines, the fork's 634).
+- Both rewrote `register.tsx`, `text.ts`, the tests, the README and PRIVACY.
+- Upstream drew its own map in a terminal (`terminalView`, with braille), beside the fork's cell map, picture mode and window.
+
+So upstream's fixes come in by hand, with their tests, and the fork's own design stays.
+
+| Upstream                     | What                                                                                                         | Here                                       |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------ | ------------------------------------------ |
+| #89, #90, #91 `guardedHooks` | leave out the five hooks an organisation's guard skips; open the pane once a surface is attached             | item 11                                    |
+| #60, #66                     | built-in tools land by what they're for, not on Shell                                                        | item 12                                    |
+| #50, #73, #92, #94           | shell commands land where they belong: constructs, nested shells, quotes, scripts, containers; cloud browser | item 12                                    |
+| #72                          | a call still running stays in the list until it ends                                                         | item 12                                    |
+| #93                          | the remembered refusals are held to the newest 64                                                            | item 12                                    |
+| #82                          | no picture in iTerm2, which keeps every frame in memory                                                      | item 12                                    |
+| #83 `contextCost`            | what each call added to the context                                                                          | item 25                                    |
+| #86 `serverStations`         | an MCP server's tools on a station you choose                                                                | item 27                                    |
+| #40 `motion`                 | reduced motion                                                                                               | item 30                                    |
+| #77                          | a running row coloured apart from a failed one                                                               | not needed: the fork already does          |
+| #71 `subagentNames`          | a subagent's model step names the subagent                                                                   | not needed: item 6 names a subagent's rows |
+| #33, #45, #46, #68, #41, #88 | terminal picture and braille, the `map.ts` split, the rows reworked, the model on the idle line, pane colour | not ported: the fork has its own           |
+
 ## Wave 2: next
 
-What changed and what it costs, and help for people running many sessions.
+What changed and what it costs, and help for people running many sessions. It starts with what wave 1 left (11–13). Each new mark gets a line in the legend (item 7), in all seven languages.
 
-### 11. A session total of faults (list and map · effort small)
+### 11. Quiet under an organisation's guard (all surfaces · value high on Team and Enterprise logins · effort small)
+
+**What:**
+
+- Port upstream's `guardedHooks` option (#89, #91). It's on by default. Turned off, the mod adds no hook on the five guarded events, so the guard has nothing to skip and posts no notice.
+- Port #90: the pane opens once a surface is attached, not before. This is the `ui.open` fault from the same upstream issue, #54.
+- With it off, the README's options table says what's lost: the compacting state, the Hooks station's rows, a typed slash command's row, and blocked rows for a hook's refusals, which read as failed.
+- A spike: whether `session.measure` still marks a compaction after the fact, when the context falls sharply. If it does, the map can still say a compaction happened.
+- Turn `guardedHooks` off on this machine once it ships.
+
+**Why:** on this machine the guard skips those hooks on every session, so they cost notices and add nothing.
+
+**Data:** upstream #89, #90 and #91, with their tests.
+
+### 12. Upstream's fixes, ported by hand (list and map · value medium · effort small to medium)
+
+**What:**
+
+- **Built-in tools land by what they're for** (#60, #66). Today 52 of them count on Shell. With the port:
+  - Claude's task tools, TodoWrite, EnterPlanMode, PushNotification and the like go to You. The task tools' own calls then stop crowding Shell's count, and the plan checklist (item 9) already shows the plan they keep.
+  - Schedules, wakeups and agent messages go to Agents.
+  - LSP goes to Files.
+  - The skill and connector catalogues go to Skills.
+  - claude.ai work (artifacts' comments and data, projects, designs) goes to Web.
+- **Shell commands land where they belong** (#50, #73, #92, #94):
+  - a command inside a shell construct, a nested shell or a here-document
+  - a separator inside quotes
+  - a script handed to a shell
+  - a command run in a container
+  - the browser reached from a cloud session
+- **A running call stays in the list until it ends** (#72). Today only background work is kept past the last rows, so a long foreground call can scroll out while subagents add rows.
+- **The remembered refusals are held to the newest 64** (#93). Today a refusal whose call never comes back is kept all session.
+- **No picture in iTerm2** (#82). It keeps every frame in memory, and the fork's picture mode lists iTerm2 3.5 as a picture terminal.
+
+**Why:** these are bug fixes that apply to the fork's code as it is, and the fork stopped taking upstream's commits at #37.
+
+**Data:** upstream's commits and tests, adapted to the fork's `map.ts`.
+
+### 13. A permission prompt as "needs you" (list and map · value high · effort medium)
+
+**What:** completes item 3. While a permission prompt waits on you, the core reads "needs you", and the top line reads `Needs you: permission for Shell` with its timer. With `notify` on, it notifies once.
+
+**How:**
+
+- A `tool.check` hook reads the verdict from `next(e)`. An `ask` marks the call as maybe waiting.
+- If `tool.judge` fires, auto mode's classifier settles the ask, not you, so the mark clears.
+- `tool.run` firing means the call was allowed; a refusal in the `tool.call` answer means it was denied. Either clears the mark.
+- The wait shows only after the ask has stood unsettled for one second. A mode that settles asks at once (`acceptEdits`, `bypassPermissions`, `dontAsk`) never flickers.
+- Not `classic.PermissionRequest`: it would name the prompt exactly, but the guard skips `classic.*` hooks (item 11).
+
+**Spike first:** in a real session in `default` mode, confirm that `tool.run` fires only after you answer, and that a denied prompt reaches `tool.call` as a refusal.
+
+**Data:** `tool.check`, `tool.judge`, `tool.run` and `tool.call`.
+
+### 14. A session total of faults (list and map · effort small)
 
 **What:** the red badge still clears on your next message. The count line keeps a session total beside it, for example `Shell 27 · 4✕`, so the history isn't lost.
 
-### 12. This turn beside the totals (list and map · effort small)
+### 15. This turn beside the totals (list and map · effort small)
 
 **What:** a faint `+3` beside a station's session count shows what this turn added.
 
-### 13. Rows grouped by turn (list · value medium · effort small)
+### 16. Rows grouped by turn (list · value medium · effort small)
 
 **What:**
 
@@ -164,7 +264,7 @@ What changed and what it costs, and help for people running many sessions.
 
 **Data:** `turn.start` and `turn.complete`.
 
-### 14. Files changed (list · value medium · effort small)
+### 17. Files changed (list · value medium · effort small)
 
 **What:**
 
@@ -178,7 +278,7 @@ What changed and what it costs, and help for people running many sessions.
 - Write, Edit and NotebookEdit
 - shell commands already classed as file edits (`sed -i`, `mv`, `rm`)
 
-### 15. Stuck and loop warnings (list · value high · effort medium)
+### 18. Stuck and loop warnings (list · value high · effort medium)
 
 **What:** an amber row and an amber station when:
 
@@ -190,7 +290,7 @@ What changed and what it costs, and help for people running many sessions.
 
 **Data:** the existing rows, their timings and statuses.
 
-### 16. Usage gauges (map · value high · effort small)
+### 19. Usage gauges (map · value high · effort small)
 
 **What:**
 
@@ -200,7 +300,7 @@ What changed and what it costs, and help for people running many sessions.
 
 **Data:** `$.session.usage()` (`rateLimits`, `cost`, `context` with `breakdown`), pushed by `session.measure`.
 
-### 17. Every session at a glance (map · value high · effort medium)
+### 20. Every session at a glance (map · value high · effort medium)
 
 **What:**
 
@@ -218,11 +318,11 @@ What changed and what it costs, and help for people running many sessions.
 
 Larger, or useful in fewer sessions. The full rename comes last, once upstream updates are no longer wanted.
 
-### 18. Error first line (list · value medium · effort small)
+### 21. Error first line (list · value medium · effort small)
 
 **What:** an option, `errorReasons`, modelled on `hookReasons`. It shows the first line of a tool's error, up to 72 characters. Off by default, since an error can quote content.
 
-### 19. More than 16 rows, on demand (list · value low to medium · effort medium)
+### 22. More than 16 rows, on demand (list · value low to medium · effort medium)
 
 **What:**
 
@@ -233,7 +333,7 @@ Larger, or useful in fewer sessions. The full rename comes last, once upstream u
   - `/` to search labels
 - Anywhere: `/workmap log` answers with the session's full list.
 
-### 20. Session recap (list · value medium · effort small)
+### 23. Session recap (list · value medium · effort small)
 
 **What:** at the end of a session, or on `/workmap recap`, a short recap:
 
@@ -245,7 +345,7 @@ Larger, or useful in fewer sessions. The full rename comes last, once upstream u
 
 It's the answer of a command, so it doesn't enter the model's context.
 
-### 21. Timeline strip (map · value high · effort medium)
+### 24. Timeline strip (map · value high · effort medium)
 
 **What:**
 
@@ -255,11 +355,13 @@ It's the answer of a command, so it doesn't enter the model's context.
 
 **Why:** shows where the time went, for example "most of it waiting on the test run".
 
-### 22. Context cost per call (map · value medium · effort medium)
+### 25. Context cost per call (map · value medium · effort medium)
 
 **What:** a pulse's width shows how much of the context its result took, and the largest calls are named. This is upstream issue #80, `contextCost`.
 
-### 23. Subagents you can tell apart (map · value medium · effort medium)
+**Upstream:** `contextCost` shipped in upstream 0.9.0 (#83): what each call added, on its row, and each station's sum on the desktop map. Port it, then add the pulse width.
+
+### 26. Subagents you can tell apart (map · value medium · effort medium)
 
 **What:**
 
@@ -268,27 +370,29 @@ It's the answer of a command, so it doesn't enter the model's context.
 - A failed subagent turns red.
 - A workflow shows as a cluster with progress, for example `4/9`.
 
-### 24. MCP station per server (map · value medium · effort medium)
+### 27. MCP station per server (map · value medium · effort medium)
 
 Upstream issue #55: an MCP station with a small mark per server that lights when one of its tools is called.
 
-### 25. Time share, not only counts (map · value low · effort small)
+**Upstream:** #86 answered #55 another way: `serverStations` puts a server's tools on an existing station you choose. Port it first, then decide whether a per-server mark is still wanted.
+
+### 28. Time share, not only counts (map · value low · effort small)
 
 **What:** spokes thicken by number of calls today. Add a choice to thicken them by share of wall time, with the percentage beside each station on demand.
 
-### 26. File satellites (map · value low · effort medium)
+### 29. File satellites (map · value low · effort medium)
 
 **What:** the most-touched files sit as small labelled dots around Files, with edited files marked.
 
-### 27. Accessibility (map · value medium · effort small)
+### 30. Accessibility (map · value medium · effort small)
 
 **What:**
 
 - Shapes as well as colour for errors and waits.
 - A high-contrast palette preset.
-- Reduced motion, which upstream's `next` branch already has as the `motion` option (#40). This fork's `main` doesn't have it yet.
+- Reduced motion, which upstream has as the `motion` option (#40), on its `main` since 0.9.0. This fork's `main` doesn't have it yet.
 
-### 28. Rename to workmap and own the repo (repo · effort medium)
+### 31. Rename to workmap and own the repo (repo · effort medium)
 
 **Allowed:** the licence is MIT, copyright Aleksei Volodin. You may rename, change and publish it as your own, as long as `LICENSE` with his notice stays. Add your own copyright line for your changes.
 
@@ -309,11 +413,11 @@ Upstream issue #55: an MCP station with a small mark per server that lights when
 
 **Trade-offs:**
 
-- Upstream fixes stop merging cleanly, since every renamed line conflicts. They come in by hand or by cherry-pick.
+- Upstream fixes stop merging cleanly, since every renamed line conflicts. They come in by hand or by cherry-pick. As of 2026-11-17 they already do (see [Upstream since the fork](#upstream-since-the-fork)), so the rename adds little to that cost.
 - You own the maintenance.
 - Versions can carry on, for example `1.0.0` as the first workmap release.
 
-**Recommendation:** do item 1 first. Do this one once you no longer want upstream's updates, as one pull request: the rename, the docs and a CHANGELOG entry.
+**Recommendation:** item 1 is done. Since upstream's fixes come in by hand either way, do this one whenever it suits, as one pull request: the rename, the docs and a CHANGELOG entry.
 
 ## Data sources
 
@@ -321,7 +425,7 @@ Upstream issue #55: an MCP station with a small mark per server that lights when
 | ------------------------------- | ------------------------------------------ | ---------- |
 | Calls, inputs, results, timings | `tool.call`                                | yes        |
 | Turns                           | `turn.start`, `turn.step`, `turn.complete` | yes        |
-| Waiting on permission           | `tool.check`                               | yes        |
+| Waiting on permission           | `tool.check`, `tool.judge`, `tool.run`     | yes        |
 | Plan                            | TaskCreate and TaskUpdate inputs           | yes        |
 | Context, rate limits, cost      | `$.session.usage()`, `session.measure`     | yes        |
 | Notifications                   | `ui.notify`                                | yes        |
@@ -335,8 +439,8 @@ Upstream issue #55: an MCP station with a small mark per server that lights when
 
 ## Open questions
 
-1. Should "needs you" notifications (3) be on by default for background sessions only?
-2. Every session at a glance (17): one window for all sessions, or keep a window per session and add the overview as a key?
-3. Recap (20): only on request, or every time a session ends?
-4. Which of these go upstream to `alexeyw/lot-map`, whose pull requests go to `next`, and which stay in this fork?
-5. The full rename to workmap (28): when, and do you still want upstream's updates after it?
+1. Should "needs you" notifications (3) be on by default for background sessions only? 0.10.0 ships `notify`, off for every session.
+2. Every session at a glance (20): one window for all sessions, or keep a window per session and add the overview as a key?
+3. Recap (23): only on request, or every time a session ends?
+4. Which of these go upstream to `alexeyw/lot-map`, whose pull requests go to `next`, and which stay in this fork? Upstream's `classify.ts` treats a task's subject as content and shows only the tool's name, so the plan checklist (9) likely stays here.
+5. The full rename to workmap (31): when? Upstream's updates already come by hand (see [Upstream since the fork](#upstream-since-the-fork)).
