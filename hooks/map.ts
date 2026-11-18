@@ -5,7 +5,7 @@ import { clean, formatMs, shortModel } from './classify'
 import { stringsFor, tokensShort } from './text'
 import type { Strings } from './text'
 
-export { classify, clean, firstLine, formatMs, memoryIds, shortModel } from './classify'
+export { classify, clean, firstLine, formatMs, localHostsIn, memoryIds, shortModel } from './classify'
 
 // ---- stations ---------------------------------------------------------------------------------
 
@@ -526,6 +526,8 @@ export function stationTip(board: Board, id: StationId, t: Strings, running = 0,
   const share = timeShareOf(board, id)
   const tokens = spent?.[id] ?? 0
   const when = (n: number, figure: TipFigure): TipFigure[] => (n > 0 ? [figure] : [])
+  // Browser lists the local servers Claude's calls used; a file or server station, its most used.
+  const local = id === 'browser' ? (board.local ?? []) : []
   const listed = listedOf(board.satellites?.[id])
   const items = listed.map(
     (sat): TipItem =>
@@ -549,6 +551,7 @@ export function stationTip(board: Board, id: StationId, t: Strings, running = 0,
       ...when(tokens, { icon: 'tokens', label: t.tip.tokens, value: `~${tokensShort(tokens)}` }),
     ],
     ...(items.length > 0 ? { top: { title: t.tip.mostUsed, items } } : {}),
+    ...(local.length > 0 ? { top: { title: t.tip.local, items: local.map((l): TipItem => ({ name: l.host, uses: '', icon: 'server' })) } } : {}),
   }
 }
 
@@ -1430,6 +1433,15 @@ export function withSatellite(sat: Board['satellites'], station: StationId, name
     rest.splice(rest.indexOf(weakest), 1)
   }
   return { ...sat, [station]: [...rest, next] }
+}
+
+/** How many local servers the board keeps. */
+const LOCAL_KEPT = 6
+
+/** The local servers with `hosts` used now: the newest first, six kept. */
+export function withLocal(local: Board['local'], hosts: readonly string[], now: number): Board['local'] {
+  if (hosts.length === 0) return local
+  return [...hosts.map(host => ({ host, lastAt: now })), ...(local ?? []).filter(l => !hosts.includes(l.host))].slice(0, LOCAL_KEPT)
 }
 
 /** The satellites a tooltip lists: the most used, the latest first among equals. */

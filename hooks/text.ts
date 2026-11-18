@@ -69,7 +69,9 @@ export type Strings = {
   errorsInSession: (n: number) => string
   /** A station's tooltip: what lands there (commands in backticks), and the label of each figure. */
   stationAbout: Record<StationId, string>
-  tip: { calls: string; turn: string; running: string; time: string; errors: string; session: string; refused: string; pushed: string; tokens: string; mostUsed: string; read: string }
+  tip: { calls: string; turn: string; running: string; time: string; errors: string; session: string; refused: string; pushed: string; tokens: string; mostUsed: string; read: string; local: string }
+  /** The map window's line of local servers: its label. */
+  localTitle: string
   /** The map window's ? button: its keys, each with what it does. */
   keyHelp: { title: string; keys: { keys: string[]; label: string; note?: string }[] }
   /** The end of `/workmap help`: the commands, each with what it answers. */
@@ -232,7 +234,9 @@ const en: Strings = {
     tokens: 'Tokens added to context',
     mostUsed: 'Most used',
     read: 'read',
+    local: 'Local servers Claude used',
   },
+  localTitle: 'Local',
   keyHelp: {
     title: 'Keys in this window',
     keys: [

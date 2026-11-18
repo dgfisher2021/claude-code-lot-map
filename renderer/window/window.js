@@ -2,11 +2,12 @@
 // are the terminal window's: m, ?, the arrows and PgUp/PgDn, e, 1-9 and 0, a, / and q.
 
 import { feedLines, freshList, listKey, nextAgent } from './lines.mjs'
-import { drawLines, setHelp, showTip, untitle, wireHelp } from './ui.js'
+import { drawLines, drawLocal, setHelp, showTip, untitle, watchLocal, wireHelp } from './ui.js'
 
 const $ = id => document.getElementById(id)
 const mapBox = $('map')
 const linesBox = $('lines')
+const localBox = $('local')
 const help = $('help')
 const tip = $('tip')
 const live = new URLSearchParams(location.search).get('live') ?? ''
@@ -39,7 +40,8 @@ function aspect() {
 /** The map as large as the width allows while the list keeps the session's windowRows, never under twelve rows. */
 function mapSize() {
   if (view === 'list') return { w: 0, h: 0 }
-  const room = innerHeight
+  // The line of local servers, when it shows, takes its room from the map's.
+  const room = innerHeight - (localBox.hidden ? 0 : localBox.offsetHeight)
   const listRows = Math.max(3, Number(feed.windowRows) || 10)
   const tall = view === 'map' ? room : Math.max(MAP_MIN_ROWS * LINE_H, room - listRows * LINE_H - 8)
   return { w: innerWidth, h: Math.max(0, Math.min(tall, Math.round(innerWidth * aspect()))) }
@@ -87,7 +89,11 @@ async function fetchFeed() {
   feed = next
   // The ? shows once the session sends its keys.
   setHelp(help, feed.keyHelp)
-  if (isResized) drawMap()
+  const hadLocal = !localBox.hidden
+  if (drawLocal(localBox, feed.local) !== hadLocal || isResized) {
+    drawn = ''
+    drawMap()
+  }
   drawRows()
 }
 
@@ -144,3 +150,4 @@ mapBox.addEventListener('mouseleave', () => {
   showTip(tip, mapBox, pointer)
 })
 wireHelp(tip, help, () => feed.keyHelp)
+watchLocal(localBox)

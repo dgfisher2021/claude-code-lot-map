@@ -1,7 +1,7 @@
 // The preview page: draws the window (map and rows) from the made-up session or a live one, with tooltips and notes.
 
 import { feedLines, freshList } from '/window/lines.mjs'
-import { drawLines, setHelp, showTip as showTipAt, tipAt, untitle, wireHelp } from '/window/ui.js'
+import { drawLines, drawLocal, setHelp, showTip as showTipAt, tipAt, untitle, watchLocal, wireHelp } from '/window/ui.js'
 import { LOOP_S, boardAt } from './scene.js'
 
 const $ = id => document.getElementById(id)
@@ -80,7 +80,8 @@ function setTime(s) {
 /** The map's room in the pane: what is left above the rows and the gap. */
 function mapRoom() {
   const rows = Math.max(3, Number(state.options.windowRows) || 10)
-  const room = Math.max(120, pane.clientHeight - rows * LINE_H - 16)
+  const local = $('local').hidden ? 0 : $('local').offsetHeight
+  const room = Math.max(120, pane.clientHeight - rows * LINE_H - 16 - local)
   // As large as the width allows while the rows keep their room, as renderer/layout.mjs lays out the window.
   return { w: pane.clientWidth, h: Math.min(room, Math.round((pane.clientWidth * (lib?.H ?? 430)) / (lib?.W ?? 460))) }
 }
@@ -90,6 +91,7 @@ let keyHelp
 function renderRows(feed) {
   keyHelp = feed.keyHelp
   setHelp(help, keyHelp)
+  drawLocal($('local'), feed.local)
   const rows = Math.max(3, Number(state.options.windowRows) || 10)
   drawLines(rowsBox, feedLines(feed, freshList(), rows, false).lines.slice(0, rows))
 }
@@ -121,6 +123,7 @@ function drawScene() {
     pinned: lib.pinnedLines(board.entries, now, t),
     rows: lib.feedLines(board.entries, t, board.agentNames, board.turns, setup.contextCost),
     keyHelp: t.keyHelp,
+    local: { title: t.localTitle, hosts: (board.local ?? []).map(l => l.host) },
   })
   $('scrub').value = String(s)
   $('clock').textContent = `${s.toFixed(1)} s`
@@ -161,6 +164,7 @@ const showTip = () => showTipAt(tip, mapBox, pointer)
 
 // The ? in the corner: the window's keys, as the map window shows them.
 wireHelp(tip, help, () => keyHelp)
+watchLocal($('local'))
 mapBox.addEventListener('mousemove', e => {
   pointer = { x: e.clientX, y: e.clientY }
   showTip()

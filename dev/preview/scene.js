@@ -35,6 +35,7 @@ const SCRIPT = [
   call(5, 1.1, 'files', 'types/index.d.ts', { file: 'types/index.d.ts', tokens: 3000 }),
   call(7.5, 2.5, 'model', 'opus 5.5 · step 2', { step: 2 }),
   call(9, Infinity, 'shell', 'Start the dev server', { task: 'dev-server' }),
+  call(9.5, 0.3, 'web', 'localhost:4747', { local: 'localhost:4747' }),
   call(10, 22, 'agents', 'Explore: find the ring code', { spawns: A1, tokens: 4100 }),
   call(11, 17, 'agents', 'Plan: draft the change', { spawns: A2, tokens: 2600 }),
   call(12, 0.5, 'files', 'Grep', { agent: A1 }),
@@ -45,6 +46,7 @@ const SCRIPT = [
   call(22, 0.2, 'web', 'curl example.com', { agent: A2, end: 'block' }),
   call(24, 1.5, 'web', 'docs.anthropic.com', { agent: A1 }),
   call(28, 0.3, 'files', 'renderer/layout.mjs', { agent: A1, file: 'renderer/layout.mjs' }),
+  call(30, 0.4, 'web', 'localhost:3000', { agent: A1, local: 'localhost:3000' }),
   call(33, 3, 'model', 'opus 5.5 · step 3', { step: 3 }),
   call(36.5, 8, 'you', 'Which ring layout?', { waits: true }),
   call(45, 2, 'model', 'opus 5.5 · step 4', { step: 4 }),
@@ -90,6 +92,7 @@ export function boardAt(s, base, figures) {
   let changed = {}
   const files = new Map()
   const servers = new Map()
+  let local = []
   const agentFaults = new Set()
   let step
   let answeredAt
@@ -151,6 +154,7 @@ export function boardAt(s, base, figures) {
       files.set(c.file, { name: c.file, uses: (was?.uses ?? 0) + 1, lastAt: ms(c.at), ...(c.edit || was?.isEdited ? { isEdited: true } : {}) })
       if (c.edit && done) changed = bump(changed, c.file)
     }
+    if (c.local) local = [{ host: c.local, lastAt: ms(c.at) }, ...local.filter(l => l.host !== c.local)]
     if (c.server) servers.set(c.server, { name: c.server, uses: (servers.get(c.server)?.uses ?? 0) + 1, lastAt: ms(c.at) })
     if (c.station !== 'model' && c.station !== 'you' && !c.task) {
       timeline.push({
@@ -208,6 +212,7 @@ export function boardAt(s, base, figures) {
       ...(plan ? { plan } : {}),
       changed,
       satellites: figures.satellites ? { files: [...files.values()], web: [...servers.values()] } : {},
+      local,
       turns,
       timeline,
       limits: [

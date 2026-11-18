@@ -15,6 +15,7 @@ import {
   firstLine,
   framedMap,
   keepNewest,
+  localHostsIn,
   logLines,
   memoryIds,
   PLAN_TOOLS,
@@ -30,6 +31,7 @@ import {
   taskOf,
   untilText,
   warningsOf,
+  withLocal,
   withSatellite,
   costText,
 } from './map'
@@ -704,6 +706,7 @@ function logFeed(state: Board, setup: Setup) {
     keys: t.windowKeys,
     keyHelp: t.keyHelp,
     errorsWord: t.logErrors,
+    local: { title: t.localTitle, hosts: (state.local ?? []).map(l => l.host) },
   }
 }
 
@@ -1190,6 +1193,14 @@ export const register: Register = (on, options) => {
       const wasRefused = ran.deny !== undefined || (e.tool_use_id !== undefined && refused.delete(e.tool_use_id))
       // A file or a server of a call that went through becomes a satellite, an edit marking it edited.
       if (!wasRefused && ran.isError !== true) await quietly(() => keepSatellite($, String(e.tool), e as unknown as Record<string, unknown>, setup))
+      // A localhost address the call named joins the local servers, whether or not it answered: the window shows if it is up.
+      const hosts = wasRefused ? [] : localHostsIn(e as unknown as Record<string, unknown>)
+      if (hosts.length > 0) {
+        await quietly(async () => {
+          const now = await $.clock.now()
+          await update($, board, b => ({ ...b, local: withLocal(b.local, hosts, now) }))
+        })
+      }
       // Claude's own plan, as the main loop's task tools set it.
       if (e.agentId === undefined && !wasRefused && ran.isError !== true && PLAN_TOOLS.has(String(e.tool))) {
         await quietly(async () => {

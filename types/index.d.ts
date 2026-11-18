@@ -107,6 +107,8 @@ export type Board = {
   changed?: Record<string, number>
   /** The files and MCP servers a station serves most, by station: twelve kept, the five most used drawn. */
   satellites?: Partial<Record<StationId, Satellite[]>>
+  /** The localhost addresses Claude's calls used (a URL it fetched or opened, one in a command), newest first: host and port only. */
+  local?: { host: string; lastAt: number }[]
   /** The person's messages this session as turns, the last twelve; the newest is the open one. */
   turns?: TurnSummary[]
   /** Where the time went, as marks: the last 240. */

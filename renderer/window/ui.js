@@ -168,3 +168,50 @@ export function setHelp(button, help) {
   button.hidden = help === undefined
   if (help) button.setAttribute('aria-label', help.title)
 }
+
+// ---- local servers -------------------------------------------------------------------------------
+
+/** Whether each local server answered when last asked: true, false, or not yet asked. */
+const answered = new Map()
+
+/** Asks `host` whether anything answers there; an opaque answer is an answer. Loopback only, never another address. */
+async function isUp(host) {
+  if (!/^localhost(:\d{1,5})?$/.test(host)) return false
+  return fetch(`http://${host}/`, { mode: 'no-cors', cache: 'no-store', signal: AbortSignal.timeout(2000) }).then(
+    () => true,
+    () => false,
+  )
+}
+
+/**
+ * The line of local servers Claude's calls used (the feed's `local`): each a link that opens it, with a dot, green while it
+ * answers. Hidden when there are none. Returns whether the line shows, so the page can give the map the room.
+ */
+export function drawLocal(box, local) {
+  const hosts = local?.hosts ?? []
+  box.hidden = hosts.length === 0
+  if (box.hidden) return false
+  const links = hosts.map(host => {
+    const state = answered.get(host)
+    return `<a href="http://${esc(host)}/" target="_blank" rel="noopener" data-host="${esc(host)}"><i class="dot${state === undefined ? '' : state ? ' up' : ' down'}"></i>${esc(host)}</a>`
+  })
+  box.innerHTML = `<span class="local-title">${esc(local.title)}</span>${links.join('')}`
+  return true
+}
+
+/** Asks every local server in `box` now and every five seconds, while the page is in view, and colours its dot. */
+export function watchLocal(box) {
+  const ask = async () => {
+    if (document.hidden) return
+    for (const link of box.querySelectorAll('a[data-host]')) {
+      const host = link.dataset.host
+      const up = await isUp(host)
+      answered.set(host, up)
+      link.querySelector('.dot')?.classList.toggle('up', up)
+      link.querySelector('.dot')?.classList.toggle('down', !up)
+    }
+  }
+  void ask()
+  setInterval(ask, 5000)
+  return ask
+}

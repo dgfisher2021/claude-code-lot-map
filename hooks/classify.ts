@@ -18,6 +18,18 @@ const HOST = /^(?:[\p{L}\p{N}.-]+|\[[0-9a-f:.]+\])(?::\d+)?$/iu
  * A password may hold `/`, `?` or `#` unencoded, so the first of them is not always where the host ends:
  * `user:pa/ss@host` reads as the host `host`, and an address that can be read both ways gives its scheme alone.
  */
+/** A loopback URL's host and port, as `localhost:5173`: 127.0.0.1, 0.0.0.0 and [::1] read as localhost. */
+const LOOPBACK = /\bhttps?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\])(?::(\d{1,5}))?(?![\w.:-])/gi
+
+/** The local servers a call names: in the URL it was given, or written in its command; the address only, nothing else of it. */
+export function localHostsIn(input: Record<string, unknown>): string[] {
+  const text = [input.url, input.command]
+    .filter((v): v is string => typeof v === 'string')
+    .join('\n')
+    .slice(0, 8000)
+  return [...new Set([...text.matchAll(LOOPBACK)].map(m => (m[1] === undefined ? 'localhost' : `localhost:${m[1]}`)))]
+}
+
 function hostOf(url: string): string {
   const [, scheme = '', rest = ''] = /^(?:([a-z][a-z0-9+.-]*):\/\/)?(.*)$/is.exec(url) ?? []
   const end = rest.search(/[/?#]/)
