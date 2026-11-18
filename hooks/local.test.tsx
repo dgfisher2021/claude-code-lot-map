@@ -32,7 +32,7 @@ test('a call that names a localhost address puts it in the window’s feed', asy
   })
   await $.tool.call({ tool: 'Bash', command: 'curl -s http://localhost:4747/api/sessions', description: 'Ask the preview' })
   await $.command.run({ command: 'workmap', args: 'window' } as never)
-  const live = runs.find(argv => argv[1]?.endsWith('/renderer/serve.mjs'))?.[3] ?? ''
+  const live = /workmap-live-([a-z0-9]+)$/.exec(runs.find(argv => argv[0] === 'wt.exe')?.at(-1) ?? '')?.[1] ?? ''
   const feed = JSON.parse(written.filter(w => w.path === `/tmp/workmap-live-${live}/feed.json`).at(-1)?.text ?? '{}')
   expect(feed.local).toEqual({ title: en.localTitle, hosts: ['localhost:4747'] })
   // Only the address: nothing else of the command reaches the feed's local line.

@@ -1,6 +1,6 @@
 {
   "name": "workmap",
-  "version": "1.1.1",
+  "version": "1.2.0",
   "description": "A live map beside the chat: memory, files, shell, web, model, agents, skills and hooks light up as they are used. Began as lot-map by Aleksei Volodin.",
   "author": {
     "name": "Dustin Fisher",
@@ -170,11 +170,11 @@
       "title": "Map window in Windows Terminal",
       "options": [
         "auto",
-        "pane",
+        "edge",
         "off"
       ],
       "default": "auto",
-      "description": "In Windows Terminal from WSL, auto makes the map a window of its own in place of the pane: an Edge app window you can drag, resize and move to another screen, with the rows under it and tooltips over it, opened the first time you write in the session. Pane splits the terminal's tab for the map instead, as a picture; off keeps the pane, in cells."
+      "description": "In Windows Terminal from WSL, auto makes the map a window of its own in place of the pane: a split of the terminal's tab beside the session, opened the first time you write in it, showing the map window's page as a picture, with its header, tooltips and list; an Edge app window where the split cannot open. Edge opens the Edge app window first, which you can drag, resize and move to another screen; off keeps the pane, in cells."
     },
     "notify": {
       "type": "boolean",
