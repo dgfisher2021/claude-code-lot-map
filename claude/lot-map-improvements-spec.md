@@ -1,6 +1,6 @@
 # lot-map improvements: the map and the task list
 
-Status: wave 1 shipped in 0.10.0 (PR #5, 2026-11-16). Wave 2 shipped in 0.11.0 (2026-11-17), with what wave 1 left and upstream's fixes; see [Left after wave 1](#left-after-wave-1) and [Left after wave 2](#left-after-wave-2). Written 2026-11-16 against lot-map 0.9.0 (fork `main`). The items are in three waves, numbered in the order they would be built.
+Status: wave 1 shipped in 0.10.0 (PR #5, 2026-11-16). Wave 2 shipped in 0.11.0 (2026-11-17), with what wave 1 left and upstream's fixes; see [Left after wave 1](#left-after-wave-1) and [Left after wave 2](#left-after-wave-2). Wave 3 shipped in 0.12.0 (2026-11-17), items 21–30; item 31, the rename, waits for the person's word. See [Left after wave 3](#left-after-wave-3). Written 2026-11-16 against lot-map 0.9.0 (fork `main`). The items are in three waves, numbered in the order they would be built.
 
 ## Goal
 
@@ -43,7 +43,7 @@ Before wave 1 it answered question 2 well, questions 1, 4 and 5 only in part, an
 
 - **Wave 1, done in 0.10.0 (1–10):** `/workmap` command, core state, needs you, exit codes, blocked vs failed, subagent failures, legend, background pinned, plan checklist, window favours the map.
 - **Wave 2, done in 0.11.0 (11–20):** quiet under an organisation's guard, upstream's fixes ported, permission prompts as needs you, session fault total, this turn's `+N`, rows by turn, files changed, stuck warnings, usage gauges, every session at a glance.
-- **Wave 3, later (21–31):** error first line, more rows on demand, session recap, timeline, context cost per call, subagents apart, MCP station, time share, file satellites, accessibility, full rename to workmap.
+- **Wave 3, done in 0.12.0 (21–30; 31 waits):** error first line, more rows on demand, session recap, timeline, context cost per call, subagents apart, MCP station, time share, file satellites, accessibility, full rename to workmap.
 
 ## Wave 1: done in 0.10.0
 
@@ -338,7 +338,7 @@ Checked on 2026-11-17 against the `wave-2` branch at 0.11.0 (155 tests pass), wi
 - **A message typed while a turn runs** (item 16): when the engine hands it into the running turn instead of starting a new one, what a settings hook added for it waits for the next message's turn.
 - **SECURITY.md** still counts any file read or process started as a vulnerability. Since 0.7 the mod starts a renderer, and since 0.11 it reads its status folder; the page needs a rewrite for what the mod does now.
 
-## Wave 3: later
+## Wave 3: done in 0.12.0
 
 Larger, or useful in fewer sessions. The full rename comes last, once upstream updates are no longer wanted.
 
@@ -415,6 +415,23 @@ Upstream issue #55: an MCP station with a small mark per server that lights when
 - Shapes as well as colour for errors and waits.
 - A high-contrast palette preset.
 - Reduced motion, which upstream has as the `motion` option (#40), on its `main` since 0.9.0. This fork's `main` doesn't have it yet.
+
+### Left after wave 3
+
+Checked on 2026-11-17 against the `wave-3` branch at 0.12.0, with a real Windows Terminal probe of the window.
+
+**Built differently from the text above:**
+
+- **Timeline strip** (item 24): scrubbing it to replay the map is left out, since the board keeps no past maps. Under reduced motion the strip steps every five seconds, as the clock hands do.
+- **Satellites** (items 27 and 29) are one mechanism: up to five labelled dots per station, for the most-touched files at Files and the MCP servers at their station. In cells a station shows only their count, `·N`.
+- **The recap** (item 23) answers `/workmap recap` only, never on its own at a session's end (open question 3).
+- **Subagents** (item 26): names and clocks are drawn in the SVG only. A Workflow's agents are grouped by being spawned while its call runs, which an Agent call made at the same time would join too.
+
+**Left for later:**
+
+- The window's station filter reaches the first nine stations, so Hooks can't be picked.
+- A cell glow can outlast its time by up to five seconds under reduced motion.
+- A workflow cluster counts at most 24 agents.
 
 ### 31. Rename to workmap and own the repo (repo · effort medium)
 
