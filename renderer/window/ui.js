@@ -305,11 +305,19 @@ export function wireStatus(tipEl, box) {
   })
 }
 
-/** The header's title: the repository, and under it the branch and the worktree when the session is in one. */
+// The title's icons: a git branch, and a folder tree for a worktree.
+const BRANCH_ICON = '<path d="M6 3v12M18 9a9 9 0 0 1-9 9"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/>'
+const WORKTREE_ICON =
+  '<path d="M3 3v13a2 2 0 0 0 2 2h4M3 7a2 2 0 0 0 2 2h4"/><rect x="11" y="5" width="10" height="7" rx="1.5"/><rect x="11" y="14" width="10" height="7" rx="1.5"/>'
+
+/** The header's title: the repository, and under it its branch and, when the session is in one, its worktree, each with an icon. */
 export function drawTitle(box, place) {
   box.hidden = !place?.repo
   if (box.hidden) return
-  const under = [place.branch, place.worktree ? `worktree ${place.worktree}` : undefined].filter(Boolean).join(' · ')
-  box.innerHTML = `<strong>${esc(place.repo)}</strong>${under ? `<small>${esc(under)}</small>` : ''}`
+  const refs = [
+    ...(place.branch ? [`<span class="ref">${svgIcon(BRANCH_ICON, 13)}${esc(place.branch)}</span>`] : []),
+    ...(place.worktree ? [`<span class="ref">${svgIcon(WORKTREE_ICON, 13)}${esc(place.worktree)}</span>`] : []),
+  ]
+  box.innerHTML = `<strong>${esc(place.repo)}</strong>${refs.length > 0 ? `<small>${refs.join('')}</small>` : ''}`
   document.title = `${place.repo}${place.branch ? ` · ${place.branch}` : ''} · Work map`
 }

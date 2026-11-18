@@ -717,6 +717,13 @@ function station(
       `<circle cx="${n1(p.x - corner)}" cy="${n1(p.y - corner)}" r="7.5" fill="${c.red}"/>` +
       `<text x="${n1(p.x - corner)}" y="${n1(p.y - corner + 3.1)}" text-anchor="middle" ${FONT} font-size="9" font-weight="700" fill="${c.ground}">${faults > 99 ? '99+' : faults}</text>`
   }
+  // Bottom right, on Browser: how many local servers Claude's calls used; its tooltip lists them.
+  const servers = s.id === 'browser' ? (board.local?.length ?? 0) : 0
+  if (servers > 0) {
+    over +=
+      `<circle cx="${n1(p.x + corner)}" cy="${n1(p.y + corner)}" r="7.5" fill="${c.raised}" stroke="${c.ash}" stroke-width="1.1" data-local="${servers}"/>` +
+      `<text x="${n1(p.x + corner)}" y="${n1(p.y + corner + 3.1)}" text-anchor="middle" ${FONT} font-size="9" font-weight="700" fill="${c.bone}">${servers}</text>`
+  }
   // Bottom left, in outline: calls refused there, a rule working rather than something broken.
   const blocks = board.blocks?.[s.id] ?? 0
   if (blocks > 0) {

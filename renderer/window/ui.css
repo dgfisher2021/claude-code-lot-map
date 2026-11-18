@@ -183,8 +183,8 @@
 #top {
   flex: none;
   display: grid;
-  /* The chips and the ? keep their size; the title gives way, cut short, when the window is narrow. */
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  /* Both sides as wide as each other, so the title sits on the window's centre; it gives way, cut short, when narrow. */
+  grid-template-columns: 1fr minmax(0, max-content) 1fr;
   align-items: center;
   gap: 12px;
   min-height: 46px;
@@ -211,8 +211,23 @@
   white-space: nowrap;
 }
 #title small {
+  display: flex;
+  justify-content: center;
+  gap: 14px;
+  margin-top: 2px;
   color: var(--dim);
   font-size: 12px;
+}
+#title .ref {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+#title .ref svg {
+  flex: none;
 }
 #help {
   justify-self: end;
