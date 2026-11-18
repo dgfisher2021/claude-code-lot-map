@@ -72,6 +72,10 @@ export type Strings = {
   tip: { calls: string; turn: string; running: string; time: string; errors: string; session: string; refused: string; pushed: string; tokens: string; mostUsed: string; read: string; local: string }
   /** The map window's line of local servers: its label. */
   localTitle: string
+  /** The core's tooltip: what it shows, the session's context, the cost and that it is an estimate. */
+  usage: { about: string; session: string; cost: string; estimate: string }
+  /** A word under a station for what it is doing now. */
+  doing: Record<Exclude<StationId, 'agents' | 'you' | 'model'> | 'reading' | 'editing' | 'searching' | 'thinking' | 'compacting' | 'needsYou' | 'permission', string>
   /** The map window's ? button: its keys, each with what it does. */
   keyHelp: { title: string; keys: { keys: string[]; label: string; note?: string }[] }
   /** The end of `/workmap help`: the commands, each with what it answers. */
@@ -139,7 +143,7 @@ const en: Strings = {
   opened: 'Work map opened.',
   cannotOpen: reason => `Nowhere to show the map right now: ${reason}`,
   stations: {
-    you: 'You',
+    you: 'User',
     model: 'Model',
     memory: 'Memory',
     files: 'Files',
@@ -237,6 +241,23 @@ const en: Strings = {
     local: 'Local servers Claude used',
   },
   localTitle: 'Local',
+  usage: { about: 'The model answering, and how much is used', session: 'Session context', cost: 'Cost so far', estimate: 'an estimate' },
+  doing: {
+    memory: 'recalling',
+    files: 'working',
+    shell: 'running',
+    web: 'fetching',
+    browser: 'browsing',
+    skills: 'loading',
+    hooks: 'checking',
+    reading: 'reading',
+    editing: 'editing',
+    searching: 'searching',
+    thinking: 'thinking',
+    compacting: 'compacting',
+    needsYou: 'needs you',
+    permission: 'permission',
+  },
   keyHelp: {
     title: 'Keys in this window',
     keys: [

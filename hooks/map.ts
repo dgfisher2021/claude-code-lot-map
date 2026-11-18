@@ -1,6 +1,6 @@
 // What the map knows: which station an action belongs to, what to call it, and how to draw the board.
 // Nothing here touches the engine.
-import type { Board, Entry, PlanItem, Satellite, StationId, Status, TimelineMark, TurnSummary } from '../types'
+import type { Board, Entry, LimitKind, PlanItem, Satellite, StationId, Status, TurnSummary } from '../types'
 import { clean, formatMs, shortModel } from './classify'
 import { stringsFor, tokensShort } from './text'
 import type { Strings } from './text'
@@ -146,7 +146,7 @@ export const RY = 164
 export const NODE = 22
 export const CORE = 40
 /** Where spokes and pulses meet the core: outside the context ring. */
-export const HUB = CORE + 8
+export const HUB = CORE + 17
 
 export type Palette = {
   ground: string
@@ -163,6 +163,10 @@ export type Palette = {
   memHot: string
   /** The route between stations: as light as the words on a dark ground, a soft grey on a light one, where a thin dark line weighs much more. */
   trail: string
+  /** The usage rings round the core, each its own colour whatever its fill: the session's context, the five-hour limit, the weekly limit. */
+  session: string
+  fiveHour: string
+  week: string
 }
 
 const DARK: Palette = {
@@ -180,6 +184,9 @@ const DARK: Palette = {
   memHot: '#a5e6dc',
   // One step away from `bone`, so that the light rules can give the route a color of its own.
   trail: '#ebe6dd',
+  session: '#7aa2f7',
+  fiveHour: '#bb9af7',
+  week: '#9ece6a',
 }
 
 const LIGHT: Palette = {
@@ -196,6 +203,9 @@ const LIGHT: Palette = {
   mem: '#1c8c81',
   memHot: '#136a62',
   trail: '#9c978b',
+  session: '#3a64c8',
+  fiveHour: '#8250c4',
+  week: '#4d8a2a',
 }
 
 /** The dark palette at full contrast: text at 7:1 or more against the ground, every mark at 4.5:1 or more. */
@@ -213,6 +223,9 @@ const CONTRAST: Palette = {
   mem: '#4de3d1',
   memHot: '#b3fff5',
   trail: '#f0f0f0',
+  session: '#9cbcff',
+  fiveHour: '#d4b8ff',
+  week: '#b4e88a',
 }
 
 const PALETTES = { auto: DARK, dark: DARK, light: LIGHT, contrast: CONTRAST }
@@ -247,6 +260,9 @@ export const COLOR_NAMES: Record<string, keyof Palette> = {
   memory: 'mem',
   memoryActive: 'memHot',
   route: 'trail',
+  session: 'session',
+  fiveHour: 'fiveHour',
+  week: 'week',
 }
 
 /**
@@ -555,6 +571,53 @@ export function stationTip(board: Board, id: StationId, t: Strings, running = 0,
   }
 }
 
+/** What a Files tool does, for the word under the station while it runs. */
+const ACTS: Record<string, Entry['act']> = {
+  Read: 'reading',
+  NotebookRead: 'reading',
+  LSP: 'reading',
+  Write: 'editing',
+  Edit: 'editing',
+  MultiEdit: 'editing',
+  NotebookEdit: 'editing',
+  Grep: 'searching',
+  Glob: 'searching',
+}
+export const actOf = (tool: string): Entry['act'] => ACTS[tool]
+
+/** The badges Model and User wear at their upper right, on a 24-unit grid: a cloud while the model thinks, a bell while Claude waits on you. */
+const BADGES = {
+  cloud: 'M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z',
+  bell: 'M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.94 1.94 0 0 0 3.4 0',
+}
+
+/**
+ * What a station is doing now, in a word under its name: Model thinking (with its cloud) or compacting, User when Claude
+ * waits on them (with the bell), and any other station at work by what it does. Agents has its subagents' names instead,
+ * and background work, which can run for hours, says nothing.
+ */
+export function doingOf(
+  id: StationId,
+  running: readonly Entry[],
+  board: Board,
+  t: Strings,
+): { word: string; badge?: keyof typeof BADGES; isWait?: true } | undefined {
+  if (id === 'agents') return undefined
+  if (id === 'you') {
+    const wait = board.entries.find(e => e.status === 'run' && e.waits === true)
+    if (wait === undefined) return undefined
+    return { word: wait.asks === true ? t.doing.permission : t.doing.needsYou, badge: 'bell', isWait: true }
+  }
+  if (id === 'model') {
+    if (board.phase === 'compacting') return { word: t.doing.compacting }
+    return running.length > 0 ? { word: t.doing.thinking, badge: 'cloud' } : undefined
+  }
+  const now = running.filter(e => e.task === undefined && e.waits !== true)
+  const last = now[now.length - 1]
+  if (last === undefined) return undefined
+  return { word: id === 'files' && last.act !== undefined ? t.doing[last.act] : t.doing[id] }
+}
+
 /** A station's name sits below the outermost ring it can wear (the warning ring at NODE + 12), never on one. */
 const NAME_DROP = NODE + 24
 
@@ -629,9 +692,20 @@ function station(
   const share = timeShareOf(board, s.id)
   const total = board.faultTotals?.[s.id] ?? 0
 
-  // Top right: how many run at once. Top left: what went wrong since the last message, until the next one.
+  // Top right: how many run at once, or for Model and User what they are doing. Top left: what went wrong since the last message.
   const corner = NODE * 0.74
-  if (running.length > 1) {
+  // What the station is doing now, under its name: Model thinking, User needed, Files reading and the like.
+  const doing = doingOf(s.id, running, board, t)
+  if (doing !== undefined) {
+    over += `<text x="${x}" y="${n1(p.y + NAME_DROP + 12)}" text-anchor="middle" ${FONT} font-size="9.5" ${rim} fill="${doing.isWait ? c.accent : hot}">${escapeXml(doing.word)}</text>`
+  }
+  if (doing?.badge !== undefined) {
+    const bx = p.x + corner
+    const by = p.y - corner
+    over +=
+      `<circle cx="${n1(bx)}" cy="${n1(by)}" r="8.5" fill="${c.raised}" stroke="${c.accent}" stroke-width="1.1"/>` +
+      `<path transform="translate(${n1(bx - 5.4)} ${n1(by - 5.4)}) scale(.45)" d="${BADGES[doing.badge]}" fill="none" stroke="${c.accent}" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>`
+  } else if (running.length > 1) {
     over +=
       `<circle cx="${n1(p.x + corner)}" cy="${n1(p.y - corner)}" r="8" fill="${c.raised}" stroke="${color}" stroke-width="1"/>` +
       `<text x="${n1(p.x + corner)}" y="${n1(p.y - corner + 3)}" text-anchor="middle" ${FONT} font-size="8.5" fill="${hot}">×${running.length}</text>`
@@ -774,6 +848,42 @@ export function agentList(board: Board): { id: string; name: string }[] {
 }
 
 
+/** The usage rings: the first's middle, each band's width, and the step from one band to the next. */
+const RING_FIRST = 3.5
+const RING_W = 3
+const RING_STEP = 4.6
+
+/** A row of the core's tooltip: a swatch of its ring's colour (none for the cost), what it measures, the figure, and a note. */
+export type UsageRow = { color: string; label: string; value: string; note?: string; ring?: number }
+
+/** The core's tooltip: the model answering, then the session's context, the five-hour and weekly limits, and the cost. */
+export type UsageTip = { kind: 'usage'; name: string; about: string; rows: UsageRow[] }
+
+export function usageTip(board: Board, now: number, setup: Setup, c: Palette): UsageTip {
+  const { t } = setup
+  const pct = (n: number): number => Math.max(0, Math.min(100, Math.round(n)))
+  const limit = (kind: LimitKind, color: string): UsageRow[] => {
+    const found = board.limits?.find(l => l.kind === kind)
+    if (found === undefined) return [{ color, label: t.limitNames[kind], value: '–' }]
+    const until = untilText(found.resetsAt, now, t)
+    return [{ color, label: t.limitNames[kind], value: `${pct(found.percent)}%`, ring: pct(found.percent), ...(until === undefined ? {} : { note: t.resetsIn(until) }) }]
+  }
+  const spent = costText(board.cost)
+  return {
+    kind: 'usage',
+    name: board.model === undefined ? setup.core : shortModel(board.model),
+    about: t.usage.about,
+    rows: [
+      board.context === undefined
+        ? { color: c.session, label: t.usage.session, value: '–' }
+        : { color: c.session, label: t.usage.session, value: `${pct(board.context)}%`, ring: pct(board.context) },
+      ...limit('five_hour', c.fiveHour),
+      ...limit('seven_day', c.week),
+      ...(spent === undefined ? [] : [{ color: '', label: t.usage.cost, value: spent, note: t.usage.estimate }]),
+    ],
+  }
+}
+
 export function drawMap(board: Board, now: number, setup: Setup, isFilling = false): string {
   const c = paletteOf(setup)
   orient(setup)
@@ -855,62 +965,39 @@ export function drawMap(board: Board, now: number, setup: Setup, isFilling = fal
   })
   body += crewLabels(crew, agentsAt, c, now, isStill)
 
-  // A name longer than three letters shrinks to stay inside the circle.
-  const coreSize = Math.min(17, 62 / (0.75 * setup.core.length))
-
   // The core breathes at rest and quickens while something runs.
   const period = anyRunning ? 1600 : 4800
   const breath = `begin="${clock(-(now % period))}" dur="${clock(period)}" repeatCount="indefinite"`
-  body +=
-    (isStill
-      ? `<circle cx="${CX}" cy="${CY}" r="${CORE + 8}" fill="${c.accent}" opacity="${anyRunning ? '.16' : '.08'}"/>`
-      : `<circle cx="${CX}" cy="${CY}" r="${CORE + 6}" fill="${c.accent}" opacity=".08">` +
-        `<animate attributeName="r" values="${CORE + 3};${CORE + 13};${CORE + 3}" ${breath}/>` +
-        `<animate attributeName="opacity" values=".05;${anyRunning ? '.24' : '.12'};.05" ${breath}/></circle>`) +
-    `<circle cx="${CX}" cy="${CY}" r="${CORE}" fill="${c.raised}" stroke="${anyRunning ? c.accent : c.line}" stroke-width="1.3"/>`
+  body += isStill
+    ? `<circle cx="${CX}" cy="${CY}" r="${CORE + 8}" fill="${c.accent}" opacity="${anyRunning ? '.16' : '.08'}"/>`
+    : `<circle cx="${CX}" cy="${CY}" r="${CORE + 6}" fill="${c.accent}" opacity=".08">` +
+      `<animate attributeName="r" values="${CORE + 3};${CORE + 13};${CORE + 3}" ${breath}/>` +
+      `<animate attributeName="opacity" values=".05;${anyRunning ? '.24' : '.12'};.05" ${breath}/></circle>`
 
-  // The context window as a ring around the core: it fills as the session goes and empties at a compaction.
-  if (board.context !== undefined) {
-    const full = Math.max(0, Math.min(100, Math.round(board.context)))
-    const ring = `cx="${CX}" cy="${CY}" r="${CORE + 5}" fill="none" stroke-width="2.2"`
-    body +=
-      `<circle ${ring} stroke="${c.line}" opacity=".7"/>` +
-      `<circle ${ring} stroke="${full >= 90 ? c.red : full >= 70 ? c.accent : c.ash}" pathLength="100" stroke-dasharray="${full} 100" transform="rotate(-90 ${CX} ${CY})"/>` +
-      `<text x="${CX}" y="${CY - 19}" text-anchor="middle" ${FONT} font-size="8" fill="${c.dim}">${full}%</text>`
-  }
-
-  // The rate-limit windows as thin arcs outside it, on the context ring's colours.
-  for (const { kind, percent, resetsAt } of board.limits ?? []) {
-    const used = Math.max(0, Math.min(100, Math.round(percent)))
-    const arc = `cx="${CX}" cy="${CY}" r="${CORE + (kind === 'five_hour' ? 9 : 12)}" fill="none" stroke-width="1.2"`
-    body +=
-      `<circle ${arc} stroke="${c.line}" opacity=".5"/>` +
-      `<circle ${arc} stroke="${used >= 90 ? c.red : used >= 70 ? c.accent : c.ash}" pathLength="100" stroke-dasharray="${used} 100" transform="rotate(-90 ${CX} ${CY})">` +
-      `<title>${escapeXml(setup.t.limitTitle(kind, used, untilText(resetsAt, now, setup.t)))}</title></circle>`
-  }
-
+  // The core and its usage rings are one thing to hover: the model, then what is used.
+  const usage = usageTip(board, now, setup, c)
+  let ringed = `<circle cx="${CX}" cy="${CY}" r="${CORE}" fill="${c.raised}" stroke="${anyRunning ? c.accent : c.line}" stroke-width="1.3"/>`
+  // One ring per measure, innermost first, each its own colour on a muted track, filling clockwise from the top.
+  usage.rows.forEach((row, k) => {
+    if (row.ring === undefined) return
+    const r = CORE + RING_FIRST + k * RING_STEP
+    const ring = `cx="${CX}" cy="${CY}" r="${r}" fill="none" stroke-width="${RING_W}"`
+    ringed += `<circle ${ring} stroke="${c.line}" opacity=".55"/>`
+    // A round cap would show a dot at nothing used.
+    if (row.ring > 0) {
+      ringed += `<circle ${ring} stroke="${row.color}" stroke-linecap="round" pathLength="100" stroke-dasharray="${n1(Math.min(row.ring, 99.4))} 100" transform="rotate(-90 ${CX} ${CY})"/>`
+    }
+  })
   const switchAge = board.switchedAt === undefined ? Infinity : now - board.switchedAt
   const isSwitching = switchAge >= 0 && switchAge < SWITCH_MS
-  body += `<text x="${CX}" y="${CY + (board.model === undefined ? 6 : 1)}" text-anchor="middle" ${FONT} font-size="${n1(coreSize)}" letter-spacing="${n1(coreSize * 0.147)}" fill="${c.bone}">${escapeXml(setup.core)}</text>`
-  if (board.model !== undefined) {
-    body += `<text x="${CX}" y="${CY + 17}" text-anchor="middle" ${FONT} font-size="9" fill="${isSwitching ? c.hot : c.ash}">${escapeXml(shortModel(board.model))}</text>`
-  }
-
-  // Under the core, one word for what the session is doing.
-  const state = stateOf(board)
-  const stateColor = { idle: c.dim, thinking: c.bone, running: c.hot, waiting: c.accent, compacting: c.mem, done: c.ash }[state]
-  const blink =
-    state === 'waiting' && !isStill
-      ? `<animate attributeName="opacity" values="1;.45;1" begin="${clock(-(now % 1200))}" dur="1.2s" repeatCount="indefinite"/>`
-      : ''
-  // A wait on you wears a dashed ring inside the core's edge, a sign that does not depend on the blink.
-  if (state === 'waiting') body += `<circle cx="${CX}" cy="${CY}" r="${CORE - 4}" fill="none" stroke="${c.accent}" stroke-width="1.4" stroke-dasharray="3 3"/>`
-  body += `<text x="${CX}" y="${CY + CORE + 25}" text-anchor="middle" ${FONT} font-size="9" paint-order="stroke" stroke="${c.ground}" stroke-width="3.5" stroke-linejoin="round" fill="${stateColor}">${blink}${escapeXml(setup.t.states[state])}</text>`
+  // The model in the middle: it is always Claude, so the model is what tells one session from another.
+  const name = board.model === undefined ? setup.core : shortModel(board.model)
+  const nameSize = Math.min(15, 62 / (0.62 * Math.max(4, [...name].length)))
   const spent = costText(board.cost)
-  // The cost is an estimate, and its title says so.
-  if (spent !== undefined) {
-    body += `<text x="${CX}" y="${CY + CORE + 36}" text-anchor="middle" ${FONT} font-size="8" fill="${c.dim}"><title>${escapeXml(setup.t.estimatedCost(spent))}</title>${spent}</text>`
-  }
+  ringed += `<text x="${CX}" y="${CY + (spent === undefined ? 5 : 2)}" text-anchor="middle" ${FONT} font-size="${n1(nameSize)}" letter-spacing="${n1(nameSize * 0.06)}" fill="${isSwitching ? c.hot : c.bone}">${escapeXml(name)}</text>`
+  if (spent !== undefined) ringed += `<text x="${CX}" y="${CY + 16}" text-anchor="middle" ${FONT} font-size="8" fill="${c.dim}">${spent}</text>`
+  const plain = [usage.name, ...usage.rows.map(r => `${r.label} ${r.value}`)].join(' · ')
+  body += `<g data-tip="${escapeXml(JSON.stringify(usage))}"><title>${escapeXml(plain)}</title>${ringed}</g>`
 
   // A changed model rings at the core and at its station for a few seconds.
   if (isSwitching && !isStill) {

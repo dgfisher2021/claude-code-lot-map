@@ -250,3 +250,15 @@ kbd.arrow svg {
   background: var(--done);
   opacity: 1;
 }
+
+/* The core's tooltip: a swatch of each ring's colour, as a chart's legend has, and when each limit resets under it. */
+.fig .swatch {
+  display: block;
+  width: 11px;
+  height: 11px;
+  margin: 0 auto;
+  border-radius: 3px;
+}
+.fig.usage small {
+  display: block;
+}

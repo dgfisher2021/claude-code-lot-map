@@ -114,6 +114,7 @@ export function boardAt(s, base, figures) {
       ...(c.agent ? { agentId: c.agent } : {}),
       ...(c.task ? { task: c.task } : {}),
       ...(c.waits ? { waits: true } : {}),
+      ...(c.station === 'files' && !c.agent ? { act: c.edit ? 'editing' : c.label === 'Grep' ? 'searching' : 'reading' } : {}),
       ...(c.answer && done ? { mark: 'done' } : {}),
       ...(done && c.exit !== undefined ? { exit: c.exit } : {}),
       ...(done && c.reason && figures.errorReasons ? { reason: c.reason } : {}),

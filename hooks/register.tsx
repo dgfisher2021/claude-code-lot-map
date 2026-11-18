@@ -14,6 +14,7 @@ import {
   feedLines,
   firstLine,
   framedMap,
+  actOf,
   keepNewest,
   localHostsIn,
   logLines,
@@ -106,6 +107,7 @@ type Start = {
   agentId?: string
   mark?: Entry['mark']
   waits?: true
+  act?: Entry['act']
   /** Adds nothing to the station's count: a second view of something already counted. */
   uncounted?: boolean
   /** Comes ahead of the turn it belongs to, as a settings hook's row at a message: no turn yet, nothing counted on one. */
@@ -227,6 +229,7 @@ async function begin($: EngineInterface, start: Start): Promise<string | undefin
       ...(start.agentId !== undefined ? { agentId: start.agentId } : {}),
       ...(start.mark !== undefined ? { mark: start.mark } : {}),
       ...(start.waits === true ? { waits: true as const } : {}),
+      ...(start.act === undefined ? {} : { act: start.act }),
     }
     await update($, board, b => {
       const open = start.loose ? undefined : b.turns?.[b.turns.length - 1]
@@ -1171,6 +1174,7 @@ export const register: Register = (on, options) => {
         ...seen,
         ...(e.agentId === undefined ? { from: 'core' as const } : { from: 'agents' as const, agentId: e.agentId }),
         ...(waits ? { waits: true as const } : {}),
+        ...(seen.station === 'files' && actOf(String(e.tool)) !== undefined ? { act: actOf(String(e.tool)) } : {}),
       })
     })
     // A subagent's calls fill its own context, which the engine does not report: only the main loop's are counted.

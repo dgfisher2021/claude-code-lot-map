@@ -49,6 +49,22 @@ function tipHtml(tip, glyph) {
   )
 }
 
+// The core's tooltip: a gauge for its heading, a coin for the cost's row.
+const GAUGE = '<path d="M12 14l4-4M3.34 19a10 10 0 1 1 17.32 0"/>'
+const COIN = '<circle cx="12" cy="12" r="9"/><path d="M14.5 9.2A2.5 2 0 0 0 12 8h-.5a2 2 0 0 0 0 4h1a2 2 0 0 1 0 4H12a2.5 2 0 0 1-2.5-1.2M12 6.5V8M12 16v1.5"/>'
+
+/** The core's tooltip: the model, then a row per usage ring (its colour, what it measures, its figure, when it resets) and the cost. */
+function usageHtml(tip) {
+  const rows = tip.rows
+    .map(
+      r =>
+        `<div class="fig usage">${r.color ? `<i class="swatch" style="background:${esc(r.color)}"></i>` : svgIcon(COIN)}` +
+        `<span>${esc(r.label)}${r.note ? `<small>${esc(r.note)}</small>` : ''}</span><b>${esc(r.value)}</b></div>`,
+    )
+    .join('')
+  return `<div class="tip-head">${svgIcon(GAUGE, 20)}<strong>${esc(tip.name)}</strong></div><p class="tip-about">${esc(tip.about)}</p><div class="tip-figures">${rows}</div>`
+}
+
 /** Moves each title of the map in `box` onto its parent as `data-title`: the page's own tooltip shows it, the browser's never. */
 export function untitle(box) {
   for (const title of box.querySelectorAll('title')) {
@@ -80,7 +96,7 @@ export function showTip(tipEl, box, pointer) {
   if (!found) return
   tipEl.classList.remove('help')
   tipEl.classList.toggle('rich', found.tip !== undefined)
-  if (found.tip) tipEl.innerHTML = tipHtml(found.tip, found.glyph)
+  if (found.tip) tipEl.innerHTML = found.tip.kind === 'usage' ? usageHtml(found.tip) : tipHtml(found.tip, found.glyph)
   else tipEl.textContent = found.text
   // Beside the pointer, flipped to the other side near an edge of the window.
   const left = pointer.x + 16 + tipEl.offsetWidth > innerWidth - 8 ? pointer.x - 16 - tipEl.offsetWidth : pointer.x + 16
