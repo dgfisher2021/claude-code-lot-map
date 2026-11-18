@@ -2,6 +2,41 @@
 
 What changed in each version of workmap, newest first; up to 0.12.0 it was called lot-map. To get a new version, see [Updating](README.md#updating).
 
+## 1.1.0 (2026-11-18)
+
+- What you need to do: nothing but update. Your options stay as they are; `terminalWindow` takes one more value, `pane`.
+- From WSL the map window is an Edge app window: drag it, resize it, move it to another screen. It opens in a profile of its own (`%LOCALAPPDATA%\workmap\edge`), so Edge keeps its size and place for the next one. One small server serves every session's window, `renderer/serve.mjs` on `127.0.0.1:47470`, reachable from this computer only; it ends a minute after the last session. `terminalWindow` set to `pane` keeps the split of Windows Terminal's tab, which is also what opens when Edge cannot.
+- A header over the map in the window:
+  - At the left, warnings. `API Cost: $4.20` once usage is billed at API rates, with why under it: `Weekly limit reached`, `5-hour limit reached` or `Billed through an API key`. `5-Hour Limit: 93%` and `Weekly Limit: 95%` from 90%, each with when it resets, until API Cost takes its place at 100%. `Session Context: 92%` from 90%, with `/clear or /compact` under it.
+  - In the middle the repository's name, and under it the branch and, in a worktree, the worktree, each with an icon, asked of `git` every half minute.
+  - At the right a `?`: the window's keys. `/workmap help` now ends with the commands.
+- Tooltips of the window's own, never the browser's:
+  - A station's: its name and what lands there, then its figures in rows with icons (calls this session, since your last message, running now, share of the busy time, errors, refusals, tokens added to the context), then what it served most: Files its files, edited or only read; Skills & MCP its servers; Agents the subagents at work, with their time; Browser the local servers that answer.
+  - The core's: the model, then each ring with a swatch of its colour and its figure, when each limit resets, and the cost.
+- The core:
+  - The model's name in capitals in the middle, sized to fit, with the context's percentage under it. Older and dated ids read too: `claude-3-5-sonnet-20241022` is `SONNET 3.5`.
+  - Three rings round it, innermost first, each its own colour on a muted track whatever its fill: the session's context in gray, the five-hour limit in yellow, the weekly limit in red.
+  - Its edge and its glow turn red when the context or either limit is at 90% or more, or usage is billed.
+  - The cost shows only once usage is billed: the dollars since a plan limit was first reached, or the session's on an API key. Until then the core's tooltip has it as `At API rates`, which your plan covers.
+- The stations:
+  - A station at work says what it does under its name: Files reading, editing or searching, Shell running, Network fetching, Browser browsing, Memory recalling, Skills & MCP loading, Hooks checking. Background work says nothing, so a dev server does not keep Shell running all day.
+  - Model wears a cloud and says thinking while the model works, compacting during a compaction. User, as You is now called, wears a bell and says needs you, or permission, while Claude waits on you.
+  - Skills & MCP takes the MCP servers, which were Network's.
+  - A call that reaches only localhost, such as `curl localhost:5173` or a fetch of a localhost address, lands on Browser.
+  - Browser shows the local servers Claude's calls named that answer now: the first under its name, which a click opens, `×N` in its upper right corner, and its circle and spoke in amber. A server that stops answering drops out. They come from Claude's calls alone, host and port, and the window asks each every five seconds; in the app, which cannot ask, Browser shows those Claude named.
+  - The error badge is a filled circle. An error or a refusal badge goes as soon as a later call at its station works, and at your next message at the latest; the session's totals stay in the tooltip.
+  - With `contextCost` on, a station's tokens stand beside its name, `Files ~51k`.
+- The list under the map in the window lays a call's row out in columns, its time at the right, the rows 22 pixels apart, and scrolls when it holds more than fits. A handle between the map and the list sets their share, and the window keeps it for the next one.
+- Gone, each for being noise or a second place for something already shown:
+  - the timeline strip under the map;
+  - the satellites around Files and the servers' station, now the tooltip's most used;
+  - the line of counts under a station's name (its count, this turn's `+3`, the session's `· 4✕`), now in the tooltip;
+  - the warnings for a command failing again and again and for a call running long; the warning for a turn with nothing new for three minutes stays;
+  - a Workflow's agents as one `4/9` dot, the subagents' name labels and clock arcs beside Agents (now in Agents' tooltip), and a subagent's dot turning red when one of its calls failed (its own failure shows on its Agent call's row);
+  - the word under the core for what the session is doing, now under the stations.
+- In a terminal's cells the map is painted as before, less the timeline strip: the counts under the names, the word under the centre and the thin limit arcs stay there.
+- For working on the map: `node dev/preview/server.mjs` draws it in a browser from a made-up session or a live one, reloading at every save. See [dev/preview](dev/preview/README.md).
+
 ## 1.0.0 (2026-11-17)
 
 - lot-map is now workmap, a project of its own. It began as [lot-map](https://github.com/alexeyw/lot-map) by Aleksei Volodin; the licence stays MIT with his notice.
