@@ -1,6 +1,6 @@
 // What the map knows: which station an action belongs to, what to call it, and how to draw the board.
 // Nothing here touches the engine.
-import type { Board, Entry, PlanItem, Satellite, StationId, Status, TurnSummary } from '../types'
+import type { Board, Entry, PlanItem, Satellite, StationId, Status, TimelineMark, TurnSummary } from '../types'
 import { clean, formatMs, shortModel } from './classify'
 import { stringsFor, tokensShort } from './text'
 import type { Strings } from './text'
@@ -138,7 +138,7 @@ export function wearOf(board: Board, id: StationId, setup: Setup): number {
 // ---- drawing ----------------------------------------------------------------------------------
 
 export const W = 460
-export const H = 430
+export const H = 448
 export const CX = 230
 export const CY = 212
 export const RX = 176
@@ -726,6 +726,44 @@ export function agentList(board: Board): { id: string; name: string }[] {
   return ids.map(id => ({ id, name: board.agentNames?.[id] ?? id }))
 }
 
+/** The timeline strip's place under the map: its top, its height, and where it starts and ends across. */
+export const STRIP = { y: 432, h: 6, x0: 20, x1: 440 }
+
+/** A mark of the timeline as a part of the strip, 0 to 1 across. */
+export type StripMark = { from: number; to: number; kind: TimelineMark['kind']; bad: boolean }
+
+/** The strip: the marks and the turns' starts as places across, from the first mark or turn to now; none while the board has neither. */
+export function stripOf(board: Board, now: number): { marks: StripMark[]; ticks: number[] } | undefined {
+  const marks = board.timeline ?? []
+  const turns = board.turns ?? []
+  const first = Math.min(marks[0]?.at ?? Infinity, turns[0]?.startedAt ?? Infinity)
+  if (!Number.isFinite(first)) return undefined
+  const span = Math.max(now - first, 1000)
+  const across = (t: number): number => Math.min(1, Math.max(0, (t - first) / span))
+  return {
+    marks: marks.map(m => ({ from: across(m.at), to: across(m.until ?? now), kind: m.kind, bad: m.bad === true })),
+    ticks: turns.map(t => across(t.startedAt)),
+  }
+}
+
+/** Where time went, in a thin strip under the ring: a mark for each call, a gap for none. */
+function timeline(board: Board, now: number, c: Palette): string {
+  const strip = stripOf(board, now)
+  if (strip === undefined) return ''
+  const { y, h, x0, x1 } = STRIP
+  const wide = x1 - x0
+  let out = `<rect x="${x0}" y="${y}" width="${wide}" height="${h}" rx="1.5" fill="${c.line}" opacity=".35"/>`
+  for (const { from, to, kind, bad } of strip.marks) {
+    const width = Math.min(wide, Math.max(1.5, (to - from) * wide))
+    const x = Math.min(x1 - width, x0 + from * wide)
+    const place = `class="tl" data-kind="${kind}" x="${n1(x)}" y="${y}" width="${n1(width)}" height="${h}"`
+    const color = bad ? c.red : kind === 'memory' ? c.mem : c.accent
+    out += kind === 'wait' ? `<rect ${place} fill="${c.accent}" fill-opacity=".3" stroke="${c.accent}" stroke-width="1" stroke-dasharray="2 1.5"/>` : `<rect ${place} fill="${color}"/>`
+  }
+  for (const t of strip.ticks) out += `<rect class="tick" x="${n1(x0 + t * (x1 - x0))}" y="${y - 4}" width="1" height="3" fill="${c.bone}"/>`
+  return `<g class="timeline">${out}</g>`
+}
+
 export function drawMap(board: Board, now: number, setup: Setup, isFilling = false): string {
   const c = paletteOf(setup)
   orient(setup)
@@ -840,6 +878,8 @@ export function drawMap(board: Board, now: number, setup: Setup, isFilling = fal
       `<circle ${arc} stroke="${used >= 90 ? c.red : used >= 70 ? c.accent : c.ash}" pathLength="100" stroke-dasharray="${used} 100" transform="rotate(-90 ${CX} ${CY})">` +
       `<title>${escapeXml(setup.t.limitTitle(kind, used, untilText(resetsAt, now, setup.t)))}</title></circle>`
   }
+
+  body += timeline(board, now, c)
 
   const switchAge = board.switchedAt === undefined ? Infinity : now - board.switchedAt
   const isSwitching = switchAge >= 0 && switchAge < SWITCH_MS
