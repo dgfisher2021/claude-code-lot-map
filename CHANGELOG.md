@@ -2,6 +2,11 @@
 
 What changed in each version of workmap, newest first; up to 0.12.0 it was called lot-map. To get a new version, see [Updating](README.md#updating).
 
+## 1.1.1 (2026-11-18)
+
+- Nothing you would see changes. The code for a station's dashed warning ring is gone: since 1.1.0 no warning names a station, so it could not appear.
+- The tests keep only what guards privacy, security, where calls land, limits and billed usage, and the window opening or falling back: 59 tests, run in 19 seconds.
+
 ## 1.1.0 (2026-11-18)
 
 - What you need to do: nothing but update. Your options stay as they are; `terminalWindow` takes one more value, `pane`.
