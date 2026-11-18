@@ -2,6 +2,10 @@
 
 What changed in each version of workmap, newest first; up to 0.12.0 it was called lot-map. To get a new version, see [Updating](README.md#updating).
 
+## 1.2.2 (2026-11-18)
+
+- The word under the bottom station, Network's `fetching` or, with `layout` set to `you-bottom`, User's `needs you`, is whole again: the map ended above it, so in the window the handle under the map seemed to cut it off. The map is 12 units taller.
+
 ## 1.2.1 (2026-11-18)
 
 - The window's title follows the session into a worktree, or a folder `/cd` takes it to: it showed the folder the session started in, so a session moved into a worktree read as `main` with no worktree.

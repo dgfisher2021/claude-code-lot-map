@@ -142,7 +142,8 @@ export function wearOf(board: Board, id: StationId, setup: Setup): number {
 // ---- drawing ----------------------------------------------------------------------------------
 
 export const W = 460
-export const H = 430
+/** Tall enough for the word under the bottom station, NAME_DROP + 12 below its centre at CY + RY. */
+export const H = 442
 export const CX = 230
 export const CY = 212
 export const RX = 176

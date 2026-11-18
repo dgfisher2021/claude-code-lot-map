@@ -34,7 +34,7 @@ function say(text) {
 /** The map's proportions, from its own drawing. */
 function aspect() {
   const box = /viewBox="0 0 ([\d.]+) ([\d.]+)"/.exec(svg)
-  return box ? Number(box[2]) / Number(box[1]) : 430 / 460
+  return box ? Number(box[2]) / Number(box[1]) : 442 / 460
 }
 
 /** The map as large as the width allows while the list keeps the session's windowRows, never under twelve rows. */
