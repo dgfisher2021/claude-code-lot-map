@@ -191,7 +191,7 @@ const ICONS = {
   tokens: '<path d="m12 3 9 4.5-9 4.5-9-4.5zM3 12l9 4.5 9-4.5M3 16.5l9 4.5 9-4.5"/>',
 }
 // An icon carries its own size, so it stays small even before the page's styles apply.
-const svgIcon = (inner, size = 14, viewBox = '0 0 24 24', width = 2) =>
+const svgIcon = (inner, size = 16, viewBox = '0 0 24 24', width = 2) =>
   `<svg width="${size}" height="${size}" viewBox="${viewBox}" fill="none" stroke="currentColor" stroke-width="${width}" stroke-linecap="round" stroke-linejoin="round">${inner}</svg>`
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c])
 // Backticks in the words mark a command.
@@ -204,7 +204,7 @@ function tipHtml(t) {
     .map(f => `<div class="fig${f.tone ? ` t-${f.tone}` : ''}">${svgIcon(ICONS[f.icon] ?? '')}<span>${esc(f.label)}</span><b>${esc(f.value)}</b></div>`)
     .join('')
   return (
-    `<div class="tip-head">${svgIcon(`<path d="${esc(glyph)}"/>`, 18, '-10 -10 20 20', 1.4)}<strong>${esc(t.name)}</strong></div>` +
+    `<div class="tip-head">${svgIcon(`<path d="${esc(glyph)}"/>`, 20, '-10 -10 20 20', 1.4)}<strong>${esc(t.name)}</strong></div>` +
     `<p class="tip-about">${withCode(t.about)}</p><div class="tip-figures">${rows}</div>`
   )
 }
