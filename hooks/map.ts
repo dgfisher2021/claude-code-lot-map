@@ -538,7 +538,7 @@ export function stationTip(board: Board, id: StationId, t: Strings, running = 0,
       ...when(board.faults?.[id] ?? 0, { icon: 'errors', label: t.tip.errors, value: String(board.faults?.[id] ?? 0), tone: 'bad' }),
       ...when(board.faultTotals?.[id] ?? 0, { icon: 'session', label: t.tip.session, value: String(board.faultTotals?.[id] ?? 0), tone: 'bad' }),
       ...when(board.blocks?.[id] ?? 0, { icon: 'refused', label: t.tip.refused, value: String(board.blocks?.[id] ?? 0), tone: 'block' }),
-      ...when(tokens, { icon: 'tokens', label: t.tip.tokens, value: tokensShort(tokens) }),
+      ...when(tokens, { icon: 'tokens', label: t.tip.tokens, value: `~${tokensShort(tokens)}` }),
     ],
   }
 }

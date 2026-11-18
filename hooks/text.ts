@@ -225,7 +225,7 @@ const en: Strings = {
     session: 'Errors this session',
     refused: 'Refused since your last message',
     pushed: 'Brought in by hooks, unasked',
-    tokens: 'Added to the context',
+    tokens: 'Tokens added to context',
   },
   planHeader: (done, total) => `Plan ${done}/${total}`,
   planCalls: n => `${n} ${n === 1 ? 'call' : 'calls'}`,
