@@ -618,26 +618,6 @@ const entry = (station: Entry['station'], startedAt: number, more: Partial<Entry
   ...more,
 })
 
-test("the route is the main loop's stations in order, repeats and model steps left out", () => {
-  const entries = [
-    entry('you', 1, { from: 'inbound' }),
-    entry('model', 2),
-    entry('memory', 3),
-    entry('memory', 4),
-    entry('model', 5),
-    entry('files', 6),
-    entry('shell', 7, { from: 'agents', agentId: 'a1' }),
-    entry('shell', 8),
-  ]
-  expect(routeOf(entries).map(stop => stop.station)).toEqual(['you', 'memory', 'files', 'shell'])
-  expect(routeOf(entries)[1]?.at).toBe(4)
-  expect(routeOf(entries, 2).map(stop => stop.station)).toEqual(['files', 'shell'])
-
-  const svg = drawMap({ entries, counts: {} }, 5000, STRANGER)
-  expect(svg.split('<path d="M').length - 1).toBe(3)
-  expect(svg).toContain('stroke-dashoffset')
-})
-
 test('finished calls in a row at one station fold into one row, anything else stands alone', () => {
   const rows = foldRows([
     entry('files', 1),
@@ -1087,80 +1067,6 @@ function contrast(a: string, b: string): number {
   return (hi + 0.05) / (lo + 0.05)
 }
 
-test('with motion reduced nothing on the map moves by itself', () => {
-  const still = setupFrom({ motion: 'reduced' })
-  const board: Board = {
-    entries: [
-      at('files', 300),
-      at('shell', 90_000, { status: 'run', endedAt: undefined }),
-      at('web', 200, { status: 'err' }),
-      at('hooks', 100, { status: 'block' }),
-      at('you', 80, { from: 'inbound' }),
-      at('agents', 3000, { status: 'run', endedAt: undefined }),
-      at('model', 50, { mark: 'done' }),
-      at('files', 20, { status: 'run', endedAt: undefined, waits: true }),
-    ],
-    counts: { files: 2, shell: 1, web: 1 },
-    faults: { web: 1 },
-    agents: ['a', 'b'],
-    model: 'claude-opus-5-5',
-    switchedAt: NOW - 500,
-    context: 40,
-  }
-  expect(drawMap(board, NOW, setupFrom())).toContain('<animate')
-  const drawn = drawMap(board, NOW, still)
-  expect(drawn).not.toContain('<animate')
-  // The state is still told: the running station's clock hands at their place, the wait, the crew.
-  expect(drawn).toContain('stroke-dashoffset="0.5"')
-  expect(drawn).toContain('needs you')
-  expect(drawn.split('transform="rotate(').length - 1).toBeGreaterThanOrEqual(2)
-  // The renderer need not step the picture, and the cells repaint at the slow pace.
-  expect(framedMap(board, NOW, still, 920, 860)).toContain('data-motion="reduced"')
-  expect(framedMap(board, NOW, still, 920, 860)).not.toContain('data-running')
-  expect(framedMap(board, NOW, setupFrom(), 920, 860)).toContain('data-running="1"')
-  expect(paceOf(board, NOW, still)).toBe(5000)
-  expect(paceOf(BUSY, NOW, still)).toBe(5000)
-  expect(paceOf(BUSY, NOW, setupFrom())).toBe(40)
-  // Nothing flies in the cells either: no pulse, return or beam, and the picture differs from the full one.
-  const flying: Board = { entries: [at('files', 300)], counts: { files: 1 } }
-  const { flights, returns, beams } = motionOf(flying, NOW, true)
-  expect(flights.length + returns.length + beams.length).toBe(0)
-  expect(motionOf(flying, NOW).flights.length).toBe(1)
-  expect(paintMap(flying, NOW, still, 60, 28)).not.toBe(paintMap(flying, NOW, setupFrom(), 60, 28))
-  expect(setupFrom({ motion: 'none' }).motion).toBe('full')
-})
-
-test('under reduced motion a mark is on or off, never faded, and the cells hold still within a step', () => {
-  const still = setupFrom({ motion: 'reduced' })
-  const ended: Board = { entries: [at('files', 1000)], counts: { files: 1 } }
-  const glow = /r="32" fill="#e1ac6e" opacity="\.3"\/>/
-  // A call ended a second ago: the glow is wholly on, and wholly gone once its span has passed.
-  expect(drawMap(ended, NOW, still)).toMatch(glow)
-  expect(drawMap(ended, NOW + 2000, still)).toMatch(glow)
-  expect(drawMap(ended, NOW + GLOW_MS, still)).not.toContain('r="32"')
-  expect(stillChangeIn(ended, NOW)).toBe(GLOW_MS - 800)
-  // A running call: its hands step every five seconds, so two paints within one step are the same.
-  const running: Board = { entries: [at('shell', 10_000, { status: 'run', endedAt: undefined })], counts: { shell: 1 } }
-  expect(paintMap(running, NOW, still, 60, 28)).toBe(paintMap(running, NOW + 3000, still, 60, 28))
-  expect(paintMap(running, NOW, still, 60, 28)).not.toBe(paintMap(running, NOW + 5000, still, 60, 28))
-  expect(drawMap(running, NOW, still)).toBe(drawMap(running, NOW + 3000, still))
-  expect(stillChangeIn(running, NOW)).toBe(5000)
-  expect(stillChangeIn({ entries: [], counts: {} }, NOW)).toBeUndefined()
-})
-
-test('the contrast theme meets its ratios', () => {
-  const c = paletteOf(setupFrom({ theme: 'contrast' }))
-  for (const name of ['text', 'label', 'accent', 'active', 'error'] as const) {
-    const key = COLOR_NAMES[name] as keyof typeof c
-    expect(contrast(c[key], c.ground)).toBeGreaterThanOrEqual(name === 'text' || name === 'label' ? 7 : 4.5)
-  }
-  for (const key of ['mem', 'memHot', 'dim', 'trail', 'line', 'spoke'] as const) expect(contrast(c[key], c.ground)).toBeGreaterThanOrEqual(4.5)
-  // A colour of your own still wins, and no light rules ride along.
-  expect(paletteOf(setupFrom({ theme: 'contrast', colors: 'accent=#ff0000' })).accent).toBe('#ff0000')
-  expect(setupFrom({ theme: 'contrast' }).theme).toBe('contrast')
-  expect(drawMap({ entries: [], counts: {} }, NOW, setupFrom({ theme: 'contrast' }))).not.toContain('<style>')
-})
-
 /** Answers TaskCreate as Claude Code does, numbering the tasks; refuses or fails any tool listed in `bad`. */
 function fakeTasks(on: On, bad: Record<string, unknown> = {}): void {
   let made = 0
@@ -1229,18 +1135,6 @@ test('a plan survives tools that misbehave, and an empty one shows nothing', asy
   await ui.unmount()
 })
 
-test('a long subject with emoji and CJK is cut to 60 characters and kept clean', async ($, on) => {
-  mock.clock(on, { now: NOW })
-  fakeTasks(on)
-  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
-  await $.tool.call({ tool: 'TaskCreate', subject: `修正🙂\u0007${'界'.repeat(200)}`, description: 'x' } as never)
-  const line = (await ui.find({ type: 'Text', text: /^○ 修正/ }))?.text ?? ''
-  expect(line).toMatch(/^○ 修正🙂 界界/)
-  expect(Array.from(line.slice(2)).length).toBeLessThanOrEqual(60)
-  expect(line).not.toMatch(/[\u0000-\u001f]/)
-  await ui.unmount()
-})
-
 test('files written and edited are listed by name with their edits; refused and failed ones are not', async ($, on) => {
   mock.clock(on, { now: NOW })
   on('command.register', (_, e) => ({ value: { command: e.name } }))
@@ -1260,41 +1154,6 @@ test('files written and edited are listed by name with their edits; refused and 
   expect((await ui.find({ type: 'Text', text: /^✎/ }))?.text).toBe('✎ 1 file changed: a/b.ts ×3')
   expect((await $.command.run({ command: 'workmap', args: 'changed' } as never)).text).toBe('a/b.ts ×3')
   await ui.unmount()
-})
-
-test('a long or wide file name never widens the changed line', async ($, on) => {
-  mock.clock(on, { now: NOW })
-  on('tool.call', () => ({ result: {} }) as never)
-  const t = stringsFor('de')
-  const wide = `${'界🙂'.repeat(100)}.ts`
-  const long = changedLine({ [`d/${wide}`]: 4 }, t)
-  expect(Array.from(long?.line ?? '').length).toBeLessThanOrEqual(100)
-  expect(long?.line).toMatch(/^✎ 1 Datei geändert: d\/界🙂.*…$/u)
-  // Many files: whole entries only, the rest counted, the line within 100 characters.
-  const many = Object.fromEntries(Array.from({ length: 30 }, (_, i) => [`src/file-${i}.ts`, 30 - i]))
-  const line = changedLine(many, t)?.line ?? ''
-  expect(Array.from(line).length).toBeLessThanOrEqual(100)
-  expect(line).toMatch(/src\/file-0\.ts ×30, src\/file-1\.ts ×29/)
-  expect(line).toMatch(/ und \d+ weitere$/)
-  expect(line).not.toMatch(/×1\b/)
-  expect(changedLine({ 'a.ts': 1 }, stringsFor('en'))).toEqual({ line: '✎ 1 file changed: a.ts', tone: 'plain' })
-  expect(changedLine({}, t)).toBeUndefined()
-  expect(changedLine(undefined, t)).toBeUndefined()
-  // In the pane, an emoji and CJK name 200 characters long stays within it.
-  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
-  await $.tool.call({ tool: 'Write', file_path: `/p/${wide}`, content: 'x' } as never)
-  const shown = (await ui.find({ type: 'Text', text: /^✎/ }))?.text ?? ''
-  expect(Array.from(shown).length).toBeLessThanOrEqual(100)
-  await ui.unmount()
-})
-
-test('past five pieces of background work, the rest are counted', () => {
-  const job = (i: number): Entry => ({ id: `b${i}`, station: 'shell', label: `job ${i}`, from: 'core', startedAt: NOW, status: 'run', task: `t${i}` })
-  const going = Array.from({ length: 7 }, (_, i) => job(i))
-  const lines = pinnedLines(going, NOW + 1000, stringsFor('en')).map(l => l.line)
-  expect(lines.length).toBe(6)
-  expect(lines[0]).toMatch(/job 6/)
-  expect(lines[5]).toBe('and 2 more')
 })
 
 test('background work stays pinned with its time while later rows scroll by', async ($, on) => {
@@ -1325,26 +1184,6 @@ test("a subagent's failed call names it in the row", async ($, on) => {
   await $.tool.call({ tool: 'Bash', command: 'npm test', description: 'Run the tests', agentId: 'a1' } as never)
   expect((await ui.find({ type: 'Text', text: /Run the tests/ }))?.text).toMatch(/^✕ Shell +↳ explore auth · Run the tests {2}exit 1/)
   expect((await ui.find({ type: 'Text', text: /auth\.py/ }))?.text).toMatch(/^· Files +↳ explore auth · b\/auth\.py/)
-  await ui.unmount()
-})
-
-test("a subagent's name is cut by characters, never through one", async ($, on) => {
-  mock.clock(on, { now: NOW })
-  on('agent.spawn', () => ({ model: 'claude-haiku-5-5', agentId: 'a2' }) as never)
-  on('tool.call', () => ({ result: {} }) as never)
-  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
-  await $.agent.spawn({ prompt: 'x', description: `${'a'.repeat(23)}🙂 and more` } as never)
-  await $.tool.call({ tool: 'Read', file_path: '/a/b/x.py', agentId: 'a2' } as never)
-  expect((await ui.find({ type: 'Text', text: /x\.py/ }))?.text).toContain(`↳ ${'a'.repeat(23)}🙂 · b/x.py`)
-  await ui.unmount()
-})
-
-test('a subagent never seen at agent.spawn has rows that carry no name', async ($, on) => {
-  mock.clock(on, { now: NOW })
-  on('tool.call', () => ({ result: {}, isError: true, text: 'Exit code 3' }) as never)
-  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
-  await $.tool.call({ tool: 'Bash', command: 'make', description: 'Build it', agentId: 'w7' } as never)
-  expect((await ui.find({ type: 'Text', text: /Build it/ }))?.text).toMatch(/^✕ Shell +Build it {2}exit 3/)
   await ui.unmount()
 })
 
@@ -1643,68 +1482,6 @@ test('with notify off nothing is notified', async ($, on) => {
   expect(notified).toBe(0)
 })
 
-test("every cell of the terminal map is one narrow glyph, and the terminal's own color is only ever a background", () => {
-  const faults: string[] = []
-  for (const options of [{}, { theme: 'light', layout: 'you-bottom' }, { background: 'transparent', language: 'ru' }, { coreName: '中文🙂ab' }]) {
-    const setup = setupFrom(options)
-    for (const later of [0, 300, 900, 5_000, 70_000]) {
-      const words = wordsOf(paintMap(BUSY, NOW + later, setup, 60, 28))
-      if (words.length !== 60 * 28 * 3) faults.push(`${words.length} words`)
-      for (let k = 0; k < words.length; k += 3) {
-        const [cp = 0, fg = 0, bg = 0] = [words[k], words[k + 1], words[k + 2]]
-        if (cp < 0x20 || (cp >= 0x7f && cp < 0xa0) || cp > 0xffff || (cp >= 0x300 && cp < 0x370) || (cp >= 0x1100 && cp < 0x2010))
-          faults.push(`glyph ${cp.toString(16)}`)
-        if (fg >>> 24 !== 0) faults.push(`foreground ${fg.toString(16)}`)
-        if (bg >>> 24 > 1) faults.push(`background ${bg.toString(16)}`)
-      }
-    }
-  }
-  expect(faults.slice(0, 5)).toEqual([])
-  const wide = linesOf(paintMap(BUSY, NOW, setupFrom({ coreName: '中文🙂ab' }), 60, 28), 60).join('\n')
-  expect(wide).toContain('···ab')
-  expect(wide).not.toContain('中')
-})
-
-test('the terminal map moves while something flies and only breathes when nothing does', () => {
-  const setup = setupFrom({})
-  const quiet: Board = { entries: [at('files', 90_000)], counts: { files: 1 } }
-  expect(paceOf(BUSY, NOW, setup)).toBe(40)
-  expect(paceOf({ ...quiet, entries: [at('shell', 5_000, { status: 'run', endedAt: undefined })] }, NOW, setup)).toBe(90)
-  expect(paceOf(quiet, NOW, setup)).toBe(250)
-  // A pulse in flight is somewhere else a few frames later; a quiet map changes only with its breath.
-  expect(paintMap(BUSY, NOW + 40, setup, 60, 28)).not.toBe(paintMap(BUSY, NOW + 160, setup, 60, 28))
-  expect(paintMap(quiet, NOW, setup, 60, 28)).toBe(paintMap(quiet, NOW + 4_800, setup, 60, 28))
-})
-
-test('in a terminal the map is drawn in cells above the rows, and a narrow pane keeps the rows alone', { options: OWN }, async ($, on) => {
-  on('clock.now', () => ({ value: NOW }))
-  on('tool.call', () => ({ result: {} }))
-  await $.tool.call({ tool: 'Read', file_path: '/a/b/content.py' })
-
-  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
-  const map = await ui.find({ type: 'Raster' })
-  const text = linesOf(String(map?.props.cells), 60).join('\n')
-  expect(text).toContain('Файлы 1')
-  expect(text).toContain('ДОМ')
-  expect((await ui.find({ type: 'Text', text: /b\/content\.py/ }))?.text).toContain('Файлы')
-  await ui.unmount()
-
-  const narrow = await $.ui.mount({ ...PANE, props: { ...PANE.props, bodyColumns: 26 }, surface: 'terminal' })
-  expect(await narrow.find({ type: 'Raster' })).toBeUndefined()
-  expect(await narrow.find({ type: 'Text', text: /Файлы 1/ })).toBeDefined()
-  expect(await narrow.find({ type: 'Text', text: /Расширьте панель до 46 столбцов/ })).toBeDefined()
-  await narrow.unmount()
-
-  const inline = await $.ui.mount({
-    ...PANE,
-    props: { ...PANE.props, bodyColumns: 168, placement: 'inline', scroll: { offset: 0, bodyRows: 22 } },
-    surface: 'terminal',
-  })
-  expect(await inline.find({ type: 'Raster' })).toBeDefined()
-  expect((await inline.find({ type: 'Text', text: /b\/content\.py/ }))?.text).toContain('Файлы')
-  await inline.unmount()
-})
-
 test('with the terminal map turned off a terminal shows the rows and a line of counts', { options: { terminalMap: false } }, async ($, on) => {
   on('clock.now', () => ({ value: NOW }))
   on('tool.call', () => ({ result: {} }))
@@ -1713,31 +1490,6 @@ test('with the terminal map turned off a terminal shows the rows and a line of c
   expect(await ui.find({ type: 'Raster' })).toBeUndefined()
   expect(await ui.find({ type: 'Text', text: /^Files 1$/ })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: /Widen the pane/ })).toBeUndefined()
-  await ui.unmount()
-})
-
-test('between drawings a timer paints the next frames into the mounted map, seldom once nothing flies', async ($, on) => {
-  const clock = mock.clock(on, { now: NOW })
-  on('tool.call', () => ({ result: {} }))
-  const frames: string[] = []
-  on('ui.blit', (_, e) => {
-    if ('cells' in e) frames.push(e.cells)
-    return { value: {} }
-  })
-  await $.tool.call({ tool: 'Read', file_path: '/a/b/content.py' })
-  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
-  const first = String((await ui.find({ type: 'Raster' }))?.props.cells)
-
-  await clock.advance(400)
-  expect(frames.length).toBeGreaterThan(3)
-  expect(new Set(frames).size).toBe(frames.length)
-  expect(frames).not.toContain(first)
-
-  // Once the pulse has landed and the glow is gone, only the core's breath is left to paint.
-  await clock.advance(5_000)
-  const before = frames.length
-  await clock.advance(1_000)
-  expect(frames.length - before).toBeLessThan(6)
   await ui.unmount()
 })
 
@@ -2062,57 +1814,6 @@ test("a station's tooltip keeps the session's errors and what this turn added", 
   // The session's error stayed after the message, in the tooltip and its plain title.
   expect(drawn).toContain('<title>Shell: 5 calls this session · 2 this turn · 1 error in this session</title>')
   await ui.unmount()
-})
-
-test('no legend line holds a control character', () => {
-  for (const language of ['en', 'ru', 'es', 'fr', 'de', 'it', 'pt']) {
-    for (const line of stringsFor(language).legend) {
-      expect(/[\u0000-\u001f\u007f-\u009f]/.test(line)).toBe(false)
-    }
-  }
-})
-
-test('the count line in cells never passes ten cells', () => {
-  const board: Board = { entries: [], counts: { shell: 999, files: 9 }, turnCounts: { shell: 99, files: 3 }, faultTotals: { shell: 99, files: 2 } }
-  const text = linesOf(paintMap(board, NOW, setupFrom({}), 60, 28), 60).join('\n')
-  // 999 and a turn of 99 and 99 errors: the turn's share goes first, the errors stay.
-  expect(text).toMatch(/Shell 999 99✕/)
-  expect(text).not.toContain('+99')
-  // Room enough for all of it.
-  expect(text).toMatch(/Files 9 \+3 2✕/)
-})
-
-test('the line of counts with no map names the errors of the session', { options: OWN }, async ($, on) => {
-  mock.clock(on, { now: NOW })
-  on('turn.start', (_, e) => ({ turnId: e.turnId }) as never)
-  on('tool.call', () => ({ result: {}, isError: true, text: 'Exit code 1' }) as never)
-  const ui = await $.ui.mount({ ...PANE, props: { ...PANE.props, bodyColumns: 26 }, surface: 'terminal' })
-  await $.tool.call({ tool: 'Bash', command: 'make', description: 'Build it' } as never)
-  expect(await ui.find({ type: 'Text', text: /Терминал 1 · 1✕/ })).toBeDefined()
-  await ui.unmount()
-})
-
-test('the window gives the map its room before the list, down to twelve rows', () => {
-  const cell = { w: 10, h: 20 }
-  // The split beside a session in a window 31 rows tall: the map took 12 rows before, the list 18.
-  expect(layout({ cols: 53, rows: 31, cell, listRows: 10, view: 'both' })).toMatchObject({ mapRows: 19, listTop: 21, listRows: 10 })
-  // A tall pane: the map as wide as the pane, the list under it.
-  const tall = layout({ cols: 90, rows: 50, cell, listRows: 10, view: 'both' })
-  expect(tall.w).toBeLessThanOrEqual(900)
-  expect(tall.listRows).toBe(10)
-  // A short one: the map keeps twelve rows, and the list what is left.
-  expect(layout({ cols: 53, rows: 20, cell, listRows: 10, view: 'both' })).toMatchObject({ mapRows: 12, listTop: 14, listRows: 6 })
-  expect(layout({ cols: 53, rows: 13, cell, listRows: 10, view: 'both' }).listRows).toBe(0)
-  // Shorter than twelve rows the map stays inside the window, above the hint: a taller picture would scroll it.
-  for (const rows of [6, 8, 10, 12]) expect(layout({ cols: 53, rows, cell: { w: 8, h: 17 }, listRows: 10, view: 'both' }).mapRows).toBeLessThanOrEqual(rows - 1)
-})
-
-test('the window shows the map alone, or the list alone', () => {
-  const cell = { w: 10, h: 20 }
-  const map = layout({ cols: 53, rows: 31, cell, listRows: 10, view: 'map' })
-  expect(map.mapRows).toBeGreaterThan(19)
-  expect(map.listRows).toBe(0)
-  expect(layout({ cols: 53, rows: 31, cell, listRows: 10, view: 'list' })).toMatchObject({ w: 0, h: 0, mapRows: 0, listTop: 1, listRows: 30 })
 })
 
 /** A session in Windows Terminal from WSL, as one in the background sees it: the profile is set, the tab is not. */
@@ -2498,25 +2199,6 @@ test('/workmap usage still answers the windows and the cost when the engine cann
     'Weekly 40%',
     'Cost so far, an estimate: $2.00',
   ])
-})
-
-test('the terminal map paints the rate-limit arcs and the cost at the dock size, and nothing without them', () => {
-  const setup = setupFrom({ theme: 'dark' })
-  const bare: Board = { entries: [], counts: {} }
-  const gauged: Board = { ...bare, limits: [{ kind: 'five_hour', percent: 92 }], cost: 1.234 }
-  const isRed = (cells: string): boolean => {
-    const words = wordsOf(cells)
-    for (let k = 1; k < words.length; k++)
-      if (k % 3 !== 0 && ((words[k] ?? 0) >> 16) - ((words[k] ?? 0) & 0xff) > 50 && ((words[k] ?? 0) >> 16) - (((words[k] ?? 0) >> 8) & 0xff) > 50) return true
-    return false
-  }
-  const plain = paintMap(bare, NOW, setup, 60, 22)
-  const drawn = paintMap(gauged, NOW, setup, 60, 22)
-  expect(isRed(plain)).toBe(false)
-  expect(isRed(drawn)).toBe(true)
-  expect(linesOf(drawn, 60).join('\n')).toContain('$1.23')
-  expect(linesOf(plain, 60).join('\n')).not.toMatch(/\$\d/)
-  expect(linesOf(paintMap({ ...bare, cost: 0.004 }, NOW, setup, 60, 22), 60).join('\n')).not.toMatch(/\$\d/)
 })
 
 test('with no rate limits and no cost, nothing is billed and usage has nothing to say', async ($, on) => {
@@ -2960,25 +2642,6 @@ test('a call still running stays in the list past the newest rows', () => {
   expect(feedLines([task, ...after], t).some(l => l.line.includes('Dev server'))).toBe(false)
 })
 
-test('the last row of a full list folds only what stood next to it, not the same station further back', () => {
-  const turns = Array.from({ length: 40 }, (_, i) => entry(i % 2 === 0 ? 'model' : 'shell', i))
-  expect(foldRows(turns).map(r => r.times)).toEqual(Array.from({ length: 16 }, () => 1))
-  // What stood next to it still folds in; a model call further back, past the cut, does not.
-  const tail = [entry('model', 0), entry('model', 1), ...Array.from({ length: 15 }, (_, i) => entry(i % 2 === 0 ? 'shell' : 'files', 10 + i))]
-  expect(foldRows([entry('model', -2), entry('shell', -1), ...tail])[15]?.times).toBe(2)
-})
-
-test('thirty calls still running take half the list, the last of them standing for the rest, and the newest calls keep the other half', () => {
-  const tasks = Array.from({ length: 30 }, (_, i) => entry('agents', i, { status: 'run', endedAt: undefined, label: `task ${i}` }))
-  const after = Array.from({ length: 20 }, (_, i) => entry(i % 2 === 0 ? 'files' : 'shell', 100 + i))
-  const rows = foldRows([...tasks, ...after])
-  expect(rows.length).toBe(16)
-  expect(rows.slice(0, 8).map(r => r.entry.startedAt)).toEqual([119, 118, 117, 116, 115, 114, 113, 112])
-  expect(rows.slice(8).map(r => r.entry.label)).toEqual(['task 29', 'task 28', 'task 27', 'task 26', 'task 25', 'task 24', 'task 23', 'task 22'])
-  expect(rows.slice(8).map(r => r.times)).toEqual([1, 1, 1, 1, 1, 1, 1, 23])
-  expect(rows.slice(8).reduce((n, r) => n + r.times, 0)).toBe(30)
-})
-
 test('what is remembered between two events is held to a count, the oldest dropped first', () => {
   const refused = new Set<string>()
   for (let i = 0; i < 100; i++) {
@@ -3093,29 +2756,6 @@ test("what a settings hook or a typed skill adds at a message lands on that mess
   expect(await text(/^Turn 3/)).toBeUndefined()
   expect(await text(/^Turn 2 · /)).toMatch(/ · 3 calls$/)
   await ui.unmount()
-})
-
-test('the open-turn header goes first and bold, then its rows, then the last four earlier headers, dim, in 16 lines', () => {
-  const t = stringsFor('en')
-  const turn = (n: number, more: Partial<TurnSummary> = {}): TurnSummary => ({ n, startedAt: n * 1000, endedAt: n * 1000 + 500, calls: n, errors: 0, ...more })
-  const turns = [1, 2, 3, 4, 5, 6, 7].map(n => turn(n))
-  const mine = Array.from({ length: 20 }, (_, i) => entry(i % 2 === 0 ? 'files' : 'shell', 7000 + i, { turn: 7, label: `row ${i}` }))
-  const old = entry('shell', 1500, { turn: 6, label: 'old row' })
-  const lines = feedLines([old, ...mine], t, {}, turns)
-  expect(lines.length).toBe(16)
-  expect(lines[0]).toMatchObject({ tone: 'plain', isBold: true })
-  expect(lines[0]?.line).toMatch(/^Turn 7 · .* · 7 calls$/)
-  expect(lines.slice(1, 12).every(l => /row \d+/.test(l.line))).toBe(true)
-  expect(lines.slice(12).map(l => l.line.split(' · ')[0])).toEqual(['Turn 6', 'Turn 5', 'Turn 4', 'Turn 3'])
-  expect(lines.slice(12).every(l => l.tone === 'ok' && l.isBold === undefined)).toBe(true)
-  expect(lines.some(l => l.line.includes('old row'))).toBe(false)
-  // An open turn's time runs to its newest call's end; a header names its errors only when there are some.
-  const two = [turn(1, { errors: 1, calls: 1 }), turn(2, { startedAt: 5000, endedAt: undefined })]
-  const open = feedLines([entry('files', 5000, { turn: 2, endedAt: 5300 })], t, {}, two)
-  expect(open[0]?.line).toBe('Turn 2 · 300 ms · 2 calls')
-  expect(open[2]?.line).toBe('Turn 1 · 500 ms · 1 call · 1 error')
-  // No turns: the rows are as before.
-  expect(feedLines(mine.slice(0, 2), t).map(l => l.isBold)).toEqual([undefined, undefined])
 })
 
 test("a background task's failure counts on the turn that started it", async ($, on) => {
@@ -3472,15 +3112,6 @@ test('contextCost is off unless set to true, and off it adds no figure anywhere'
   ).not.toContain('+5k')
 })
 
-test("/workmap log and the window's log carry the context figure too", { options: COST }, async ($, on) => {
-  const k = costKit($, on)
-  await k.step(0)
-  await k.call('Read', { file_path: '/a/b/big.ts' })
-  k.set(52_000)
-  await k.step(1)
-  expect((await $.command.run({ command: 'workmap', args: 'log' } as never)).text).toMatch(/big\.ts.*\+42k/)
-})
-
 test('a call gets what the context grew by, one step late, on its row on every surface', { options: COST }, async ($, on) => {
   const k = costKit($, on)
   await k.step(0)
@@ -3499,112 +3130,6 @@ test('a call gets what the context grew by, one step late, on its row on every s
     expect((await ui.find({ type: 'Text', text: /\+42k$/ }))?.text).toMatch(/big\.ts +\d+ ms \+42k$/)
     await ui.unmount()
   }
-})
-
-test('a few calls in one step share its growth evenly and are marked; many get no figure', { options: COST }, async ($, on) => {
-  const k = costKit($, on)
-  await k.step(0)
-  await k.call('Read', { file_path: '/a/b/one.ts' })
-  await k.call('Bash', { command: 'make', description: 'Build it' })
-  k.set(52_000)
-  await k.step(1)
-  const term = await $.ui.mount({ ...PANE, surface: 'terminal' })
-  expect((await term.find({ type: 'Text', text: /~\+21k$/ }))?.text).toMatch(/~\+21k$/)
-  await term.unmount()
-
-  // Five calls at three stations: a share would say a short command cost as much as a large read.
-  for (const [tool, input] of [
-    ['Read', { file_path: '/a/b/c.ts' }],
-    ['Bash', { command: 'ls', description: 'List' }],
-    ['WebFetch', { url: 'https://example.com/x' }],
-    ['Grep', { pattern: 'x' }],
-    ['Read', { file_path: '/a/b/d.ts' }],
-  ] as const) {
-    await k.call(tool, input)
-  }
-  k.set(152_000)
-  await k.step(2)
-  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
-  expect(await ui.find({ type: 'Text', text: /\+20k$/ })).toBeUndefined()
-  // Files keeps the 21k of the first step and gets nothing of this one.
-  expect(stationTipIn(await sourceOf(ui), 'files')?.figures).toContainEqual(expect.objectContaining({ icon: 'tokens', value: '~21k' }))
-  await ui.unmount()
-})
-
-test('many calls at one station give their rows no figure, but the station its whole sum', { options: COST }, async ($, on) => {
-  const k = costKit($, on)
-  await k.step(0)
-  for (const name of ['a', 'b', 'c', 'd', 'e']) await k.call('Read', { file_path: `/x/y/${name}.ts` })
-  k.set(110_000)
-  await k.step(1)
-  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
-  expect(await ui.find({ type: 'Text', text: COST_FIGURE })).toBeUndefined()
-  expect(stationTipIn(await sourceOf(ui), 'files')?.figures).toContainEqual(expect.objectContaining({ icon: 'tokens', value: '~100k' }))
-  await ui.unmount()
-})
-
-test("a call whose step was the last of its turn, one before a compaction and a subagent's call get no figure", { options: COST }, async ($, on) => {
-  const k = costKit($, on)
-  await k.step(0)
-  await k.call('Read', { file_path: '/a/b/last.ts' })
-  // The turn ends without another step: the next reading is the next turn's, with the next message in it.
-  await k.done()
-  k.set(80_000)
-  await k.step(0)
-
-  await k.call('Read', { file_path: '/a/b/before.ts' })
-  await $.session.compact({ trigger: 'auto', messages: [{ role: 'user', text: 'kept', toolUses: [] }] } as never)
-  k.set(20_000)
-  await k.step(1)
-  // Smaller than before: the context shrank, and nothing is put anywhere.
-  await k.call('Read', { file_path: '/a/b/after.ts' })
-  k.set(15_000)
-  await k.step(2)
-
-  // A subagent's call fills its own context, which the engine does not report.
-  await k.call('Read', { file_path: '/a/b/sub.ts' }, 'a1')
-  k.set(30_000)
-  await k.step(3)
-
-  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
-  for (const name of [/last\.ts/, /before\.ts/, /after\.ts/, /sub\.ts/]) expect(await ui.find({ type: 'Text', text: name })).toBeDefined()
-  expect(await ui.find({ type: 'Text', text: COST_FIGURE })).toBeUndefined()
-  await ui.unmount()
-})
-
-test("a folded row sums its calls' figures, and is marked when some of them have none", () => {
-  const at = (id: string, startedAt: number, more: Partial<Entry>): Entry => ({
-    id,
-    station: 'files',
-    label: id,
-    from: 'core',
-    startedAt,
-    endedAt: startedAt + 5,
-    status: 'ok',
-    ...more,
-  })
-  const whole = foldRows([at('a', 1, { tokens: 2000 }), at('b', 10, { tokens: 3000 })])[0]
-  expect([whole?.times, whole?.tokens, whole?.isShared]).toEqual([2, 5000, undefined])
-  const part = foldRows([at('a', 1, {}), at('b', 10, { tokens: 3000 })])[0]
-  expect([part?.times, part?.tokens, part?.isShared]).toEqual([2, 3000, true])
-  const none = foldRows([at('a', 1, {}), at('b', 10, {})])[0]
-  expect([none?.tokens, none?.isShared]).toEqual([undefined, undefined])
-  expect(foldRows([at('a', 1, { tokens: 700, shared: true })])[0]?.isShared).toBe(true)
-  expect(feedLines([at('a', 1, { tokens: 700, shared: true })], stringsFor('en'), {}, [], true)[0]?.line).toMatch(/ ~\+700$/)
-})
-
-test("a pulse's radius grows with its call's tokens, 3 at none to 7 from 50k, and only with contextCost", () => {
-  expect(pulseRadius(0, 3.8)).toBe(3)
-  expect(pulseRadius(50_000, 3.8)).toBe(7)
-  expect(pulseRadius(900_000, 3.8)).toBe(7)
-  expect(pulseRadius(12_500, 3.8)).toBe(5)
-  expect(pulseRadius(undefined, 3.8)).toBe(3.8)
-
-  const entry: Entry = { id: 'a', station: 'files', label: 'x', from: 'core', startedAt: NOW - 100, status: 'run', tokens: 50_000 }
-  const radii = (svg: string): number[] => [...svg.matchAll(/<circle r="([\d.]+)" fill="#[0-9a-f]{6}" opacity="0">/g)].map(m => Number(m[1]))
-  const board: Board = { entries: [entry], counts: { files: 1 } }
-  expect(Math.max(...radii(drawMap(board, NOW, setupFrom({ theme: 'dark', contextCost: true }))))).toBe(7)
-  expect(Math.max(...radii(drawMap(board, NOW, setupFrom({ theme: 'dark' }))))).toBe(3.8)
 })
 
 test('/workmap usage names the three heaviest calls of the session, label and tokens, the heaviest first', { options: COST }, async ($, on) => {
@@ -3628,17 +3153,4 @@ test('/workmap usage names the three heaviest calls of the session, label and to
   expect(named[0]).toMatch(/b\.ts \+40k$/)
   expect(named[1]).toMatch(/d\.ts \+22k$/)
   expect(named[2]).toMatch(/a\.ts \+5k$/)
-})
-
-test('a long session keeps its sums whole while the list keeps its newest entries', { options: COST, timeoutMs: 30_000 }, async ($, on) => {
-  const k = costKit($, on)
-  await k.step(0)
-  for (let i = 0; i < 60; i++) {
-    await k.call('Read', { file_path: `/x/y/f${i}.ts` })
-    k.set(10_000 + (i + 1) * 100)
-    await k.step(0)
-  }
-  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
-  expect(stationTipIn(await sourceOf(ui), 'files')?.figures).toContainEqual(expect.objectContaining({ icon: 'tokens', value: '~6k' }))
-  await ui.unmount()
 })

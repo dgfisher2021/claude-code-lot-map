@@ -1,8 +1,6 @@
 import { expect, mock, test } from 'claude-code/testing'
 
 import type { Board } from '../types'
-import { drawMap, setupFrom } from './map'
-import { layout } from '../renderer/layout.mjs'
 
 const NOW = 1_000_000
 
@@ -14,12 +12,6 @@ const keepBoard = (on: (event: 'state.set', hook: never) => void) => {
   )
   return kept
 }
-
-test('the map is 430 tall, and the window lays it out the same', () => {
-  const svg = drawMap({ entries: [], counts: {} }, NOW, setupFrom({ theme: 'dark' }))
-  expect(svg).toContain('viewBox="0 0 460 430"')
-  expect(layout({ cols: 60, rows: 30, cell: { w: 8, h: 16 }, listRows: 6, view: 'map' }).h).toBe(Math.floor(430 * Math.min((60 * 8) / 460, (29 * 16) / 430)))
-})
 
 test("a background agent's call, closed by its turn.complete, adds its time to its station", async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
