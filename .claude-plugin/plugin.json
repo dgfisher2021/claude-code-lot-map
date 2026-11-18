@@ -98,6 +98,12 @@
       "default": false,
       "description": "Show the first line of a failed call's error, up to 72 characters. Off, the row says only that the call failed: an error may quote what the call touched."
     },
+    "contextCost": {
+      "type": "boolean",
+      "title": "What each call adds to the context",
+      "default": false,
+      "description": "Each row says about how many tokens the context grew by with its call's answer, the map adds each station's sum to its count and a pulse's width follows its call's tokens. An estimate: the growth of one model step, which also holds the model's own words, what hooks added and, at the start of a turn, the message, shared among that step's calls. It shows one step late, and a call whose step was the last of a turn gets none."
+    },
     "guardedHooks": {
       "type": "boolean",
       "title": "Hooks a guard skips",
