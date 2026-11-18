@@ -529,26 +529,63 @@ function tickLine($: EngineInterface, next: number | undefined): void {
   lineTick.timer = next === undefined ? undefined : $.clock.after(Math.max(50, next), () => void quietly(async () => $.ui.invalidate('ui.render')))
 }
 
-/** Where the session works, for the window's title: the repository, its branch, and the worktree when it is one. */
+/** Where Claude works, for the window's title: the repository, its branch, and the worktree when it is one. */
 type Place = { repo: string; branch?: string; worktree?: string }
 const place: { at: number; value?: Place } = { at: 0 }
 
-/** The folder's repository by one `git rev-parse` (its common folder, its top, its branch); a folder outside git, by its name. */
-async function placeOf($: EngineInterface): Promise<Place | undefined> {
-  // The session's root follows a worktree it moves into or a /cd; the folder it started in is the fallback.
-  const cwd = (await quietly(() => $.session.root())) || overview.cwd
-  if (cwd === '') return undefined
-  const base = (path: string): string => path.split(/[\\/]/).filter(Boolean).at(-1) ?? path
+/** The folder Claude's latest edit, write, `cd` or `git -C` named, and the session's root when it was named. */
+const working: { dir?: string; root?: string } = {}
+
+/** A path's last part. */
+const baseName = (path: string): string => path.split(/[\\/]/).filter(Boolean).at(-1) ?? path
+
+/**
+ * The folder a call works in, when it names one by its full path: an edited or written file's, or the last folder a
+ * shell command goes into with `cd` or points git at with `git -C`. A read names none: Claude reads other repositories too.
+ */
+function folderOf(tool: string, input: Record<string, unknown>, home: string): string | undefined {
+  const full = (path: string): string | undefined => {
+    const named = path.replace(/^~(?=\/|$)/, home)
+    return named.startsWith('/') ? named.replace(/\/+$/, '') || '/' : undefined
+  }
+  if (tool === 'Edit' || tool === 'Write' || tool === 'MultiEdit' || tool === 'NotebookEdit') {
+    const file = input.file_path ?? input.notebook_path
+    return typeof file === 'string' ? full(file)?.replace(/\/[^/]*$/, '') : undefined
+  }
+  if (tool !== 'Bash') return undefined
+  const folders = /(?:^|[;&|(]\s*)cd\s+(?:"([^"]+)"|'([^']+)'|([^\s;&|)]+))|\bgit\s+-C\s+(?:"([^"]+)"|'([^']+)'|([^\s;&|)]+))/g
+  const last = [...String(input.command ?? '').matchAll(folders)].at(-1)?.slice(1).find(Boolean)
+  return last === undefined ? undefined : full(last)
+}
+
+/** The repository at `cwd` by one `git rev-parse` (its common folder, its top, its branch); nothing outside git. */
+async function gitPlace($: EngineInterface, cwd: string): Promise<Place | undefined> {
   const ran = await quietly(() => $.process.run(['git', '-C', cwd, 'rev-parse', '--path-format=absolute', '--git-common-dir', '--show-toplevel', '--abbrev-ref', 'HEAD']))
   const [common = '', top = '', branch = ''] = ran?.exitCode === 0 ? ran.stdout.trim().split('\n') : []
-  if (common === '') return { repo: base(cwd) }
+  if (common === '') return undefined
   const root = common.replace(/[\\/]\.git[\\/]?$/, '')
   return {
-    repo: base(root),
+    repo: baseName(root),
     ...(branch !== '' && branch !== 'HEAD' ? { branch } : {}),
     // A worktree's top is not the repository's own folder.
-    ...(top !== '' && top !== root ? { worktree: base(top) } : {}),
+    ...(top !== '' && top !== root ? { worktree: baseName(top) } : {}),
   }
+}
+
+/**
+ * Where Claude works now: the checkout of its latest edit, write, `cd` or `git -C`, else the session's root, which follows
+ * a worktree the session moves into or a /cd. The session moving is newer than any call before it; a folder outside
+ * git goes by its name.
+ */
+async function placeOf($: EngineInterface): Promise<Place | undefined> {
+  const root = (await quietly(() => $.session.root())) || overview.cwd
+  if (working.root !== undefined && root !== working.root) working.dir = undefined
+  working.root = root
+  for (const cwd of [working.dir, root]) {
+    const found = cwd === undefined || cwd === '' ? undefined : await gitPlace($, cwd)
+    if (found !== undefined) return found
+  }
+  return root === '' ? undefined : { repo: baseName(root) }
 }
 
 /** Writes the map when the board has changed, and the heartbeat every few seconds, so the window knows the session lives. */
@@ -582,7 +619,8 @@ async function share($: EngineInterface, setup: Setup): Promise<void> {
     const line = describeNow(state, setup.t, now)
     const pinned = pinnedLines(state.entries, now, setup.t)
     const changed = changedLine(state.changed, setup.t) ?? null
-    const said = [line.text, ...warnings.map(w => w.line), changed?.line ?? '', ...pinned.map(p => p.line)].join('\n')
+    // The title too: a new place is written at once, not with the next change of the board.
+    const said = [line.text, ...warnings.map(w => w.line), changed?.line ?? '', ...pinned.map(p => p.line), JSON.stringify(place.value ?? null)].join('\n')
     if (isChanged || said !== sharing.line) {
       sharing.line = said
       const feed = {
@@ -1170,6 +1208,13 @@ export const register: Register = (on, options) => {
   })
 
   on('tool.call', async ($, e, next) => {
+    // A call that works in a folder makes it where Claude works: the window's title asks git about it straight away.
+    await quietly(async () => {
+      const folder = folderOf(String(e.tool), e as unknown as Record<string, unknown>, (await $.env.get('HOME')) ?? '')
+      if (folder === undefined || folder === working.dir) return
+      working.dir = folder
+      place.at = 0
+    })
     const id = await quietly(async () => {
       const seen = classify(e.tool, e as unknown as Record<string, unknown>, setup)
       // A question for the person, or a plan for their approval, waits on them until they answer.

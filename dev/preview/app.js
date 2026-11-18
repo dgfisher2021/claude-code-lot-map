@@ -98,7 +98,7 @@ function mapRoom() {
   const list = state.listPx > 0 ? state.listPx : rows * LINE_H + 12
   const room = Math.max(120, pane.clientHeight - list - $('split').offsetHeight - $('top').offsetHeight)
   // As large as the width allows while the rows keep their room, as the map window lays out its page.
-  return { w: pane.clientWidth, h: Math.min(room, Math.round((pane.clientWidth * (lib?.H ?? 442)) / (lib?.W ?? 460))) }
+  return { w: pane.clientWidth, h: Math.min(room, Math.round((pane.clientWidth * (lib?.H ?? 454)) / (lib?.W ?? 460))) }
 }
 
 /** The lines under the map as the window draws them (renderer/window), cut to windowRows; the ? shows the feed's keys. */
