@@ -96,7 +96,7 @@
       "type": "boolean",
       "title": "Show why a call failed",
       "default": false,
-      "description": "Show the first line of a failed call's error, up to 72 characters. Off, the row says only that the call failed: an error may quote what the call touched."
+      "description": "Show the first line with text of a failed call's error, up to 72 characters. Off, the row says only that the call failed: an error may quote what the call touched."
     },
     "contextCost": {
       "type": "boolean",
