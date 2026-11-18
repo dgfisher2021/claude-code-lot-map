@@ -39,7 +39,7 @@ import { tokensShort } from './text'
 import type { Tile } from './overview'
 import { MAP_COLUMNS, MAP_MIN_COLUMNS, MAP_ROWS, PICTURE_CELL, mapSize, paceOf, paintMap } from './raster'
 
-const PANE = 'lot-map'
+const PANE = 'workmap'
 /** The terminal map's Raster or Image, by the key a repaint names it with. */
 const MAP = 'map'
 const KEEP = 80
@@ -63,7 +63,7 @@ const CHANGED = 40
 const CHANGING_TOOLS = new Set(['Write', 'Edit', 'NotebookEdit'])
 
 // Change the tag when a field of Entry or Board changes: it declines what an earlier version stored.
-const board = atom({ plugin: 'lot-map', key: 'board' } as const, { entries: [], counts: {} } as Board, { shape: 'board-5' })
+const board = atom({ plugin: 'workmap', key: 'board' } as const, { entries: [], counts: {} } as Board, { shape: 'board-5' })
 
 const newId = (now: number): string => `${now.toString(36)}${Math.random().toString(36).slice(2, 7)}`
 
@@ -338,7 +338,7 @@ async function waitsOnYou($: EngineInterface, setup: Setup, calls: Map<string, s
     if (row === undefined) return
     const { t } = setup
     const { station, label } = row
-    if (setup.notify) void quietly(() => $.ui.notify(t.notifyWaiting(t.permissionFor(`${t.stations[station]}: ${label}`)), { title: t.title, key: 'lot-map-wait' }))
+    if (setup.notify) void quietly(() => $.ui.notify(t.notifyWaiting(t.permissionFor(`${t.stations[station]}: ${label}`)), { title: t.title, key: 'workmap-wait' }))
   })
 }
 
@@ -532,7 +532,7 @@ async function writePicture($: EngineInterface, state: Board, now: number, setup
 
 /**
  * The map in a window of its own, for a terminal that shows Sixel pictures but not a mod's Image, such as Windows
- * Terminal: `/lot-map window` keeps the live map in a folder (map.svg, the rows under it in feed.json, and a heartbeat
+ * Terminal: `/workmap window` keeps the live map in a folder (map.svg, the rows under it in feed.json, and a heartbeat
  * in alive) and opens renderer/view.mjs beside the session to draw them.
  */
 const sharing: { dir?: string; timer?: Timer; written: string; rings: string; still: string; line: string; beat: number } = {
@@ -619,7 +619,7 @@ async function splitTab($: EngineInterface, args: string[], withChromium: boolea
   const chromium = withChromium
     ? ((await quietly(() => $.process.run(['sh', '-c', 'command -v chromium || command -v google-chrome'])))?.stdout.trim().split('\n')[0] ?? '')
     : ''
-  const found = chromium !== '' && !/\s/.test(chromium) ? [`LOT_MAP_CHROMIUM=${chromium}`] : []
+  const found = chromium !== '' && !/\s/.test(chromium) ? [`WORKMAP_CHROMIUM=${chromium}`] : []
   const command = ['env', ...found, node, view, ...args]
   const distro = (await $.env.get('WSL_DISTRO_NAME')) ?? ''
   if (distro !== '') {
@@ -643,7 +643,7 @@ async function openWindow($: EngineInterface, setup: Setup): Promise<{ isOpen: b
     const shown = await quietly(() => $.fs.stat(`${sharing.dir}/shown`))
     if (shown !== undefined && (await $.clock.now()) - shown.mtimeMs < SHOWN_MS) return { isOpen: true, text: setup.t.windowOpen }
   } else {
-    sharing.dir = `${await tmpDir($)}/lot-map-live-${Math.random().toString(36).slice(2, 10)}`
+    sharing.dir = `${await tmpDir($)}/workmap-live-${Math.random().toString(36).slice(2, 10)}`
     await share($, setup)
     sharing.timer = $.clock.every(250, () => void share($, setup))
   }
@@ -750,7 +750,7 @@ async function recapText($: EngineInterface, setup: Setup): Promise<string> {
   return lines.length === 0 ? setup.t.recapNothing : lines.join('\n')
 }
 
-/** `/lot-map` and `/workmap`: the pane, or in Windows Terminal the window; `window` asks for the window anywhere. */
+/** `/workmap`: the pane, or in Windows Terminal the window; `window` asks for the window anywhere. */
 async function runCommand($: EngineInterface, args: string, setup: Setup, opening: Opening): Promise<{ text: string }> {
   if (args.trim() === 'changed') return { text: await changedFiles($, setup) }
   if (args.trim() === 'log') return { text: await logText($, setup) }
@@ -769,7 +769,7 @@ async function stopSharing($: EngineInterface): Promise<void> {
   const dir = sharing.dir
   sharing.timer?.cancel()
   Object.assign(sharing, { dir: undefined, timer: undefined, written: '', rings: '', still: '', line: '', beat: 0 })
-  if (dir !== undefined && /\/lot-map-live-[a-z0-9]+$/.test(dir)) await quietly(() => $.process.run(['rm', '-rf', '--', dir]))
+  if (dir !== undefined && /\/workmap-live-[a-z0-9]+$/.test(dir)) await quietly(() => $.process.run(['rm', '-rf', '--', dir]))
 }
 
 /**
@@ -798,9 +798,9 @@ const HEARTBEAT_MS = 5000
  */
 async function sessionsDir($: EngineInterface): Promise<string | undefined> {
   const runtime = (await $.env.get('XDG_RUNTIME_DIR')) ?? ''
-  if (runtime.startsWith('/')) return `${runtime}/lot-map-sessions`
+  if (runtime.startsWith('/')) return `${runtime}/workmap-sessions`
   const home = (await $.env.get('HOME')) ?? ''
-  return home.startsWith('/') ? `${home}/.cache/lot-map/sessions` : undefined
+  return home.startsWith('/') ? `${home}/.cache/workmap/sessions` : undefined
 }
 
 /** Writes the session's status when it has changed, and at least every five seconds. */
@@ -954,8 +954,6 @@ export const register: Register = (on, options) => {
   const opening = { id: PANE, title: t.title, ...(setup.terminalMap ? { columns: MAP_COLUMNS, rows: MAP_ROWS } : {}) }
 
   on('session.start', async ($, e, next) => {
-    // Two names for one command: lot-map, as the plugin is called, and workmap.
-    await quietly(() => $.command.register({ name: 'lot-map', description: t.command, argumentHint: '[window | help | changed | usage | recap | log | all]' }))
     await quietly(() => $.command.register({ name: 'workmap', description: t.command, argumentHint: '[window | help | changed | usage | recap | log | all]' }))
     picture.canShow = setup.terminalMap && setup.terminalPicture === 'auto' && (await quietly(() => showsPictures($))) === true
     windowed.isAsked = false
@@ -989,7 +987,6 @@ export const register: Register = (on, options) => {
     return next(e)
   })
 
-  on('command.run', { command: 'lot-map' }, ($, e) => runCommand($, e.args, setup, opening))
   on('command.run', { command: 'workmap' }, ($, e) => runCommand($, e.args, setup, opening))
 
   on('session.end', async ($, e, next) => {
@@ -1126,7 +1123,7 @@ export const register: Register = (on, options) => {
         status: e.isAborted ? 'err' : 'ok',
         ...(e.isAborted ? {} : { mark: 'done' as const }),
       })
-      if (!e.isAborted && setup.notify) void quietly(() => $.ui.notify(t.notifyDone, { title: t.title, key: 'lot-map-wait' }))
+      if (!e.isAborted && setup.notify) void quietly(() => $.ui.notify(t.notifyDone, { title: t.title, key: 'workmap-wait' }))
       // An interrupted call never reports back; left alone its row would pulse for the rest of the session.
       await quietly(async () => {
         const now = await $.clock.now()
@@ -1148,7 +1145,7 @@ export const register: Register = (on, options) => {
       const seen = classify(e.tool, e as unknown as Record<string, unknown>, setup)
       // A question for the person, or a plan for their approval, waits on them until they answer.
       const waits = e.agentId === undefined && (e.tool === 'AskUserQuestion' || e.tool === 'ExitPlanMode')
-      if (waits && setup.notify) void quietly(() => $.ui.notify(t.notifyWaiting(seen.label), { title: t.title, key: 'lot-map-wait' }))
+      if (waits && setup.notify) void quietly(() => $.ui.notify(t.notifyWaiting(seen.label), { title: t.title, key: 'workmap-wait' }))
       return begin($, {
         ...seen,
         ...(e.agentId === undefined ? { from: 'core' as const } : { from: 'agents' as const, agentId: e.agentId }),

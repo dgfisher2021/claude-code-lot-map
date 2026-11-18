@@ -1,6 +1,6 @@
 # Privacy
 
-lot-map is a mod for Claude Code that draws a map of the work in a pane beside the chat. It runs inside Claude Code on your computer. There is no lot-map service, no account and no server: nothing the mod sees leaves your machine through it.
+workmap is a mod for Claude Code that draws a map of the work in a pane beside the chat. It runs inside Claude Code on your computer. There is no workmap service, no account and no server: nothing the mod sees leaves your machine through it.
 
 This page describes version 0.12.0. It changes only together with the code, and the [changelog](CHANGELOG.md) says when it did.
 
@@ -46,8 +46,8 @@ The code that takes names from a call is `classify` in [`hooks/classify.ts`](hoo
 
 In a terminal that shows pictures (kitty, Ghostty, or with `CLAUDE_CODE_FORCE_TERMINAL_IMAGES=1`), with `terminalPicture` on `auto`, the default, the map is painted by a browser. While the pane is open:
 
-- The mod starts `node renderer/render.mjs` from its own folder, and that starts headless Chromium: the first of `chromium`, `chromium-browser`, `google-chrome` on your PATH that runs, or `LOT_MAP_CHROMIUM`.
-- The mod writes the map's drawing, the same SVG the app's pane shows (station names, counts and the labels described above), to `map.svg` in a temporary folder of its own, `lot-map-*` in your temporary directory. The renderer writes each frame there as `frame.png`, which the terminal reads to show it.
+- The mod starts `node renderer/render.mjs` from its own folder, and that starts headless Chromium: the first of `chromium`, `chromium-browser`, `google-chrome` on your PATH that runs, or `WORKMAP_CHROMIUM`.
+- The mod writes the map's drawing, the same SVG the app's pane shows (station names, counts and the labels described above), to `map.svg` in a temporary folder of its own, `workmap-*` in your temporary directory. The renderer writes each frame there as `frame.png`, which the terminal reads to show it.
 - Chromium shows only that drawing, from a `data:` address with nothing outside it, with its background networking, component updates, sync and pings turned off. Its profile lives in the same folder.
 - The renderer, Chromium and the folder go when the pane closes or the session ends. A folder left by a renderer that was killed is removed the next time one starts.
 
@@ -55,10 +55,10 @@ The mod reads six environment variables to tell whether the terminal shows pictu
 
 ## The map window
 
-Only when you type `/lot-map window`, or in Windows Terminal from WSL (`WSL_DISTRO_NAME` set, and `WT_SESSION` or `WT_PROFILE_ID`) the first time you write in a session, unless `terminalWindow` is `off`:
+Only when you type `/workmap window`, or in Windows Terminal from WSL (`WSL_DISTRO_NAME` set, and `WT_SESSION` or `WT_PROFILE_ID`) the first time you write in a session, unless `terminalWindow` is `off`:
 
-- The mod keeps the session's live map, the same drawing as above, in `map.svg` in a folder of its own, `lot-map-live-*` in your temporary directory (`TMPDIR`, else `/tmp`), readable by you alone, with the pane's rows (the action now and the last sixteen rows, the same labels) in `feed.json`, which also holds the board's kept calls (names only) for the window's scrolling and each subagent's id and name, and a heartbeat in `alive` every few seconds.
-- It runs `sh -c 'command -v node'` and `sh -c 'command -v chromium || command -v google-chrome'` to find Node and Chromium. In WSL (`WSL_DISTRO_NAME` set) it runs `wt.exe -w 0 split-pane ... wsl.exe -d <distro> -- env LOT_MAP_CHROMIUM=<chromium> node renderer/view.mjs <folder>`, which opens a pane in your current Windows Terminal tab; elsewhere it only answers with that last command for you to run.
+- The mod keeps the session's live map, the same drawing as above, in `map.svg` in a folder of its own, `workmap-live-*` in your temporary directory (`TMPDIR`, else `/tmp`), readable by you alone, with the pane's rows (the action now and the last sixteen rows, the same labels) in `feed.json`, which also holds the board's kept calls (names only) for the window's scrolling and each subagent's id and name, and a heartbeat in `alive` every few seconds.
+- It runs `sh -c 'command -v node'` and `sh -c 'command -v chromium || command -v google-chrome'` to find Node and Chromium. In WSL (`WSL_DISTRO_NAME` set) it runs `wt.exe -w 0 split-pane ... wsl.exe -d <distro> -- env WORKMAP_CHROMIUM=<chromium> node renderer/view.mjs <folder>`, which opens a pane in your current Windows Terminal tab; elsewhere it only answers with that last command for you to run.
 - The window runs the renderer of picture mode on that map, at its own size, and writes Sixel to its own pane. It reads keys to close on `q` or ctrl+c and to move through its list: `m`, `?`, `a`, `e`, the digits, the arrows and a typed search, which stays in that process and is never written anywhere. While it runs it writes the time to `shown` in that folder every two seconds, and the mod reads that file's age so as not to open a second window.
 - When the session ends the mod removes the folder (`rm -rf` of that folder alone); a window still open closes when the heartbeat stops. A folder whose heartbeat stopped more than ten minutes ago is removed the next time a renderer starts.
 
@@ -68,13 +68,13 @@ Installed from this repository, the mod follows its `main` branch, so an update 
 
 ## Questions
 
-Open an issue: <https://github.com/alexeyw/lot-map/issues>.
+Open an issue: <https://github.com/dgfisher2021/workmap/issues>.
 
 ## The overview of sessions
 
 Every session with a surface, a terminal or the app (not a `-p` or SDK run, which draws nowhere), keeps a status file so that `/workmap all` can show them side by side:
 
-- The folder is your own: `lot-map-sessions` in `XDG_RUNTIME_DIR` when that is set, else `.cache/lot-map/sessions` in `HOME`, the only two variables it reads for this. With neither, as on Windows, no status is written and `/workmap all` has no session to show. Before the first write the mod runs `mkdir -p -m 700 -- <folder>`, so that a folder it makes is readable by you alone. One `<session id>.json` a session. Each holds the name of the session's folder (the last part of its path), the state word (idle, thinking, running, needs you, compacting, done), the top line's text (which holds only labels and times, as the rows do), the context's fill in percent, the time the session started and the time of the last write, whether any station has errors, and, when the session has a map window, the path of that window's folder.
+- The folder is your own: `workmap-sessions` in `XDG_RUNTIME_DIR` when that is set, else `.cache/workmap/sessions` in `HOME`, the only two variables it reads for this. With neither, as on Windows, no status is written and `/workmap all` has no session to show. Before the first write the mod runs `mkdir -p -m 700 -- <folder>`, so that a folder it makes is readable by you alone. One `<session id>.json` a session. Each holds the name of the session's folder (the last part of its path), the state word (idle, thinking, running, needs you, compacting, done), the top line's text (which holds only labels and times, as the rows do), the context's fill in percent, the time the session started and the time of the last write, whether any station has errors, and, when the session has a map window, the path of that window's folder.
 - It is written when one of those changes and at least every five seconds.
 - The session removes its file when it ends, but not at a `/clear` or a resume, after which the session goes on. When a session starts, files in that folder not written for an hour (sessions killed without an end) are removed; no other file is touched, by `rm -f` of each file alone.
 - `/workmap all` reads the folder. In Windows Terminal from WSL (`WSL_DISTRO_NAME` set, and `WT_SESSION` or `WT_PROFILE_ID`) it runs `wt.exe -w 0 split-pane ... node renderer/view.mjs --all <folder>`, which reads the files younger than 15 seconds and, on a key, the rows in the chosen session's own map window folder; elsewhere it answers the tiles as text.

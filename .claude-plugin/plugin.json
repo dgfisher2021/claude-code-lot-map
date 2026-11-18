@@ -1,15 +1,15 @@
 {
-  "name": "lot-map",
-  "version": "0.12.0",
-  "description": "A live map beside the chat: memory, files, shell, web, model, agents, skills and hooks light up as they are used",
+  "name": "workmap",
+  "version": "1.0.0",
+  "description": "A live map beside the chat: memory, files, shell, web, model, agents, skills and hooks light up as they are used. Began as lot-map by Aleksei Volodin.",
   "author": {
-    "name": "Aleksei Volodin",
-    "url": "https://github.com/alexeyw"
+    "name": "Dustin Fisher",
+    "url": "https://github.com/dgfisher2021"
   },
-  "homepage": "https://github.com/alexeyw/lot-map",
-  "repository": "https://github.com/alexeyw/lot-map",
-  "supportUrl": "https://github.com/alexeyw/lot-map/issues",
-  "privacyPolicyUrl": "https://github.com/alexeyw/lot-map/blob/main/PRIVACY.md",
+  "homepage": "https://github.com/dgfisher2021/workmap",
+  "repository": "https://github.com/dgfisher2021/workmap",
+  "supportUrl": "https://github.com/dgfisher2021/workmap/issues",
+  "privacyPolicyUrl": "https://github.com/dgfisher2021/workmap/blob/main/PRIVACY.md",
   "keywords": ["mod", "map", "visualization", "activity", "tool calls", "hooks", "subagents", "memory"],
   "license": "MIT",
   "icon": "./.claude-plugin/icon.png",
@@ -108,7 +108,7 @@
       "type": "boolean",
       "title": "Hooks a guard skips",
       "default": true,
-      "description": "Turn off on a Team or Enterprise login where the transcript gets notices that a lot-map hook was skipped. The map then loses the Hooks station, the records a hook adds, the row of a typed slash command and the mark of a compaction; everything else stays."
+      "description": "Turn off on a Team or Enterprise login where the transcript gets notices that a workmap hook was skipped. The map then loses the Hooks station, the records a hook adds, the row of a typed slash command and the mark of a compaction; everything else stays."
     },
     "theme": {
       "type": "string",

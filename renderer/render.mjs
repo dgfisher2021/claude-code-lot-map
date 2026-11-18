@@ -9,7 +9,7 @@
 // The size of the picture is the width and height of map.svg's root element; data-running="1" there says a call runs,
 // and data-motion="reduced" that nothing moves: the map is painted once for each file written, and no more.
 //
-// Chromium is LOT_MAP_CHROMIUM when set, else the first that runs of chromium on PATH, ~/.local/bin/chromium,
+// Chromium is WORKMAP_CHROMIUM when set, else the first that runs of chromium on PATH, ~/.local/bin/chromium,
 // ~/bin/chromium, google-chrome, and chromium-browser.
 // It is driven over a pipe, never a port, and goes with this process. The process ends with its parent.
 
@@ -24,10 +24,10 @@ import { join } from 'node:path'
  */
 function sweep() {
   for (const name of readdirSync(tmpdir())) {
-    if (!name.startsWith('lot-map-')) continue
+    if (!name.startsWith('workmap-')) continue
     const folder = join(tmpdir(), name)
-    // A session's live map for `/lot-map window` whose heartbeat stopped long ago: its session ended without tidying up.
-    if (name.startsWith('lot-map-live-')) {
+    // A session's live map for `/workmap window` whose heartbeat stopped long ago: its session ended without tidying up.
+    if (name.startsWith('workmap-live-')) {
       try {
         if (Date.now() - statSync(join(folder, 'alive')).mtimeMs > 10 * 60_000) rmSync(folder, { recursive: true, force: true })
       } catch {}
@@ -55,9 +55,9 @@ try {
  * Frames a second by how long ago the map changed: quick while pulses fly and rings spread, slower while glows fade,
  * slow while a call runs (its clock hands move), and slowest when only the core breathes. Each frame costs a capture.
  */
-const FPS = Number(process.env.LOT_MAP_FPS) || 15
+const FPS = Number(process.env.WORKMAP_FPS) || 15
 const pace = (sinceChange, isRunning) => (sinceChange < 4000 ? FPS : sinceChange < 20_000 ? 4 : isRunning ? 2 : 0.5)
-const dir = mkdtempSync(join(tmpdir(), 'lot-map-'))
+const dir = mkdtempSync(join(tmpdir(), 'workmap-'))
 writeFileSync(join(dir, 'pid'), String(process.pid))
 const svgPath = join(dir, 'map.svg')
 const framePath = join(dir, 'frame.png')
@@ -90,7 +90,7 @@ function fail(text) {
 }
 
 function findChromium() {
-  const named = process.env.LOT_MAP_CHROMIUM
+  const named = process.env.WORKMAP_CHROMIUM
   // A process started without a login shell (a pane wsl.exe opens) has no ~/.local/bin on its PATH: look there too,
   // before chromium-browser, which on WSL is often a snap wrapper whose --version never returns.
   const home = process.env.HOME ?? ''
@@ -104,7 +104,7 @@ function findChromium() {
 
 const bin = findChromium()
 if (bin === undefined) {
-  fail('no Chromium found: set LOT_MAP_CHROMIUM or put chromium on PATH')
+  fail('no Chromium found: set WORKMAP_CHROMIUM or put chromium on PATH')
   await new Promise(() => {})
 }
 

@@ -1,6 +1,6 @@
-# lot-map
+# workmap
 
-**\*L**ive **O**verview of **T**ools\*
+workmap began as [lot-map](https://github.com/alexeyw/lot-map), by Aleksei Volodin, under the MIT licence, and carries on from its 0.12.0 under its own name.
 
 A mod for Claude Code: a live map of the work, in a pane beside the chat. Every tool call, model step, hook and skill sends a pulse from the centre to its station, so you see memory, files, shell, web and agents at work instead of reading a list of commands.
 
@@ -13,31 +13,43 @@ _A made-up session replayed through the mod's own drawing code. [Video (MP4)](do
 At the prompt of a terminal session:
 
 ```
-/plugin install lot-map --marketplace alexeyw/lot-map
+/plugin install workmap --marketplace dgfisher2021/workmap
 ```
 
 Answer `y` to add the marketplace, then choose a scope. From a shell:
 
 ```bash
-claude plugin install lot-map --marketplace alexeyw/lot-map
+claude plugin install workmap --marketplace dgfisher2021/workmap
 ```
 
-In the desktop app: click **+** next to the prompt box, then **Plugins**, **Add marketplace** with `alexeyw/lot-map`, then **Add plugin**.
+In the desktop app: click **+** next to the prompt box, then **Plugins**, **Add marketplace** with `dgfisher2021/workmap`, then **Add plugin**.
 
-The pane opens by itself when a session starts; in Windows Terminal from WSL the map is [a window of its own](#a-window-of-its-own) instead. In a terminal the pane needs at least 144 columns; otherwise type `/lot-map` or `/workmap`. A terminal draws the same map in coloured cells, moving as it does in the app: see [In a terminal](#in-a-terminal). Built and tested on Claude Code 2.1.321 on macOS; users report it working on Windows as well. The terminal map is tested on 2.1.322.
+The pane opens by itself when a session starts; in Windows Terminal from WSL the map is [a window of its own](#a-window-of-its-own) instead. In a terminal the pane needs at least 144 columns; otherwise type `/workmap`. A terminal draws the same map in coloured cells, moving as it does in the app: see [In a terminal](#in-a-terminal). Built and tested on Claude Code 2.1.321 on macOS; users report it working on Windows as well. The terminal map is tested on 2.1.322.
 
 ## Updating
 
 From a shell:
 
 ```bash
-claude plugin marketplace update lot-map
-claude plugin update lot-map@lot-map
+claude plugin marketplace update workmap
+claude plugin update workmap@workmap
 ```
 
 Then start a new session. The first command is needed: without it the second one reports the installed version as the latest.
 
 What each version changed is in [CHANGELOG.md](CHANGELOG.md).
+
+### Moving from lot-map
+
+workmap is a new plugin id (`workmap@workmap`), so an installed lot-map does not update into it. From a shell:
+
+```bash
+claude plugin uninstall lot-map@lot-map
+claude plugin marketplace remove lot-map
+claude plugin install workmap --marketplace dgfisher2021/workmap
+```
+
+Then set your options again, since they are kept under the plugin's id (see [Options](#options)), and start a new session. The last model used in each folder is forgotten once, which is harmless. The command is `/workmap`; `/lot-map` is gone.
 
 ## What lights up
 
@@ -62,7 +74,7 @@ A pulse flies out when something starts and returns when it ends. Refusals and e
 
 ## Reading the map
 
-`/workmap help` (or `/lot-map help`) says what each mark means; `/workmap usage` answers the figures of the session's usage; `/workmap recap` answers the session in a few lines and `/workmap log` lists the calls the board keeps (see [The recap](#the-recap) and [A window of its own](#a-window-of-its-own)). In the window, `?` puts that legend where the rows are. In the app, hovering a station names its figures.
+`/workmap help` says what each mark means; `/workmap usage` answers the figures of the session's usage; `/workmap recap` answers the session in a few lines and `/workmap log` lists the calls the board keeps (see [The recap](#the-recap) and [A window of its own](#a-window-of-its-own)). In the window, `?` puts that legend where the rows are. In the app, hovering a station names its figures.
 
 - **The route.** A thin line joins the last few stations the main loop went through, in order, and its newest leg draws itself. A leg stays for 40 seconds and then fades over 20, so a minute after the work stops only the spokes are left; their thickness keeps where the work went. Model steps are left out, or every leg would pass through Model.
 - **Worn spokes.** A spoke grows thicker and brighter the more its station is used, so at the end of a session the map shows where the work went. With `spokes` set to `time` it wears by the station's share of the time spent on calls instead, and a station's hover title also gives that share ("38% of the time").
@@ -147,18 +159,18 @@ It moves because the mod repaints it in place, about 25 times a second while som
 
 A terminal that shows pictures gets the map exactly as the app draws it: kitty 0.28 and later and Ghostty, the terminals in which Claude Code draws a mod's `Image`. There `renderer/render.mjs` paints the map's own SVG in headless Chromium, animations and all, and the pane shows each frame it paints. The cells stay for every other terminal, and take over at once if anything about the pictures fails. They stay in iTerm2 too: it keeps every picture it is sent until its tab is closed (about 2 MB a frame in 3.7.7), so there the picture is off. The mod knows iTerm2 by `TERM_PROGRAM`, and by `LC_TERMINAL` over ssh or inside tmux.
 
-- It needs Node 22 or later and a Chromium that runs: the first of `chromium`, `chromium-browser`, `google-chrome` on your PATH, or the one `LOT_MAP_CHROMIUM` names.
+- It needs Node 22 or later and a Chromium that runs: the first of `chromium`, `chromium-browser`, `google-chrome` on your PATH, or the one `WORKMAP_CHROMIUM` names.
 - The animations are paused in Chromium and stepped by the renderer: up to 15 frames a second for four seconds after the map changes, 4 for the next sixteen, 2 while a call runs, and one every two seconds after that. On a WSL laptop that came to about a quarter of one core while busy and 6% at rest.
 - A picture of 12 by 24 pixels per cell is sharp on a terminal at normal scaling.
-- Inside tmux, Claude Code draws no pictures unless it is told to with `CLAUDE_CODE_FORCE_TERMINAL_IMAGES=1` and tmux has `allow-passthrough` on; lot-map follows the same rule.
+- Inside tmux, Claude Code draws no pictures unless it is told to with `CLAUDE_CODE_FORCE_TERMINAL_IMAGES=1` and tmux has `allow-passthrough` on; workmap follows the same rule.
 - Windows Terminal shows no pictures of this kind: use [a window of its own](#a-window-of-its-own) beside the session, or run kitty inside WSL (`sudo apt install kitty`, then `kitty`), which WSLg shows as an ordinary window.
 - Set `terminalPicture` to `off` to keep the cells in every terminal.
 
 ### A window of its own
 
-`/lot-map window` shows the map, as the app draws it, in a pane of its own beside the session, for a terminal that shows Sixel pictures but not a mod's: Windows Terminal 1.22 and later, foot, mlterm, WezTerm.
+`/workmap window` shows the map, as the app draws it, in a pane of its own beside the session, for a terminal that shows Sixel pictures but not a mod's: Windows Terminal 1.22 and later, foot, mlterm, WezTerm.
 
-In Windows Terminal from WSL the window is the map: the session opens no pane, and the window opens the first time you write in the session, when its tab is the one in front. A session can start in the background, so it does not open at the start. `/lot-map` opens it again after `q`, and opens no second one while it shows. Where it cannot open, the pane opens instead. A terminal that shows pictures (kitty) keeps its pane. Set `terminalWindow` to `off` to keep the pane.
+In Windows Terminal from WSL the window is the map: the session opens no pane, and the window opens the first time you write in the session, when its tab is the one in front. A session can start in the background, so it does not open at the start. `/workmap` opens it again after `q`, and opens no second one while it shows. Where it cannot open, the pane opens instead. A terminal that shows pictures (kitty) keeps its pane. Set `terminalWindow` to `off` to keep the pane.
 
 - From WSL in Windows Terminal it splits the current tab (`wt.exe -w 0 split-pane`) and starts the window there. Anywhere else it answers with the line to run in a pane of your own: `node <plugin>/renderer/view.mjs <folder>`.
 - The session keeps its live map and the rows under it in a temporary folder of its own while the window is wanted. The window runs the same renderer as [Pictures](#pictures), at the size of its pane, draws each frame as Sixel, at most ten a second, and under it the action now and the last rows, as the pane does. In a short pane the rows give way before the map does.
@@ -166,14 +178,14 @@ In Windows Terminal from WSL the window is the map: the session opens no pane, a
 - `m` goes round the map with the list, the map alone, and the list alone.
 - `?` swaps the rows for the legend, and back.
 - The list can show more than the live rows. **Up and Down, or PgUp and PgDn,** scroll it through the log: every call the board keeps (the last 80, with background tasks), newest first and unfolded. **`e`** shows only errors and refusals. **`1` to `9`** show one station, in the map's order, and `0` clears. **`a`** shows one subagent's calls at a time, then all again. **`/`** starts a search over the rows: type, then `Enter` keeps it and `Esc` clears it. The log's last line says when older calls are gone; `/workmap log` prints the same log as text.
-- It closes when the session ends, or on `q` or ctrl+c. Closing it leaves the session as it was; `/lot-map window` opens it again. A session switched away from in its tab keeps its window there until it ends or `q`.
+- It closes when the session ends, or on `q` or ctrl+c. Closing it leaves the session as it was; `/workmap window` opens it again. A session switched away from in its tab keeps its window there until it ends or `q`.
 - It needs Node 22 and a Chromium, as pictures do.
 
 #### Every session at a glance
 
 `/workmap all` shows every session of yours on this computer as a tile, those that need you first, then those at work, then the rest, each group by name. A tile has the session's folder name, its state word (amber when it needs you, red when it has errors), the top line, the context's fill and the time since the session started. In Windows Terminal from WSL it opens a window beside this one, with no picture and no Chromium; elsewhere it answers the tiles as text.
 
-- Each session with a surface writes a small status file to a folder of your own, `$XDG_RUNTIME_DIR/lot-map-sessions`, or `~/.cache/lot-map/sessions` where `XDG_RUNTIME_DIR` is not set, and takes it away when it ends; a `/clear` or a resume keeps the file. With neither variable set, as on Windows, no status is kept and `/workmap all` has none to show. A tile shows only a session whose file is under 15 seconds old. See [PRIVACY.md](PRIVACY.md#the-overview-of-sessions) for what each file holds.
+- Each session with a surface writes a small status file to a folder of your own, `$XDG_RUNTIME_DIR/workmap-sessions`, or `~/.cache/workmap/sessions` where `XDG_RUNTIME_DIR` is not set, and takes it away when it ends; a `/clear` or a resume keeps the file. With neither variable set, as on Windows, no status is kept and `/workmap all` has none to show. A tile shows only a session whose file is under 15 seconds old. See [PRIVACY.md](PRIVACY.md#the-overview-of-sessions) for what each file holds.
 - Keys `1` to `9` show that tile's rows, when the session has a map window of its own; `Esc` goes back, `q` closes. The window reads the folder again every second.
 
 ## Options
@@ -192,9 +204,9 @@ The install offers them on a screen. Later, use `/config` in a terminal or `clau
 | `serverStations`    | none      | put an MCP server's tools on a station of your choice, each as `server=station`, with `files`, `shell`, `web`, `browser`, `agents`, `skills` or `you`; the row still reads `server: tool`. What you set wins over the mod's own routes for the servers it knows. Memory keeps `memoryServers`, which wins if a server is in both; an unknown station is ignored                                                                                                                                                         |
 | `hookRecords`       | `false`   | turn on if a hook of yours adds memory records numbered like `[#123]`; they appear on Memory by number only. Such a number in the text of any hook counts, not only a memory hook's                                                                                                                                                                                                                                                                                                                                     |
 | `hookReasons`       | `false`   | show the first line of a hook's refusal, up to 72 characters; off, the map says only which tool was stopped                                                                                                                                                                                                                                                                                                                                                                                                             |
-| `errorReasons`      | `false`   | show the first line with text of a failed call's error after its row, as ` — cannot open file`, cleaned and cut to 72 characters; off, a row says only that the call failed (a shell command still shows its exit code). A refused call never shows one. It shows on its row in the pane and the window (whose feed file holds the rows), never in the `/workmap all` status file nor a notification                                                                                                                              |
+| `errorReasons`      | `false`   | show the first line with text of a failed call's error after its row, as ` — cannot open file`, cleaned and cut to 72 characters; off, a row says only that the call failed (a shell command still shows its exit code). A refused call never shows one. It shows on its row in the pane and the window (whose feed file holds the rows), never in the `/workmap all` status file nor a notification                                                                                                                    |
 | `contextCost`       | `false`   | each row says about how many tokens the context grew by with its call's answer, a station's count line adds its sum, and a pulse's width follows its call's tokens. An estimate, shown one step late; see [What each call adds to the context](#what-each-call-adds-to-the-context)                                                                                                                                                                                                                                     |
-| `guardedHooks`      | `true`    | turn off on a Team or Enterprise login where the transcript gets notices like `lot-map: its classic.PreToolUse hook was skipped`. An organisation's guard keeps mods away from five events there, and with this off the mod adds no hook on them. The map then loses the Hooks station, the records a hook adds, the row of a typed slash command and the mark of a compaction (it marks a sharp fall of the context in its place); a call a hook refused still gets its `✕`, as a failed call and not as a blocked one |
+| `guardedHooks`      | `true`    | turn off on a Team or Enterprise login where the transcript gets notices like `workmap: its classic.PreToolUse hook was skipped`. An organisation's guard keeps mods away from five events there, and with this off the mod adds no hook on them. The map then loses the Hooks station, the records a hook adds, the row of a typed slash command and the mark of a compaction (it marks a sharp fall of the context in its place); a call a hook refused still gets its `✕`, as a failed call and not as a blocked one |
 | `theme`             | `auto`    | the map's colours: `dark`, `light`, `contrast`, or `auto`, which is dark on a dark surface and light on a light one. `contrast` is the dark palette on black, every word at 7:1 or more against the ground and every mark at 4.5:1 or more; colours of your own still win                                                                                                                                                                                                                                               |
 | `motion`            | `full`    | `full`, or `reduced`: nothing on any surface moves by itself. No pulses, rings, beams or blinking; a lit station stays lit, whole, until its time is up and then goes out, as does a leg of the route; the running station keeps its ring, and its clock hands step every five seconds; the cells repaint every five seconds at most, and a picture is painted again only when the map changes                                                                                                                          |
 | `background`        | `solid`   | the map's own background, or `transparent`, which lets the pane behind it show through. The rim around the labels keeps the background's colour, so on a surface of another shade it shows as a faint halo                                                                                                                                                                                                                                                                                                              |
@@ -210,7 +222,7 @@ The install offers them on a screen. Later, use `/config` in a terminal or `clau
 For example, Russian labels and your own memory server:
 
 ```bash
-echo '{"language":"ru","memoryServers":"my-memory"}' | claude plugin configure lot-map@lot-map --values-stdin
+echo '{"language":"ru","memoryServers":"my-memory"}' | claude plugin configure workmap@workmap --values-stdin
 ```
 
 Lists are written with commas.
@@ -224,7 +236,7 @@ Lists are written with commas.
 `colors` replaces the map's colours one by one. Set one, a few, or all thirteen; what you leave out stays as it is.
 
 ```bash
-echo '{"theme":"dark","colors":"accent=#7fb4ff,active=#b8d6ff,text=#e6edf7"}' | claude plugin configure lot-map@lot-map --values-stdin
+echo '{"theme":"dark","colors":"accent=#7fb4ff,active=#b8d6ff,text=#e6edf7"}' | claude plugin configure workmap@workmap --values-stdin
 ```
 
 | Name                     | What it colours                                                     |
@@ -252,7 +264,7 @@ Like any mod that follows tool calls, it is handed every call's whole input, inc
 
 It asks Claude Code how full the context window is, and with `contextCost` on how many tokens that is, after each model step and for `/workmap usage`, and hears the rate-limit windows and the estimated cost as the engine measures them. Between sessions it keeps one thing, the name of the model last used in each folder, so that it can show a change. Each is stored under the folder's full path, in Claude Code's own store for the plugin.
 
-What its hooks do. The mod listens to the session's start, prompts, turns, model steps, tool calls, skills, compaction, and to three events of settings hooks: `PreToolUse`, where it sees whether a hook refused the call, asked for permission or took a moment, and `UserPromptSubmit` and `SessionStart`, where it sees the context a hook added. Each of its hooks passes the event on as it came and returns what came back as it was: it changes no input, no result, no context and no permission decision, and makes none of its own. Its one command, `/lot-map`, also called `/workmap`, opens the pane, or in Windows Terminal from WSL the window; `/lot-map window` opens [a window of its own](#a-window-of-its-own).
+What its hooks do. The mod listens to the session's start, prompts, turns, model steps, tool calls, skills, compaction, and to three events of settings hooks: `PreToolUse`, where it sees whether a hook refused the call, asked for permission or took a moment, and `UserPromptSubmit` and `SessionStart`, where it sees the context a hook added. Each of its hooks passes the event on as it came and returns what came back as it was: it changes no input, no result, no context and no permission decision, and makes none of its own. Its one command, `/workmap`, also called `/workmap`, opens the pane, or in Windows Terminal from WSL the window; `/workmap window` opens [a window of its own](#a-window-of-its-own).
 
 A label holds a name, never content:
 

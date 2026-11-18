@@ -1,6 +1,17 @@
 # Changelog
 
-What changed in each version of lot-map, newest first. To get a new version, see [Updating](README.md#updating).
+What changed in each version of workmap, newest first; up to 0.12.0 it was called lot-map. To get a new version, see [Updating](README.md#updating).
+
+## 1.0.0 (2026-11-17)
+
+- lot-map is now workmap, a project of its own. It began as [lot-map](https://github.com/alexeyw/lot-map) by Aleksei Volodin; the licence stays MIT with his notice.
+- What changes for you:
+  - The plugin and its marketplace are `workmap@workmap`, from `dgfisher2021/workmap`. An installed lot-map does not update into it; see [Moving from lot-map](README.md#moving-from-lot-map).
+  - The command is `/workmap`; `/lot-map` is gone.
+  - Options are kept under the new id, so set yours again.
+  - The temporary folders are `workmap-*` and `workmap-live-*`, and the status folder is `workmap-sessions` (or `~/.cache/workmap/sessions`).
+  - The variables are `WORKMAP_CHROMIUM`, `WORKMAP_CELL` and `WORKMAP_FPS`.
+- Pull requests and issues go to this repository's `main`.
 
 ## 0.12.0 (2026-11-17)
 

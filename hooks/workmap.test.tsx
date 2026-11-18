@@ -11,9 +11,9 @@ import { layout } from '../renderer/layout.mjs'
 import { tileText, tilesFrom } from './overview'
 
 const PANE = {
-  plugin: 'lot-map',
+  plugin: 'workmap',
   component: 'Pane',
-  requestId: 'lot-map',
+  requestId: 'workmap',
   props: { title: 'Map', isFocused: false, bodyColumns: 60, placement: 'dock', scroll: { offset: 0, bodyRows: 40 }, view: {} },
 } as const
 
@@ -329,7 +329,7 @@ test('with no options set the map speaks English and shows no record numbers', a
 
 test('a call shows on the pane, on every surface', { options: OWN }, async ($, on) => {
   on('clock.now', () => ({ value: 1_000_000 }))
-  on('command.register', () => ({ value: { command: 'lot-map' } }))
+  on('command.register', () => ({ value: { command: 'workmap' } }))
   on('ui.open', () => ({ value: { isPlaced: true } }))
   on('session.start', (_, e) => ({ cwd: e.cwd }))
   on('tool.call', () => ({ result: {} }))
@@ -419,7 +419,7 @@ test(
     on('session.id', () => ({ value: 'abc-123' }) as never)
     on('turn.start', (_, e) => ({ turnId: e.turnId }) as never)
     on('turn.complete', () => ({ text: '' }))
-    on('command.register', () => ({ value: { command: 'lot-map' } }))
+    on('command.register', () => ({ value: { command: 'workmap' } }))
     on('ui.open', () => ({ value: { isPlaced: true } }))
     on('session.start', (_, e) => ({ cwd: e.cwd }))
     const texts = [
@@ -429,7 +429,7 @@ test(
     ]
     on('tool.call', () => failing(texts.shift() ?? ''))
 
-    await $.session.start({ cwd: '/home/u/projects/lot-map', surface: 'terminal', isInteractive: true })
+    await $.session.start({ cwd: '/home/u/projects/workmap', surface: 'terminal', isInteractive: true })
     await $.turn.start({ text: 'hello', turnId: 't1' } as never)
     await $.tool.call({ tool: 'Bash', command: 'a', description: 'Первая' })
     await $.tool.call({ tool: 'Bash', command: 'b', description: 'Вторая' })
@@ -1872,7 +1872,7 @@ test('between drawings a timer paints the next frames into the mounted map, seld
 })
 
 /** A renderer that says it is ready, then writes the frames it is told to, and stays until `end` is called. */
-function fakeRenderer(on: On, dir = '/tmp/lot-map-test') {
+function fakeRenderer(on: On, dir = '/tmp/workmap-test') {
   const lines: string[] = [`ready ${dir}`]
   let wake = () => {}
   let isOver = false
@@ -1904,7 +1904,7 @@ test('in a terminal that shows pictures the map is the drawing a renderer paints
   mock.env(on, { TERM: 'xterm-kitty' })
   on('tool.call', () => ({ result: {} }))
   on('ui.open', () => ({ value: { isPlaced: true } }))
-  on('command.register', () => ({ value: { command: 'lot-map' } }))
+  on('command.register', () => ({ value: { command: 'workmap' } }))
   on('session.start', (_, e) => ({ cwd: e.cwd }))
   const written: { path: string; text: string }[] = []
   on('fs.write', (_, e) => {
@@ -1926,14 +1926,14 @@ test('in a terminal that shows pictures the map is the drawing a renderer paints
   expect(renderer.spawned[0]?.[1]).toMatch(/renderer\/render\.mjs$/)
   // Until the first frame the map stays in cells, and the renderer is handed the map at the box's size.
   expect(await ui.find({ type: 'Raster' })).toBeDefined()
-  expect(written.at(-1)?.path).toBe('/tmp/lot-map-test/map.svg')
+  expect(written.at(-1)?.path).toBe('/tmp/workmap-test/map.svg')
   expect(written.at(-1)?.text).toMatch(/^<svg [^>]*width="720" height="696"/)
   expect(written.at(-1)?.text).toContain('Files')
 
   renderer.say('frame 1')
   await clock.settle()
   const image = await ui.find({ type: 'Image' })
-  expect(image?.props.source).toEqual({ file: '/tmp/lot-map-test/frame.png', format: 'png', generation: 1 })
+  expect(image?.props.source).toEqual({ file: '/tmp/workmap-test/frame.png', format: 'png', generation: 1 })
   expect([image?.props.columns, image?.props.rows]).toEqual([60, 29])
   expect(await ui.find({ type: 'Raster' })).toBeUndefined()
   expect((await ui.find({ type: 'Text', text: /b\/content\.py/ }))?.text).toContain('Files')
@@ -1951,7 +1951,7 @@ test('a terminal that shows the picture as words gets the map in cells for good,
   const clock = mock.clock(on, { now: NOW })
   mock.env(on, { TERM: 'xterm-kitty' })
   on('ui.open', () => ({ value: { isPlaced: true } }))
-  on('command.register', () => ({ value: { command: 'lot-map' } }))
+  on('command.register', () => ({ value: { command: 'workmap' } }))
   on('session.start', (_, e) => ({ cwd: e.cwd }))
   on('fs.write', () => ({ value: undefined }))
   on('ui.blit', (_, e) => ('source' in e ? { deny: 'the Image draws its alt here: no placeholder images' } : { value: {} }))
@@ -1976,7 +1976,7 @@ test('pictures stay off where the terminal shows none or the option says off', {
   const clock = mock.clock(on, { now: NOW })
   mock.env(on, { TERM: 'xterm-kitty' })
   on('ui.open', () => ({ value: { isPlaced: true } }))
-  on('command.register', () => ({ value: { command: 'lot-map' } }))
+  on('command.register', () => ({ value: { command: 'workmap' } }))
   on('session.start', (_, e) => ({ cwd: e.cwd }))
   const renderer = fakeRenderer(on)
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
@@ -2001,7 +2001,7 @@ function fakeHost(on: On): string[][] {
   return runs
 }
 
-test('/lot-map window keeps the live map for a window of its own and opens it beside the session in Windows Terminal', async ($, on) => {
+test('/workmap window keeps the live map for a window of its own and opens it beside the session in Windows Terminal', async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
   mock.env(on, { WSL_DISTRO_NAME: 'Ubuntu', TMPDIR: '/tmp' })
   on('tool.call', () => ({ result: {} }))
@@ -2013,11 +2013,11 @@ test('/lot-map window keeps the live map for a window of its own and opens it be
   })
 
   await $.tool.call({ tool: 'Read', file_path: '/a/b/content.py' })
-  const answer = await $.command.run({ command: 'lot-map', args: 'window' } as never)
+  const answer = await $.command.run({ command: 'workmap', args: 'window' } as never)
   expect(answer.text).toBe('Map window opened beside this one.')
   const wt = runs.find(argv => argv[0] === 'wt.exe') ?? []
   const dir = wt.at(-1) ?? ''
-  expect(dir).toMatch(/^\/tmp\/lot-map-live-[a-z0-9]+$/)
+  expect(dir).toMatch(/^\/tmp\/workmap-live-[a-z0-9]+$/)
   // The pane starts with a bare PATH: node and Chromium go in as found in the session.
   expect(wt.slice(0, 14)).toEqual([
     'wt.exe',
@@ -2032,7 +2032,7 @@ test('/lot-map window keeps the live map for a window of its own and opens it be
     'Ubuntu',
     '--',
     'env',
-    'LOT_MAP_CHROMIUM=/home/u/.local/bin/chromium',
+    'WORKMAP_CHROMIUM=/home/u/.local/bin/chromium',
     '/usr/bin/node',
   ])
   expect(wt[14]).toMatch(/\/renderer\/view\.mjs$/)
@@ -2074,7 +2074,7 @@ test('under reduced motion the window map is not rewritten between steps, and th
   })
   const calling = $.tool.call({ tool: 'Read', file_path: '/a/b/content.py' })
   await clock.settle()
-  await $.command.run({ command: 'lot-map', args: 'window' } as never)
+  await $.command.run({ command: 'workmap', args: 'window' } as never)
   const maps = () => written.filter(w => w.path.endsWith('/map.svg'))
   const first = maps().length
   expect(first).toBeGreaterThan(0)
@@ -2097,23 +2097,23 @@ test('under reduced motion the window map is not rewritten between steps, and th
   await $.session.end({ reason: 'other' } as never)
 })
 
-test('outside Windows Terminal /lot-map window says how to open the window by hand, and /lot-map still opens the pane', async ($, on) => {
+test('outside Windows Terminal /workmap window says how to open the window by hand, and /workmap still opens the pane', async ($, on) => {
   mock.clock(on, { now: NOW })
   mock.env(on, { TMPDIR: '/tmp' })
   const runs = fakeHost(on)
   on('fs.write', () => ({ value: undefined }))
   on('ui.open', () => ({ value: { isPlaced: true } }))
 
-  const answer = await $.command.run({ command: 'lot-map', args: 'window' } as never)
+  const answer = await $.command.run({ command: 'workmap', args: 'window' } as never)
   expect(answer.text).toMatch(
-    /^Run this in a pane of a terminal that shows Sixel pictures: env LOT_MAP_CHROMIUM=\/home\/u\/\.local\/bin\/chromium \/usr\/bin\/node \S+\/renderer\/view\.mjs \/tmp\/lot-map-live-[a-z0-9]+$/,
+    /^Run this in a pane of a terminal that shows Sixel pictures: env WORKMAP_CHROMIUM=\/home\/u\/\.local\/bin\/chromium \/usr\/bin\/node \S+\/renderer\/view\.mjs \/tmp\/workmap-live-[a-z0-9]+$/,
   )
   expect(runs.some(argv => argv[0] === 'wt.exe')).toBe(false)
-  expect((await $.command.run({ command: 'lot-map', args: '' } as never)).text).toBe('Work map opened.')
+  expect((await $.command.run({ command: 'workmap', args: '' } as never)).text).toBe('Work map opened.')
   await $.session.end({ reason: 'other' } as never)
 })
 
-test('/workmap does what /lot-map does', async ($, on) => {
+test('/workmap is the one command, and opens the map', async ($, on) => {
   mock.clock(on, { now: NOW })
   mock.env(on, { TMPDIR: '/tmp' })
   const runs = fakeHost(on)
@@ -2126,21 +2126,20 @@ test('/workmap does what /lot-map does', async ($, on) => {
   on('ui.open', () => ({ value: { isPlaced: true } }))
   on('session.start', (_, e) => ({ cwd: e.cwd }))
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
-  expect(names).toEqual(['lot-map', 'workmap'])
+  expect(names).toEqual(['workmap'])
   expect((await $.command.run({ command: 'workmap', args: '' } as never)).text).toBe('Work map opened.')
   expect((await $.command.run({ command: 'workmap', args: 'window' } as never)).text).toMatch(/^Run this in a pane of a terminal that shows Sixel pictures: /)
   expect(runs.some(argv => argv[0] === 'wt.exe')).toBe(false)
   await $.session.end({ reason: 'other' } as never)
 })
 
-test("/workmap help and /lot-map help answer the legend in the session's language", { options: { language: 'ru' } }, async ($, on) => {
+test("/workmap help answers the legend in the session's language", { options: { language: 'ru' } }, async ($, on) => {
   on('command.register', (_, e) => ({ value: { command: e.name } }))
   on('session.start', (_, e) => ({ cwd: e.cwd }))
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
   const answer = String((await $.command.run({ command: 'workmap', args: 'help' } as never)).text)
   expect(answer.split('\n')).toEqual(stringsFor('ru').legend)
   expect(answer).toContain('Память')
-  expect((await $.command.run({ command: 'lot-map', args: 'help' } as never)).text).toBe(answer)
   for (const language of ['en', 'ru', 'es', 'fr', 'de', 'it', 'pt']) expect(stringsFor(language).legend.length).toBe(22)
 })
 
@@ -2243,7 +2242,7 @@ function fakeSession(on: On): string[] {
     panes.push(e.id)
     return { value: { isPlaced: true } }
   })
-  on('command.register', () => ({ value: { command: 'lot-map' } }))
+  on('command.register', () => ({ value: { command: 'workmap' } }))
   on('session.start', (_, e) => ({ cwd: e.cwd }))
   on('turn.start', (_, e) => ({ turnId: e.turnId }) as never)
   return panes
@@ -2274,13 +2273,13 @@ test('in Windows Terminal the map is a window: no pane, and the window opens bes
   await clock.settle()
   expect(splits().length).toBe(1)
 
-  // /lot-map opens the window, not the pane, and no second one while the first shows the map.
+  // /workmap opens the window, not the pane, and no second one while the first shows the map.
   shownAt = clock.now()
-  expect((await $.command.run({ command: 'lot-map', args: '' } as never)).text).toBe('The map window is already open beside this one.')
+  expect((await $.command.run({ command: 'workmap', args: '' } as never)).text).toBe('The map window is already open beside this one.')
   expect(splits().length).toBe(1)
-  // Closed with q, its heartbeat stops: /lot-map opens it again.
+  // Closed with q, its heartbeat stops: /workmap opens it again.
   shownAt = clock.now() - 60_000
-  expect((await $.command.run({ command: 'lot-map', args: '' } as never)).text).toBe('Map window opened beside this one.')
+  expect((await $.command.run({ command: 'workmap', args: '' } as never)).text).toBe('Map window opened beside this one.')
   expect(splits().length).toBe(2)
   expect(panes).toEqual([])
   await $.session.end({ reason: 'other' } as never)
@@ -2295,7 +2294,7 @@ test('with terminalWindow off Windows Terminal keeps the pane', { options: { ter
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
   await $.turn.start({ text: 'hello', turnId: 't1' } as never)
   await clock.settle()
-  expect(panes).toEqual(['lot-map'])
+  expect(panes).toEqual(['workmap'])
   expect(runs.some(argv => argv[0] === 'wt.exe')).toBe(false)
   await $.session.end({ reason: 'other' } as never)
 })
@@ -2316,7 +2315,7 @@ test('when the window cannot open the pane opens instead', async ($, on) => {
   await $.turn.start({ text: 'hello', turnId: 't1' } as never)
   await clock.settle()
   expect(runs.some(argv => argv[0] === 'wt.exe')).toBe(true)
-  expect(panes).toEqual(['lot-map'])
+  expect(panes).toEqual(['workmap'])
   await $.session.end({ reason: 'other' } as never)
 })
 
@@ -2329,7 +2328,7 @@ test('a terminal that shows pictures keeps its pane, from WSL as well', async ($
   const renderer = fakeRenderer(on)
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
   await $.turn.start({ text: 'hello', turnId: 't1' } as never)
-  expect(panes).toEqual(['lot-map'])
+  expect(panes).toEqual(['workmap'])
   expect(runs.some(argv => argv[0] === 'wt.exe')).toBe(false)
   renderer.end()
   await $.session.end({ reason: 'other' } as never)
@@ -2390,7 +2389,7 @@ test('with guardedHooks off no hook of the five leaves a row, and a refused call
 
 test('with guardedHooks off a sharp fall of the context marks a compaction, and a /clear does not', { options: { ...OWN, guardedHooks: false } }, async ($, on) => {
   on('clock.now', () => ({ value: 1_000_000 }))
-  on('command.register', () => ({ value: { command: 'lot-map' } }))
+  on('command.register', () => ({ value: { command: 'workmap' } }))
   on('ui.open', () => ({ value: { isPlaced: true } }))
   on('session.start', (_, e) => ({ cwd: e.cwd }))
   on('session.end', () => ({ sessionId: 'test' }))
@@ -2578,7 +2577,7 @@ test('with no rate limits and no cost, nothing new is drawn', async ($, on) => {
 test('a session that starts with no surface opens its pane when one attaches', async ($, on) => {
   const opens: string[] = []
   on('clock.now', () => ({ value: 1_000_000 }))
-  on('command.register', () => ({ value: { command: 'lot-map' } }))
+  on('command.register', () => ({ value: { command: 'workmap' } }))
   on('session.surfaces', () => ({ value: [] }) as never)
   on('ui.open', (_, e) => {
     opens.push(e.id)
@@ -2590,7 +2589,7 @@ test('a session that starts with no surface opens its pane when one attaches', a
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
   expect(opens).toEqual([])
   await $.session.attach({ surface: 'desktop', clientId: 'desktop:default' } as never)
-  expect(opens).toEqual(['lot-map'])
+  expect(opens).toEqual(['workmap'])
 })
 
 test('the browser reached from a cloud session lands on Browser, with a label like the local one', () => {
@@ -3047,7 +3046,7 @@ for (const [what, variables] of [
     const clock = mock.clock(on, { now: NOW })
     mock.env(on, variables)
     on('ui.open', () => ({ value: { isPlaced: true } }))
-    on('command.register', () => ({ value: { command: 'lot-map' } }))
+    on('command.register', () => ({ value: { command: 'workmap' } }))
     on('session.start', (_, e) => ({ cwd: e.cwd }))
     on('fs.write', () => ({ value: undefined }))
     on('ui.blit', () => ({ value: {} }))
@@ -3291,7 +3290,7 @@ function fakeSessionFolder(on: On, files: Record<string, string>, mtimes: Record
 
 /** The person's own runtime folder, where the sessions' status files go. */
 const RUNTIME = { XDG_RUNTIME_DIR: '/run/user/1000', HOME: '/home/u' }
-const SESSIONS = '/run/user/1000/lot-map-sessions'
+const SESSIONS = '/run/user/1000/workmap-sessions'
 
 test('each session writes its status for the overview, and takes it away when it ends', async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
@@ -3304,7 +3303,7 @@ test('each session writes its status for the overview, and takes it away when it
   })
   on('session.id', () => ({ value: 'abc-123' }) as never)
   on('turn.start', (_, e) => ({ turnId: e.turnId }) as never)
-  on('command.register', () => ({ value: { command: 'lot-map' } }))
+  on('command.register', () => ({ value: { command: 'workmap' } }))
   on('ui.open', () => ({ value: { isPlaced: true } }))
   on('session.start', (_, e) => ({ cwd: e.cwd }))
   const hour = 3_600_000
@@ -3316,12 +3315,12 @@ test('each session writes its status for the overview, and takes it away when it
   const file = `${SESSIONS}/abc-123.json`
   const mine = () => written.filter(w => w.path === file).map(w => JSON.parse(w.text))
 
-  await $.session.start({ cwd: '/home/u/projects/lot-map', surface: 'terminal', isInteractive: true })
+  await $.session.start({ cwd: '/home/u/projects/workmap', surface: 'terminal', isInteractive: true })
   // The folder is made the person's alone before anything is written to it.
   expect(runs[0]).toEqual(['mkdir', '-p', '-m', '700', '--', SESSIONS])
   await clock.advance(1000)
   expect(mine().length).toBe(1)
-  expect(mine()[0]).toMatchObject({ name: 'lot-map', state: 'idle', word: 'idle', startedAt: NOW, fault: false })
+  expect(mine()[0]).toMatchObject({ name: 'workmap', state: 'idle', word: 'idle', startedAt: NOW, fault: false })
   expect(typeof mine()[0].now).toBe('string')
   // A session killed without an end leaves a file; an hour on, the next start takes it away, and nothing else.
   expect(runs.filter(argv => argv[0] === 'rm')).toEqual([['rm', '-f', '--', `${SESSIONS}/old-1.json`]])
@@ -3358,7 +3357,7 @@ test('a run with no surface writes no status', async ($, on) => {
     return { value: undefined }
   })
   on('session.id', () => ({ value: 'abc-123' }) as never)
-  on('command.register', () => ({ value: { command: 'lot-map' } }))
+  on('command.register', () => ({ value: { command: 'workmap' } }))
   on('session.start', (_, e) => ({ cwd: e.cwd }))
   await $.session.start({ cwd: '/home/u/p', surface: null, isInteractive: false })
   await clock.advance(6000)
@@ -3405,7 +3404,7 @@ test('/workmap all in Windows Terminal opens the overview window, with no Chromi
   expect(wt.slice(0, 13)).toEqual(['wt.exe', '-w', '0', 'split-pane', '--vertical', '--size', '0.45', 'wsl.exe', '-d', 'Ubuntu', '--', 'env', '/usr/bin/node'])
   expect(wt[13]).toMatch(/\/renderer\/view\.mjs$/)
   // Without XDG_RUNTIME_DIR the folder is in the person's own cache.
-  expect(wt.slice(14)).toEqual(['--all', '/home/u/.cache/lot-map/sessions'])
+  expect(wt.slice(14)).toEqual(['--all', '/home/u/.cache/workmap/sessions'])
 })
 
 test('/workmap all from WSL outside Windows Terminal answers the tiles as text', async ($, on) => {
@@ -3428,7 +3427,7 @@ test('with neither XDG_RUNTIME_DIR nor HOME no status is written, and /workmap a
     return { value: undefined }
   })
   on('session.id', () => ({ value: 'abc-123' }) as never)
-  on('command.register', () => ({ value: { command: 'lot-map' } }))
+  on('command.register', () => ({ value: { command: 'workmap' } }))
   on('ui.open', () => ({ value: { isPlaced: true } }))
   on('session.start', (_, e) => ({ cwd: e.cwd }))
   const listed = fakeSessionFolder(on, {})
@@ -3447,7 +3446,7 @@ test('a corrupt file or one that fails does not stop the sweep, and an old corru
   const runs = fakeHost(on)
   on('fs.write', () => ({ value: undefined }))
   on('session.id', () => ({ value: 'abc-123' }) as never)
-  on('command.register', () => ({ value: { command: 'lot-map' } }))
+  on('command.register', () => ({ value: { command: 'workmap' } }))
   on('ui.open', () => ({ value: { isPlaced: true } }))
   on('session.start', (_, e) => ({ cwd: e.cwd }))
   const stale = JSON.stringify({ updatedAt: NOW - 3_700_000 })
@@ -3488,7 +3487,7 @@ test('a status write still running when the session ends does not bring the file
     return { value: undefined }
   })
   on('session.id', () => ({ value: 'abc-123' }) as never)
-  on('command.register', () => ({ value: { command: 'lot-map' } }))
+  on('command.register', () => ({ value: { command: 'workmap' } }))
   on('ui.open', () => ({ value: { isPlaced: true } }))
   on('session.start', (_, e) => ({ cwd: e.cwd }))
   fakeSessionFolder(on, {})

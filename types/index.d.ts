@@ -123,6 +123,6 @@ export type Board = {
 
 declare module 'claude-code' {
   interface PluginState {
-    'lot-map': { board: Shaped<Board> }
+    'workmap': { board: Shaped<Board> }
   }
 }

@@ -2,8 +2,8 @@
 // The map in a window of its own, for a terminal that shows Sixel pictures (Windows Terminal 1.22 and later, foot,
 // mlterm, WezTerm and others). Usage: node view.mjs <live folder>
 //
-// lot-map keeps the session's live map in the folder (map.svg), the rows under it (feed.json) and a heartbeat (alive)
-// while `/lot-map window` is on. The rows are drawn as text under the picture, as the pane draws them. The window
+// workmap keeps the session's live map in the folder (map.svg), the rows under it (feed.json) and a heartbeat (alive)
+// while `/workmap window` is on. The rows are drawn as text under the picture, as the pane draws them. The window
 // marks itself shown (shown) while it runs, so the session opens no second one.
 // This window runs render.mjs at its own size, draws each frame as Sixel, and closes when the heartbeat stops, or on
 // q or ctrl+c. `--all <sessions folder>` shows every session as tiles instead (overview.mjs).
@@ -37,7 +37,7 @@ if (!live || !out.isTTY) {
 
 // ---- the terminal ------------------------------------------------------------------------------
 
-const [envW, envH] = (process.env.LOT_MAP_CELL ?? '').split('x').map(Number)
+const [envW, envH] = (process.env.WORKMAP_CELL ?? '').split('x').map(Number)
 // Until the terminal says its cell size, a small guess: a picture too tall for the pane would scroll it every frame.
 let cell = envW > 0 && envH > 0 ? { w: envW, h: envH } : { w: 8, h: 17 }
 let asked = !(envW > 0 && envH > 0)

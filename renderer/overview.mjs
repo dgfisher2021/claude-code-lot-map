@@ -80,7 +80,7 @@ function screen(list) {
     else {
       lines.push(heading(tile, ' '), `\x1b[2m${fitLine(tile.now ?? '')}\x1b[0m`)
       // Only a folder the mod made is read.
-      if (typeof tile.live !== 'string' || !/\/lot-map-live-[a-z0-9]+$/.test(tile.live)) lines.push('', '\x1b[2mThis session has no window.\x1b[0m')
+      if (typeof tile.live !== 'string' || !/\/workmap-live-[a-z0-9]+$/.test(tile.live)) lines.push('', '\x1b[2mThis session has no window.\x1b[0m')
       else {
         try {
           const feed = JSON.parse(readFileSync(join(tile.live, 'feed.json'), 'utf8'))

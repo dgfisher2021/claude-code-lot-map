@@ -17,7 +17,7 @@ body:
   - type: input
     id: version
     attributes:
-      label: lot-map version
+      label: workmap version
       description: From `claude plugin list`, or the top of CHANGELOG.md in your copy.
       placeholder: 0.5.3
     validations:

@@ -6,9 +6,9 @@ import { paintMap } from './raster'
 import { layout } from '../renderer/layout.mjs'
 
 const PANE = {
-  plugin: 'lot-map',
+  plugin: 'workmap',
   component: 'Pane',
-  requestId: 'lot-map',
+  requestId: 'workmap',
   props: { title: 'Map', isFocused: false, bodyColumns: 60, placement: 'dock', scroll: { offset: 0, bodyRows: 40 }, view: {} },
 } as const
 

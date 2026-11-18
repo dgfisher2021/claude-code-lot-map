@@ -5,9 +5,9 @@ import { agentList, drawMap, feedLines, setupFrom } from './map'
 import { stringsFor } from './text'
 
 const PANE = {
-  plugin: 'lot-map',
+  plugin: 'workmap',
   component: 'Pane',
-  requestId: 'lot-map',
+  requestId: 'workmap',
   props: { title: 'Map', isFocused: false, bodyColumns: 60, placement: 'dock', scroll: { offset: 0, bodyRows: 40 }, view: {} },
 } as const
 
