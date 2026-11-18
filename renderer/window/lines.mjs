@@ -1,5 +1,5 @@
-// The list under the map, from the session's feed.json: its filters, its keys and its lines. Pure, so that the
-// terminal window (view.mjs) and the app window (window.js) share it, and tests can call it.
+// The list under the map, from the session's feed.json: its filters, its keys and its lines. Pure, so that the map
+// window's page (window.js) and the preview share it, and tests can call it.
 
 /** Where the list stands: scrolled lines, the filters, the search being typed, the subagent watched (-1: all). */
 export const freshList = () => ({ logAt: 0, onlyErrors: false, onlyStation: '', search: '', isTyping: false, watched: -1 })

@@ -97,7 +97,7 @@ function mapRoom() {
   // The lines' height as dragged at the handle, or windowRows until it is.
   const list = state.listPx > 0 ? state.listPx : rows * LINE_H + 12
   const room = Math.max(120, pane.clientHeight - list - $('split').offsetHeight - $('top').offsetHeight)
-  // As large as the width allows while the rows keep their room, as renderer/layout.mjs lays out the window.
+  // As large as the width allows while the rows keep their room, as the map window lays out its page.
   return { w: pane.clientWidth, h: Math.min(room, Math.round((pane.clientWidth * (lib?.H ?? 430)) / (lib?.W ?? 460))) }
 }
 

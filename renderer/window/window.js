@@ -12,7 +12,7 @@ const help = $('help')
 const tip = $('tip')
 const live = new URLSearchParams(location.search).get('live') ?? ''
 const LINE_H = 22
-/** Rows the map keeps however short the window, as layout.mjs has it: the list gives way first. */
+/** Rows the map keeps however short the window: the list gives way first. */
 const MAP_MIN_ROWS = 12
 
 /** The live map as the session last wrote it, and the size it was last drawn at. */
