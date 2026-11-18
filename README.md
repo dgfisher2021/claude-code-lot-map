@@ -2,6 +2,8 @@
 
 workmap began as [lot-map](https://github.com/alexeyw/lot-map), by Aleksei Volodin, under the MIT licence, and carries on from its 0.12.0 under its own name.
 
+> **To do, eventually:** detach this repository from the `alexeyw/lot-map` fork network (GitHub Support, "detach a fork"). Until then GitHub lists it as a fork, and commits here don't count toward the owner's contribution graph. Nothing else depends on it.
+
 A mod for Claude Code: a live map of the work, in a pane beside the chat. Every tool call, model step, hook and skill sends a pulse from the centre to its station, so you see memory, files, shell, web and agents at work instead of reading a list of commands.
 
 ![The map during a work session](docs/demo.gif)
