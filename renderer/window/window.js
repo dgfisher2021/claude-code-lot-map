@@ -52,7 +52,7 @@ function mapSize() {
   if (view === 'list') return { w: 0, h: 0 }
   // The line of local servers, when it shows, takes its room from the map's.
   const room = innerHeight - $('top').offsetHeight
-  const listRows = Math.max(3, Number(feed.windowRows) || 10)
+  const listRows = Math.max(3, Number(feed.windowRows) || 30)
   const list = listPx > 0 ? listPx : listRows * LINE_H + 8
   const tall = view === 'map' ? room : Math.max(MAP_MIN_ROWS * 17, room - list - splitBox.offsetHeight)
   return { w: innerWidth, h: Math.max(0, Math.min(tall, Math.round(innerWidth * aspect()))) }
@@ -74,15 +74,36 @@ function drawMap() {
   showTip(tip, mapBox, pointer)
 }
 
+/** Whether the list shows the log: scrolled into it, or filtered. */
+const inLog = () => list.logAt > 0 || list.onlyErrors || list.onlyStation !== '' || list.search !== '' || list.isTyping
+
+/**
+ * The live rows may hold more than fit, and the wheel scrolls them. The log shows what fits, so that the arrows, PgUp
+ * and PgDn and the wheel move through it: asked for more rows than fit, it would hold its scroll at the top.
+ */
 function drawRows() {
   if (view === 'map') return
-  // A page for the keys is what fits; the lines hold more, and the wheel scrolls them.
   const room = Math.max(1, Math.floor((linesBox.clientHeight - 8) / LINE_H))
-  const shown = feedLines(feed, list, Math.max(room, 200), showsLegend)
+  const shown = feedLines(feed, list, inLog() ? room : Math.max(room, 200), showsLegend)
   list = shown.list
   page = room
   drawLines(linesBox, shown.lines)
+  if (inLog()) linesBox.scrollTop = 0
 }
+
+// In the log the wheel moves it as the arrows do, a row a notch; past the end of the live rows it goes on into the log.
+linesBox.addEventListener(
+  'wheel',
+  e => {
+    const isAtEnd = linesBox.scrollTop + linesBox.clientHeight >= linesBox.scrollHeight - 1
+    if (!inLog() && !(e.deltaY > 0 && isAtEnd)) return
+    e.preventDefault()
+    const rows = Math.max(1, Math.round(Math.abs(e.deltaY) / LINE_H))
+    for (let i = 0; i < rows; i++) list = listKey(list, e.deltaY > 0 ? 'ArrowDown' : 'ArrowUp', feed, page).list
+    drawRows()
+  },
+  { passive: false },
+)
 
 async function fetchMap() {
   const text = await fetch(`live/${live}/map.svg`)
