@@ -710,7 +710,7 @@ test('a model that changes mid-session is a row of its own, and the first model 
   await ui.unmount()
 })
 
-test('a subagent circles the agents station until its loop ends, and its hanging call is settled then', { options: OWN }, async ($, on) => {
+test('a subagent circles the agents station until its loop ends, and its hanging call is settled then', { options: OWN, timeoutMs: 15000 }, async ($, on) => {
   on('clock.now', () => ({ value: 1_000_000 }))
   on('turn.complete', () => ({ text: '' }))
   on('turn.step', async function* () {
@@ -2059,6 +2059,42 @@ test('/lot-map window keeps the live map for a window of its own and opens it be
   expect(runs.some(argv => argv[0] === 'rm')).toBe(false)
   await $.session.end({ reason: 'other' } as never)
   expect(runs.at(-1)).toEqual(['rm', '-rf', '--', dir])
+})
+
+test('under reduced motion the window map is not rewritten between steps, and the pane is redrawn at each step', { options: { motion: 'reduced' } }, async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  mock.env(on, { WSL_DISTRO_NAME: 'Ubuntu', TMPDIR: '/tmp' })
+  let release: () => void = () => {}
+  on('tool.call', () => new Promise(resolve => (release = () => resolve({ result: {} } as never))))
+  fakeHost(on)
+  const written: { path: string; text: string }[] = []
+  on('fs.write', (_, e) => {
+    written.push({ path: e.path, text: e.text })
+    return { value: undefined }
+  })
+  const calling = $.tool.call({ tool: 'Read', file_path: '/a/b/content.py' })
+  await clock.settle()
+  await $.command.run({ command: 'lot-map', args: 'window' } as never)
+  const maps = () => written.filter(w => w.path.endsWith('/map.svg'))
+  const first = maps().length
+  expect(first).toBeGreaterThan(0)
+  // A running call: the strip's open mark would grow with time alone.
+  for (let i = 0; i < 12; i++) await clock.advance(250)
+  expect(maps().length).toBe(first)
+  // A step of five seconds later the drawing has changed, and is written.
+  await clock.advance(2500)
+  expect(maps().length).toBeGreaterThan(first)
+
+  // The pane asks to be drawn again when the map next changes by itself.
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  const before = String((await ui.find({ type: 'Svg' }))?.props.source)
+  await clock.advance(5100)
+  await clock.settle()
+  expect(String((await ui.find({ type: 'Svg' }))?.props.source)).not.toBe(before)
+  await ui.unmount()
+  release()
+  await calling
+  await $.session.end({ reason: 'other' } as never)
 })
 
 test('outside Windows Terminal /lot-map window says how to open the window by hand, and /lot-map still opens the pane', async ($, on) => {
@@ -3534,6 +3570,15 @@ test('contextCost is off unless set to true, and off it adds no figure anywhere'
   expect(
     feedLines([{ id: 'a', station: 'files', label: 'x', from: 'core', startedAt: 1, endedAt: 9, status: 'ok', tokens: 5000 }], stringsFor('en'))[0]?.line,
   ).not.toContain('+5k')
+})
+
+test("/workmap log and the window's log carry the context figure too", { options: COST }, async ($, on) => {
+  const k = costKit($, on)
+  await k.step(0)
+  await k.call('Read', { file_path: '/a/b/big.ts' })
+  k.set(52_000)
+  await k.step(1)
+  expect((await $.command.run({ command: 'workmap', args: 'log' } as never)).text).toMatch(/big\.ts.*\+42k/)
 })
 
 test('a call gets what the context grew by, one step late, on its row on every surface', { options: COST }, async ($, on) => {

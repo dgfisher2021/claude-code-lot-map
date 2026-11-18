@@ -602,7 +602,7 @@ export function paintMap(board: Board, now: number, setup: Setup, columns: numbe
 
   // The timeline strip as a row of quarter blocks under the lowest name, where the map has a row to spare.
   const stripRow = Math.floor(rowOf(STRIP.y + STRIP.h / 2))
-  const strip = stripRow > lowestName && stripRow < rows ? stripOf(board, now) : undefined
+  const strip = stripRow > lowestName && stripRow < rows ? stripOf(board, isStill ? now - (now % STILL_STEP_MS) : now) : undefined
   if (strip !== undefined) {
     const col0 = Math.round(colOf(STRIP.x0))
     const cols = Math.max(1, Math.round(colOf(STRIP.x1)) - col0)

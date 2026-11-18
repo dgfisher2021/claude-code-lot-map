@@ -53,6 +53,8 @@ process.stdin.on('data', data => {
     cell = { w: Number(reply[2]), h: Number(reply[1]) }
     relayout()
   }
+  // Ctrl+C always closes, even while a search is typed.
+  if (text.includes('\x03')) quit(0)
   if (logKeys(data.toString())) return
   // Keys, with every escape sequence the terminal sends taken out first.
   const keys = text.replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g, '')

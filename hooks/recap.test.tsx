@@ -32,6 +32,24 @@ test('/workmap recap sums up the session', async ($, on) => {
   expect(lines.at(-1)).toContain('64%')
 })
 
+test("the recap's refusals are the session's, not only those since the last message", async ($, on) => {
+  mock.clock(on, { now: NOW })
+  on('command.register', (_, e) => ({ value: { command: e.name } }))
+  on('session.usage', () => ({ value: { startedAt: NOW - 125_000, context: { window: 200000, percent: 20 } } }) as never)
+  on('classic.PreToolUse', () => ({ deny: 'no' }))
+  on('tool.call', () => ({ result: {}, isError: true }) as never)
+  on('prompt.submit', (_, e) => ({ text: e.text }) as never)
+  on('turn.start', (_, e) => ({ turnId: e.turnId }) as never)
+  on('session.start', (_, e) => ({ cwd: e.cwd }))
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  await $.prompt.submit({ text: 'go', wait: false, origin: { kind: 'composer' } } as never)
+  await $.turn.start({ text: 'go', turnId: 't1' } as never)
+  await $.tool.call({ tool: 'Bash', command: 'git status', description: 'Status' } as never)
+  await $.prompt.submit({ text: 'again', wait: false, origin: { kind: 'composer' } } as never)
+  await $.turn.start({ text: 'again', turnId: 't2' } as never)
+  expect(String((await $.command.run({ command: 'workmap', args: 'recap' } as never)).text)).toContain('refused')
+})
+
 test("a fresh session's recap says there is nothing yet", async ($, on) => {
   mock.clock(on, { now: NOW })
   on('command.register', (_, e) => ({ value: { command: e.name } }))

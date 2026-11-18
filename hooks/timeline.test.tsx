@@ -148,3 +148,103 @@ test('the timeline keeps the last 240 marks', async ($, on) => {
   expect(strip(svg)).toHaveLength(240)
   await ui.unmount()
 })
+
+const keepBoard = (on: (event: 'state.set', hook: never) => void) => {
+  const kept: { board: Board } = { board: { entries: [], counts: {} } }
+  on(
+    'state.set',
+    ((_: unknown, e: { value?: { value?: Board } }, next: (e: unknown) => unknown) => ((kept.board = e.value?.value ?? kept.board), next(e))) as never,
+  )
+  return kept
+}
+
+test("a background agent's row, closed by its turn.complete, closes its mark and adds to the time", async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  const kept = keepBoard(on as never)
+  on('turn.complete', () => ({ text: '' }))
+  on('tool.call', () => new Promise(() => {}))
+  void $.tool.call({ tool: 'Read', file_path: '/a/b/c.ts', agentId: 'a1' } as never)
+  await clock.settle()
+  expect(kept.board.timeline?.at(-1)?.until).toBeUndefined()
+  await clock.advance(700)
+  await $.turn.complete({ answer: '', durationMs: 1, isAborted: false, turnId: 't2', reason: 'answer', agentId: 'a1' } as never)
+  expect(kept.board.timeline?.at(-1)?.until).toBe(NOW + 700)
+  expect(kept.board.busyMs?.files).toBe(700)
+})
+
+test("an interrupted turn closes the main loop's open marks, and draws no red mark for itself", async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  const kept = keepBoard(on as never)
+  on('turn.complete', () => ({ text: '' }))
+  on('tool.call', () => new Promise(() => {}))
+  void $.tool.call({ tool: 'Read', file_path: '/a/b/c.ts' } as never)
+  await clock.settle()
+  await clock.advance(400)
+  await $.turn.complete({ answer: '', durationMs: 1, isAborted: true, turnId: 't1', reason: 'aborted' } as never)
+  const read = kept.board.timeline?.find(m => m.kind === 'files')
+  expect(read?.until).toBe(NOW + 400)
+  expect(kept.board.busyMs?.files).toBe(400)
+  const you = kept.board.timeline?.find(m => m.kind === 'you')
+  expect(you?.bad).toBeUndefined()
+})
+
+const CALL = { tool: 'Bash', command: 'make build', description: 'Build it', tool_use_id: 'u1' } as never
+
+/** A shell call that waits on the person: checked as ask, held until released. */
+function askedShell(on: (event: string, hook: never) => void) {
+  let asking = false
+  let settling = false
+  let release: () => void = () => {}
+  on('tool.check', (() => ({ decision: asking ? 'ask' : 'allow' })) as never)
+  on('tool.judge', (() => ({ decision: 'allow' })) as never)
+  on('tool.run', ((_: unknown, e: { tool: string }) =>
+    settling || e.tool !== 'Bash' ? { result: {} } : new Promise(resolve => (release = () => resolve({ result: {} })))) as never)
+  on('tool.call', (() => ({ result: {} })) as never)
+  return {
+    release: () => release(),
+    ask: ($: { tool: { check: (input: never) => Promise<unknown> } }) => ((asking = true), $.tool.check(ASK)),
+    settle: async ($: { tool: { run: (input: never) => Promise<unknown> } }) => {
+      settling = true
+      await $.tool.run(CALL)
+      settling = false
+    },
+  }
+}
+
+const ASK = { tool: 'Bash', input: { command: 'make build', description: 'Build it' }, tool_use_id: 'u1' } as never
+
+test('an approved permission closes its wait mark at the approval', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  const kept = keepBoard(on as never)
+  const held = askedShell(on as never)
+  const calling = $.tool.call(CALL)
+  await clock.settle()
+  await held.ask($)
+  await clock.advance(1000)
+  await clock.settle()
+  const wait = () => kept.board.timeline?.find(m => m.kind === 'wait')
+  expect(wait()?.until).toBeUndefined()
+  await clock.advance(4000)
+  await held.settle($)
+  expect(wait()?.until).toBe(NOW + 5000)
+  await clock.advance(9000)
+  held.release()
+  await calling
+  expect(wait()?.until).toBe(NOW + 5000)
+})
+
+test("an unrelated call finishing leaves another call's wait open", async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  const kept = keepBoard(on as never)
+  const held = askedShell(on as never)
+  const calling = $.tool.call(CALL)
+  await clock.settle()
+  await held.ask($)
+  await clock.advance(1000)
+  await clock.settle()
+  await $.tool.call({ tool: 'Read', file_path: '/a/b/c.ts', tool_use_id: 'u2' } as never)
+  expect(kept.board.timeline?.find(m => m.kind === 'wait')?.until).toBeUndefined()
+  held.release()
+  await calling
+  expect(kept.board.timeline?.find(m => m.kind === 'wait')?.until).toBeDefined()
+})
