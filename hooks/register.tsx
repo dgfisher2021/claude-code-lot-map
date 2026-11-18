@@ -650,11 +650,15 @@ async function openWindow($: EngineInterface, setup: Setup): Promise<{ isOpen: b
     await share($, setup)
     sharing.timer = $.clock.every(250, () => void share($, setup))
   }
-  // From WSL the map is an Edge window of its own; `pane` keeps the split of the terminal's tab, as does a failed Edge.
+  // From WSL the map is a split of the terminal's tab, the window's page drawn as Sixel, and an Edge window where the split
+  // cannot open; `edge` asks for Edge first.
   const isWsl = ((await $.env.get('WSL_DISTRO_NAME')) ?? '') !== ''
-  if (isWsl && setup.terminalWindow !== 'pane' && (await appWindow($, sharing.dir ?? ''))) return { isOpen: true, text: setup.t.windowOpened }
+  const opened = { isOpen: true, text: setup.t.windowOpened }
+  if (isWsl && setup.terminalWindow === 'edge' && (await appWindow($, sharing.dir ?? ''))) return opened
   const { isOpen, command } = await splitTab($, [sharing.dir ?? ''], true)
-  return isOpen ? { isOpen: true, text: setup.t.windowOpened } : { isOpen: false, text: setup.t.windowByHand(command.join(' ')) }
+  if (isOpen) return opened
+  if (isWsl && setup.terminalWindow !== 'edge' && (await appWindow($, sharing.dir ?? ''))) return opened
+  return { isOpen: false, text: setup.t.windowByHand(command.join(' ')) }
 }
 
 /** Opens the live map in an Edge app window: renderer/serve.mjs starts the local server unless one runs, then Edge. */

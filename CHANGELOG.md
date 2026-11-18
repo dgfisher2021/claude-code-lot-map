@@ -2,6 +2,14 @@
 
 What changed in each version of workmap, newest first; up to 0.12.0 it was called lot-map. To get a new version, see [Updating](README.md#updating).
 
+## 1.2.0 (2026-11-18)
+
+- What you need to do: nothing but update. `terminalWindow` of `pane` reads as `auto`, which is the split now; `edge` opens the Edge window first.
+- In Windows Terminal from WSL the map window is a split of the tab again, beside the session, and it is the Edge window's page: the header with its warnings, the repository and branch and the `?`, the tooltips, the list in columns, the handle, the local servers. Headless Chromium paints the page at the pane's size and each frame goes out as Sixel. The mouse and the keys go to the page: hover for the tooltips, the wheel for the list, a click on a local server opens it in your browser. The Edge window opens where the split cannot.
+- The page is drawn 125% larger than in Edge, since Windows Terminal draws a picture smaller; `WORKMAP_ZOOM` sets another size. From WSL it has your Windows fonts, as Edge does.
+- Only the rows of cells that changed go to the terminal, so the window draws up to 24 frames a second where it drew 10.
+- The split no longer writes rows of its own under the map; the page's list takes their place, so the rows are part of the picture, not text to select.
+
 ## 1.1.1 (2026-11-18)
 
 - Nothing you would see changes. The code for a station's dashed warning ring is gone: since 1.1.0 no warning names a station, so it could not appear.

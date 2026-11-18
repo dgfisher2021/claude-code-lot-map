@@ -935,7 +935,7 @@ function fakeHost(on: On): string[][] {
   return runs
 }
 
-test('/workmap window keeps the live map for a window of its own and opens it in Edge, from WSL', async ($, on) => {
+test('/workmap window keeps the live map for a window of its own and splits the Windows Terminal tab for it, from WSL', async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
   mock.env(on, { WSL_DISTRO_NAME: 'Ubuntu', TMPDIR: '/tmp' })
   on('tool.call', () => ({ result: {} }))
@@ -949,13 +949,14 @@ test('/workmap window keeps the live map for a window of its own and opens it in
   await $.tool.call({ tool: 'Read', file_path: '/a/b/content.py' })
   const answer = await $.command.run({ command: 'workmap', args: 'window' } as never)
   expect(answer.text).toBe('Map window opened beside this one.')
-  // renderer/serve.mjs starts the local server unless one runs and opens Edge on the live folder, by its name.
-  const open = runs.find(argv => argv[1]?.endsWith('/renderer/serve.mjs')) ?? []
-  expect(open[0]).toBe('/usr/bin/node')
-  expect(open[2]).toBe('--open')
-  expect(open[3]).toMatch(/^[a-z0-9]+$/)
-  expect(runs.some(argv => argv[0] === 'wt.exe')).toBe(false)
-  const dir = `/tmp/workmap-live-${open[3]}`
+  // The tab is split for renderer/view.mjs on the live folder, with the Node and Chromium found here; Edge is not opened.
+  const split = runs.find(argv => argv[0] === 'wt.exe') ?? []
+  expect(split.slice(0, 7)).toEqual(['wt.exe', '-w', '0', 'split-pane', '--vertical', '--size', '0.45'])
+  expect(split).toContain('WORKMAP_CHROMIUM=/home/u/.local/bin/chromium')
+  expect(split.at(-2)).toMatch(/\/renderer\/view\.mjs$/)
+  expect(split.at(-1)).toMatch(/^\/tmp\/workmap-live-[a-z0-9]+$/)
+  expect(runs.some(argv => argv[1]?.endsWith('/renderer/serve.mjs'))).toBe(false)
+  const dir = split.at(-1) ?? ''
   const maps = () => written.filter(w => w.path === `${dir}/map.svg`)
   expect(maps().length).toBe(1)
   expect(maps()[0]?.text).toMatch(/^<svg [^>]*width="920" height="860"/)
@@ -997,14 +998,14 @@ function fakeSession(on: On): string[] {
   return panes
 }
 
-test('when Edge cannot open, the window splits the Windows Terminal tab instead', async ($, on) => {
+test('when the tab cannot be split, the window opens in Edge instead', async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
   mock.env(on, IN_WINDOWS_TERMINAL)
   const runs: string[][] = []
   on('session.end', () => ({ sessionId: 'test' }))
   on('process.run', (_, e) => {
     runs.push([...e.argv])
-    const exitCode = e.argv[1]?.endsWith('/renderer/serve.mjs') === true ? 1 : 0
+    const exitCode = e.argv[0] === 'wt.exe' ? 1 : 0
     return { value: { exitCode, stdout: '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
   })
   on('fs.write', () => ({ value: undefined }))
@@ -1012,7 +1013,11 @@ test('when Edge cannot open, the window splits the Windows Terminal tab instead'
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
   await $.turn.start({ text: 'hello', turnId: 't1' } as never)
   await clock.settle()
-  expect(runs.some(argv => argv[0] === 'wt.exe')).toBe(true)
+  // renderer/serve.mjs starts the local server unless one runs and opens Edge on the live folder, by its name.
+  const open = runs.find(argv => argv[1]?.endsWith('/renderer/serve.mjs')) ?? []
+  expect(open[2]).toBe('--open')
+  expect(open[3]).toMatch(/^[a-z0-9]+$/)
+  expect(runs.findIndex(argv => argv[0] === 'wt.exe')).toBeLessThan(runs.indexOf(open))
   expect(panes).toEqual([])
   await $.session.end({ reason: 'other' } as never)
 })
