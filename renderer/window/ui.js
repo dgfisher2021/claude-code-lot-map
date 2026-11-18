@@ -248,8 +248,11 @@ export function drawLocal(box, local) {
   return true
 }
 
-/** Asks every local server in `box` now and every five seconds, while the page is in view, and colours its dot. */
-export function watchLocal(box) {
+/**
+ * Asks every local server in `box` now and every five seconds, while the page is in view, colours its dot, and calls
+ * `after` once a round is done.
+ */
+export function watchLocal(box, after = () => {}) {
   const ask = async () => {
     if (document.hidden) return
     for (const link of box.querySelectorAll('a[data-host]')) {
@@ -259,6 +262,7 @@ export function watchLocal(box) {
       link.querySelector('.dot')?.classList.toggle('up', up)
       link.querySelector('.dot')?.classList.toggle('down', !up)
     }
+    after()
   }
   void ask()
   setInterval(ask, 5000)
@@ -320,4 +324,21 @@ export function drawTitle(box, place) {
   ]
   box.innerHTML = `<strong>${esc(place.repo)}</strong>${refs.length > 0 ? `<small>${refs.join('')}</small>` : ''}`
   document.title = `${place.repo}${place.branch ? ` · ${place.branch}` : ''} · Work map`
+}
+
+/**
+ * In a window, Browser's badge counts the local servers answering now, in the amber of the map's other counts (×3), and is
+ * gone while none answer: the map draws how many Claude used, which only the window can tell apart.
+ */
+export function markLocal(mapBox, localBox) {
+  const badge = mapBox.querySelector('circle[data-local]')
+  if (!badge) return
+  const live = [...localBox.querySelectorAll('a[data-host]')].filter(a => answered.get(a.dataset.host) === true).length
+  const label = badge.nextElementSibling
+  for (const el of [badge, label]) if (el) el.style.display = live > 0 ? '' : 'none'
+  badge.style.stroke = 'var(--accent)'
+  if (label) {
+    label.textContent = String(live)
+    label.style.fill = 'var(--accent)'
+  }
 }

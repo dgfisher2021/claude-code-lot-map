@@ -6,6 +6,7 @@ import {
   drawLocal,
   drawStatus,
   drawTitle,
+  markLocal,
   setHelp,
   showTip as showTipAt,
   tipAt,
@@ -117,6 +118,7 @@ function setMap(svg) {
   mapBox.innerHTML = svg
   untitle(mapBox)
   drawStatus($('status'), mapBox)
+  markLocal(mapBox, $('local'))
   placePins()
   showTip()
 }
@@ -192,7 +194,7 @@ wireSplit(
   },
   save,
 )
-watchLocal($('local'))
+watchLocal($('local'), () => markLocal(mapBox, $('local')))
 mapBox.addEventListener('mousemove', e => {
   pointer = { x: e.clientX, y: e.clientY }
   showTip()

@@ -2,7 +2,7 @@
 // are the terminal window's: m, ?, the arrows and PgUp/PgDn, e, 1-9 and 0, a, / and q.
 
 import { feedLines, freshList, listKey, nextAgent } from './lines.mjs'
-import { drawLines, drawLocal, drawStatus, drawTitle, setHelp, showTip, untitle, watchLocal, wireHelp, wireSplit, wireStatus } from './ui.js'
+import { drawLines, drawLocal, drawStatus, drawTitle, markLocal, setHelp, showTip, untitle, watchLocal, wireHelp, wireSplit, wireStatus } from './ui.js'
 
 const $ = id => document.getElementById(id)
 const mapBox = $('map')
@@ -71,6 +71,7 @@ function drawMap() {
   mapBox.innerHTML = svg.replace(/^(<svg\b[^>]*?)\swidth="\d+"\sheight="\d+"/, `$1 width="${w}" height="${h}"`)
   untitle(mapBox)
   drawStatus($('status'), mapBox)
+  markLocal(mapBox, localBox)
   showTip(tip, mapBox, pointer)
 }
 
@@ -179,4 +180,4 @@ wireSplit(
     } catch {}
   },
 )
-watchLocal(localBox)
+watchLocal(localBox, () => markLocal(mapBox, localBox))
