@@ -141,16 +141,12 @@
   color: var(--accent);
 }
 
-/* The corner's buttons, upper right: the window's keys and the chat's commands, each explained on hover. */
-#corner {
+/* The ? in the upper right corner, and the window's keys it shows on hover. */
+#help {
   position: absolute;
   top: 8px;
   right: 8px;
   z-index: 5;
-  display: flex;
-  gap: 4px;
-}
-#corner button {
   padding: 2px;
   border: 0;
   background: none;
@@ -158,8 +154,8 @@
   cursor: help;
   line-height: 0;
 }
-#corner button:hover,
-#corner button:focus-visible {
+#help:hover,
+#help:focus-visible {
   color: var(--accent);
   outline: none;
 }
@@ -178,7 +174,7 @@
   align-items: center;
   margin-top: 8px;
 }
-/* A section's label: the keys tooltip's two, and a station's Most used. */
+/* A section's label in a tooltip: a station's Most used. */
 .section {
   grid-column: 1 / -1;
   margin-top: 4px;

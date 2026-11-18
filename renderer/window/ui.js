@@ -73,7 +73,7 @@ export function tipAt(box, x, y) {
 
 /** Shows in `tipEl` the tooltip of what is at `pointer` in `box`, beside it and kept inside the window; hides it over nothing. */
 export function showTip(tipEl, box, pointer) {
-  // A corner tooltip that is open stays: the map's own waits until it closes.
+  // The keys' tooltip, while open, stays: the map's own waits until it closes.
   if (tipEl.classList.contains('help')) return
   const found = pointer && tipAt(box, pointer.x, pointer.y)
   tipEl.style.display = found ? 'block' : 'none'
@@ -118,21 +118,13 @@ export function drawLines(box, lines) {
 }
 
 /** The `?` button's icon: a question mark in a circle. */
-// The corner's two buttons, each with a faint ground: the keys of this window, and the commands for the chat.
-const CORNER_ICONS = {
-  keys: svgIcon(
-    '<rect x="2" y="5" width="20" height="14" rx="2" fill="currentColor" fill-opacity="0.12"/><path d="M6 9h.01M10 9h.01M14 9h.01M18 9h.01M6 13h.01M10 13h.01M14 13h.01M18 13h.01M8 17h8"/>',
-    26,
-    '0 0 24 24',
-    1.8,
-  ),
-  commands: svgIcon(
-    '<rect x="3" y="3" width="18" height="18" rx="4" fill="currentColor" fill-opacity="0.12"/><path d="M14.5 7.5l-5 9"/>',
-    26,
-    '0 0 24 24',
-    1.8,
-  ),
-}
+// The ? in the upper right corner, on a faint ground: the window's keys.
+const HELP_ICON = svgIcon(
+  '<circle cx="12" cy="12" r="10" fill="currentColor" fill-opacity="0.12"/><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3M12 17h.01"/>',
+  26,
+  '0 0 24 24',
+  1.8,
+)
 
 /** The arrow keys drawn in their caps, by the names keyHelp gives them. */
 const ARROWS = {
@@ -142,46 +134,37 @@ const ARROWS = {
 const keyCap = key =>
   ARROWS[key] ? `<kbd class="arrow" aria-label="${ARROWS[key][0]}">${svgIcon(`<path d="${ARROWS[key][1]}"/>`)}</kbd>` : `<kbd>${esc(key)}</kbd>`
 
-/** One part of the session's keyHelp: the window's keys, or the chat's commands, each under its own heading. */
-function helpHtml(help, part) {
-  const rows =
-    part === 'keys'
-      ? help.keys.map(k => `<div class="k">${k.keys.map(keyCap).join(' ')}</div><div>${esc(k.label)}${k.note ? `<small>${esc(k.note)}</small>` : ''}</div>`)
-      : help.commands.map(c => `<div class="k"><kbd>${esc(c.command)}</kbd></div><div>${esc(c.label)}</div>`)
-  const title = part === 'keys' ? help.window : help.chat
-  return `<div class="tip-head">${CORNER_ICONS[part]}<strong>${esc(title)}</strong></div><div class="keys">${rows.join('')}</div>`
+/** The session's keyHelp: the window's keys, each with what it does. */
+function helpHtml(help) {
+  const rows = help.keys.map(
+    k => `<div class="k">${k.keys.map(keyCap).join(' ')}</div><div>${esc(k.label)}${k.note ? `<small>${esc(k.note)}</small>` : ''}</div>`,
+  )
+  return `<div class="tip-head">${HELP_ICON}<strong>${esc(help.title)}</strong></div><div class="keys">${rows.join('')}</div>`
 }
 
-/** Shows `part` of the help under `button`, their right edges together; hides it when `help` is undefined. */
-function showHelp(tipEl, button, help, part) {
+/** Shows the keys under `button`, their right edges together; hides them when `help` is undefined. */
+function showHelp(tipEl, button, help) {
   tipEl.style.display = help ? 'block' : 'none'
   tipEl.classList.toggle('help', Boolean(help))
   if (!help) return
   tipEl.classList.remove('rich')
-  tipEl.innerHTML = helpHtml(help, part)
+  tipEl.innerHTML = helpHtml(help)
   const at = button.getBoundingClientRect()
   tipEl.style.left = `${Math.max(8, at.right - tipEl.offsetWidth)}px`
   tipEl.style.top = `${at.bottom + 6}px`
 }
 
-/**
- * The corner's buttons (`{ keys, commands }`): each shows its part of `help()` while hovered or focused. `setCorner` shows
- * them once the session sends its keyHelp, named in its words.
- */
-export function wireCorner(tipEl, buttons, help) {
-  for (const [part, button] of Object.entries(buttons)) {
-    button.innerHTML = CORNER_ICONS[part]
-    const show = () => showHelp(tipEl, button, help(), part)
-    const hide = () => showHelp(tipEl, button, undefined, part)
-    button.addEventListener('mouseenter', show)
-    button.addEventListener('focus', show)
-    button.addEventListener('mouseleave', hide)
-    button.addEventListener('blur', hide)
-  }
+/** The ? button: shows the keys of `help()` while hovered or focused. `setHelp` shows it once the session sends its keyHelp. */
+export function wireHelp(tipEl, button, help) {
+  button.innerHTML = HELP_ICON
+  const show = () => showHelp(tipEl, button, help())
+  const hide = () => showHelp(tipEl, button, undefined)
+  button.addEventListener('mouseenter', show)
+  button.addEventListener('focus', show)
+  button.addEventListener('mouseleave', hide)
+  button.addEventListener('blur', hide)
 }
-export function setCorner(buttons, help) {
-  for (const [part, button] of Object.entries(buttons)) {
-    button.hidden = help === undefined
-    if (help) button.setAttribute('aria-label', part === 'keys' ? help.window : help.chat)
-  }
+export function setHelp(button, help) {
+  button.hidden = help === undefined
+  if (help) button.setAttribute('aria-label', help.title)
 }

@@ -1,7 +1,7 @@
 // The preview page: draws the window (map and rows) from the made-up session or a live one, with tooltips and notes.
 
 import { feedLines, freshList } from '/window/lines.mjs'
-import { drawLines, setCorner, showTip as showTipAt, tipAt, untitle, wireCorner } from '/window/ui.js'
+import { drawLines, setHelp, showTip as showTipAt, tipAt, untitle, wireHelp } from '/window/ui.js'
 import { LOOP_S, boardAt } from './scene.js'
 
 const $ = id => document.getElementById(id)
@@ -9,7 +9,7 @@ const pane = $('pane')
 const mapBox = $('map')
 const rowsBox = $('rows')
 const tip = $('tip')
-const corner = { keys: $('keys'), commands: $('commands') }
+const help = $('help')
 const LINE_H = 17
 
 const DEFAULTS = {
@@ -85,11 +85,11 @@ function mapRoom() {
   return { w: pane.clientWidth, h: Math.min(room, Math.round((pane.clientWidth * (lib?.H ?? 430)) / (lib?.W ?? 460))) }
 }
 
-/** The lines under the map as the window draws them (renderer/window), cut to windowRows; the corner shows the feed's keys. */
+/** The lines under the map as the window draws them (renderer/window), cut to windowRows; the ? shows the feed's keys. */
 let keyHelp
 function renderRows(feed) {
   keyHelp = feed.keyHelp
-  setCorner(corner, keyHelp)
+  setHelp(help, keyHelp)
   const rows = Math.max(3, Number(state.options.windowRows) || 10)
   drawLines(rowsBox, feedLines(feed, freshList(), rows, false).lines.slice(0, rows))
 }
@@ -159,8 +159,8 @@ function draw() {
 let pointer
 const showTip = () => showTipAt(tip, mapBox, pointer)
 
-// The corner: the window's keys and the chat's commands, as the map window shows them.
-wireCorner(tip, corner, () => keyHelp)
+// The ? in the corner: the window's keys, as the map window shows them.
+wireHelp(tip, help, () => keyHelp)
 mapBox.addEventListener('mousemove', e => {
   pointer = { x: e.clientX, y: e.clientY }
   showTip()

@@ -70,13 +70,10 @@ export type Strings = {
   /** A station's tooltip: what lands there (commands in backticks), and the label of each figure. */
   stationAbout: Record<StationId, string>
   tip: { calls: string; turn: string; running: string; time: string; errors: string; session: string; refused: string; pushed: string; tokens: string; mostUsed: string; read: string }
-  /** The map window's corner buttons: its keys, and the chat's commands, each with what it does. */
-  keyHelp: {
-    window: string
-    chat: string
-    keys: { keys: string[]; label: string; note?: string }[]
-    commands: { command: string; label: string }[]
-  }
+  /** The map window's ? button: its keys, each with what it does. */
+  keyHelp: { title: string; keys: { keys: string[]; label: string; note?: string }[] }
+  /** The end of `/workmap help`: the commands, each with what it answers. */
+  commandHelp: { title: string; commands: { command: string; label: string }[] }
   context: string
   andMore: (n: number) => string
   /** The changed line's count, and what /workmap changed answers when nothing was written or edited. */
@@ -237,8 +234,7 @@ const en: Strings = {
     read: 'read',
   },
   keyHelp: {
-    window: 'Keys in this window',
-    chat: 'Commands in the chat',
+    title: 'Keys in this window',
     keys: [
       { keys: ['m'], label: 'Map and list, the map alone, or the list alone' },
       { keys: ['?'], label: 'What the marks on the map mean' },
@@ -249,9 +245,12 @@ const en: Strings = {
       { keys: ['/'], label: 'Search the rows', note: 'Enter keeps it, Esc clears it' },
       { keys: ['q'], label: 'Close the window' },
     ],
+  },
+  commandHelp: {
+    title: 'Commands',
     commands: [
       { command: '/workmap', label: 'Open the map again' },
-      { command: '/workmap help', label: 'What the marks mean' },
+      { command: '/workmap help', label: 'What the marks mean, and these commands' },
       { command: '/workmap usage', label: 'Context, limits and cost' },
       { command: '/workmap recap', label: 'The session in a few lines' },
       { command: '/workmap log', label: 'Every call, newest first' },

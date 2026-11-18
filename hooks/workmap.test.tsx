@@ -2149,13 +2149,15 @@ test('/workmap is the one command, and opens the map', async ($, on) => {
   await $.session.end({ reason: 'other' } as never)
 })
 
-test("/workmap help answers the legend in the session's language", { options: { language: 'ru' } }, async ($, on) => {
+test("/workmap help answers the legend in the session's language, then the commands", { options: { language: 'ru' } }, async ($, on) => {
   on('command.register', (_, e) => ({ value: { command: e.name } }))
   on('session.start', (_, e) => ({ cwd: e.cwd }))
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
   const answer = String((await $.command.run({ command: 'workmap', args: 'help' } as never)).text)
-  expect(answer.split('\n')).toEqual(stringsFor('ru').legend)
+  const legend = stringsFor('ru').legend
+  expect(answer.split('\n').slice(0, legend.length)).toEqual(legend)
   expect(answer).toContain('Память')
+  for (const { command } of stringsFor('ru').commandHelp.commands) expect(answer).toContain(command)
   for (const language of ['en', 'ru', 'es', 'fr', 'de', 'it', 'pt']) expect(stringsFor(language).legend.length).toBe(22)
 })
 

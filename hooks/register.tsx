@@ -769,7 +769,12 @@ async function runCommand($: EngineInterface, args: string, setup: Setup, openin
   if (args.trim() === 'log') return { text: await logText($, setup) }
   if (args.trim() === 'usage') return { text: await usageLines($, setup) }
   if (args.trim() === 'recap') return { text: await recapText($, setup) }
-  if (args.trim() === 'help') return { text: setup.t.legend.join('\n') }
+  if (args.trim() === 'help') {
+    // The legend, then the commands: the map window's ? shows only its keys.
+    const { title, commands } = setup.t.commandHelp
+    const wide = Math.max(...commands.map(c => c.command.length))
+    return { text: [...setup.t.legend, '', title, ...commands.map(c => `${c.command.padEnd(wide)}  ${c.label}`)].join('\n') }
+  }
   if (args.trim() === 'window') return { text: (await openWindow($, setup)).text }
   if (args.trim() === 'all') return { text: await showOverview($, setup) }
   if (windowed.isMap) return { text: await showWindow($, setup, opening) }
