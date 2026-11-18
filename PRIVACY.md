@@ -19,7 +19,7 @@ The mod does not look for personal data and has no use for it. It takes a name f
 - those descriptions and subjects are written by the model, and the mod shows them as written: it does not check what they say;
 - a background task's report: that it ended and whether it failed;
 - a hook's refusal: the name of the tool it stopped, and its first line only if you turn `hookReasons` on;
-- a failed call's error: that it failed, and for a shell command its exit code; its first line only if you turn `errorReasons` on, cleaned and cut to 72 characters, on its row in the pane and the window (whose feed file holds the rows), never in the `/workmap all` status file nor a notification;
+- a failed call's error: that it failed, and for a shell command its exit code; its first line with text only if you turn `errorReasons` on, cleaned and cut to 72 characters, on its row in the pane and the window (whose feed file holds the rows), never in the `/workmap all` status file nor a notification;
 - context a hook added: that it was added, and record numbers only if you turn `hookRecords` on.
 
 ## What it keeps
@@ -59,7 +59,7 @@ Only when you type `/lot-map window`, or in Windows Terminal from WSL (`WSL_DIST
 
 - The mod keeps the session's live map, the same drawing as above, in `map.svg` in a folder of its own, `lot-map-live-*` in your temporary directory (`TMPDIR`, else `/tmp`), readable by you alone, with the pane's rows (the action now and the last sixteen rows, the same labels) in `feed.json`, which also holds the board's kept calls (names only) for the window's scrolling and each subagent's id and name, and a heartbeat in `alive` every few seconds.
 - It runs `sh -c 'command -v node'` and `sh -c 'command -v chromium || command -v google-chrome'` to find Node and Chromium. In WSL (`WSL_DISTRO_NAME` set) it runs `wt.exe -w 0 split-pane ... wsl.exe -d <distro> -- env LOT_MAP_CHROMIUM=<chromium> node renderer/view.mjs <folder>`, which opens a pane in your current Windows Terminal tab; elsewhere it only answers with that last command for you to run.
-- The window runs the renderer of picture mode on that map, at its own size, and writes Sixel to its own pane. It reads keys only to close on `q` or ctrl+c. While it runs it writes the time to `shown` in that folder every two seconds, and the mod reads that file's age so as not to open a second window.
+- The window runs the renderer of picture mode on that map, at its own size, and writes Sixel to its own pane. It reads keys to close on `q` or ctrl+c and to move through its list: `m`, `?`, `a`, `e`, the digits, the arrows and a typed search, which stays in that process and is never written anywhere. While it runs it writes the time to `shown` in that folder every two seconds, and the mod reads that file's age so as not to open a second window.
 - When the session ends the mod removes the folder (`rm -rf` of that folder alone); a window still open closes when the heartbeat stops. A folder whose heartbeat stopped more than ten minutes ago is removed the next time a renderer starts.
 
 ## Where the code comes from
