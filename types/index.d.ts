@@ -62,7 +62,7 @@ export type Satellite = { name: string; uses: number; isEdited?: true; lastAt: n
 export type AgentInfo = { parent?: string; type?: string; at: number; run?: string }
 
 /** A stretch of time at a station, or a wait on the person; `until` is unset while it goes on, `bad` marks an error or a refusal. */
-export type TimelineMark = { at: number; until?: number; kind: StationId | 'wait'; bad?: true }
+export type TimelineMark = { at: number; until?: number; of?: string; kind: StationId | 'wait'; bad?: true }
 
 export type Board = {
   entries: Entry[]
@@ -81,6 +81,8 @@ export type Board = {
   turnCounts?: Partial<Record<StationId, number>>
   /** Calls refused per station (by a hook or a permission prompt) since the person's last message. */
   blocks?: Partial<Record<StationId, number>>
+  /** Calls refused per station this session; no message of the person's clears it. */
+  blockTotals?: Partial<Record<StationId, number>>
   /** Subagents whose loops are still going. */
   agents?: string[]
   /** The short description each subagent was started with, by its id: the last twelve. */

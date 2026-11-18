@@ -1,7 +1,8 @@
 import { expect, mock, test } from 'claude-code/testing'
 
 import type { Board } from '../types'
-import { GLOW_MS, drawMap, setupFrom, stillChangeIn, withSatellite } from './map'
+import { GLOW_MS, NODE, drawMap, setupFrom, stillChangeIn, withSatellite } from './map'
+import { stringsFor } from './text'
 import { paintMap } from './raster'
 
 const PANE = {
@@ -171,4 +172,64 @@ test('cells show the count of satellites after the name, no dots', () => {
   const text = (b: Board) => linesOf(paintMap(b, NOW, setupFrom({ theme: 'dark' }), 60, 28), 60).join('\n')
   expect(text(board)).toContain('Files 4 ·3')
   expect(text({ ...board, satellites: undefined })).not.toContain('·3')
+})
+
+test('every drawn satellite is nearer its own station than any other, crowded and not, at either layout', () => {
+  const names = stringsFor('en').stations
+  for (const layout of ['you-top', 'you-bottom']) {
+    for (const [count, len] of [
+      [0, 3],
+      [0, 12],
+      [5000, 30],
+    ] as const) {
+      // Every station serves files named after it, so a dot's station reads off its title.
+      const sats = (id: string) =>
+        Array.from({ length: 8 }, (_, k) => ({ name: `${id.slice(0, 3)}${'f'.repeat(len)}${k}`, uses: 9 - k, lastAt: NOW - 1000 * k }))
+      const board: Board = {
+        entries: [],
+        counts: Object.fromEntries(IDS.map(id => [id, count])) as Board['counts'],
+        satellites: Object.fromEntries(IDS.map(id => [id, sats(id)])) as Board['satellites'],
+        agents: ['a', 'b'],
+      }
+      const svg = drawMap(board, NOW + 60_000, setupFrom({ theme: 'dark', layout }))
+      // A station's centre, from where its name stands: the name's baseline is NODE + 15 under it.
+      const centre = (id: (typeof IDS)[number]) => {
+        const m = new RegExp(`<text x="([\\d.]+)" y="([\\d.]+)" text-anchor="middle"[^>]*font-size="11.5"[^>]*>${names[id]}<`).exec(svg)
+        return { x: Number(m?.[1]), y: Number(m?.[2]) - NODE - 15 }
+      }
+      const drawn = [...svg.matchAll(/<title>([a-z]{3})[^<]*<\/title><circle cx="([\d.]+)" cy="([\d.]+)" r="3" /g)].map(m => ({
+        id: IDS.find(i => i.startsWith(m[1] as string)) as (typeof IDS)[number],
+        x: Number(m[2]),
+        y: Number(m[3]),
+      }))
+      expect(drawn.length).toBeGreaterThan(10)
+      for (const d of drawn) {
+        const own = centre(d.id)
+        const ownGap = Math.hypot(d.x - own.x, d.y - own.y)
+        for (const id of IDS) {
+          if (id === d.id) continue
+          const o = centre(id)
+          expect(Math.hypot(d.x - o.x, d.y - o.y), `${layout}: a ${d.id} dot at ${d.x},${d.y} beside ${id}`).toBeGreaterThan(ownGap)
+        }
+      }
+    }
+  }
+})
+
+test('a refused or failed Edit marks no satellite; one that went through marks it edited', async ($, on) => {
+  mock.clock(on, { now: NOW })
+  let answer: { result: object; isError?: boolean } = { result: {} }
+  on('tool.call', () => answer as never)
+  const mounted = async () => {
+    const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+    const svg = String((await ui.find({ type: 'Svg' }))?.props.source)
+    await ui.unmount()
+    return svg
+  }
+  answer = { result: {}, isError: true }
+  await $.tool.call({ tool: 'Edit', file_path: '/a/b/gone.ts', old_string: 'x', new_string: 'y' } as never)
+  expect(dots(await mounted())).toBe(0)
+  answer = { result: {} }
+  await $.tool.call({ tool: 'Edit', file_path: '/a/b/kept.ts', old_string: 'x', new_string: 'y' } as never)
+  expect(dots(await mounted(), 'edited')).toBe(1)
 })

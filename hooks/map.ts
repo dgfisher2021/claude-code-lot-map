@@ -691,14 +691,25 @@ function isClear(at: Point, top: number, rows: number): boolean {
   )
 }
 
-/** The label rows of the first six: a dot, its clock arc (a lap a minute) and its name, under the station's count, or above it when that room is taken. */
-function crewLabels(crew: readonly Crew[], at: Point, c: Palette, now: number, isStill: boolean): string {
+/** The crew's label rows: those shown, and the top edge of their stack, under the station's count or above it when that room is taken. */
+function crewRows(crew: readonly Crew[], at: Point): { shown: Crew[]; top: number } {
   const shown = crew.filter(m => m.label !== undefined).slice(0, CREW_LABELS)
-  if (shown.length === 0) return ''
   const height = CREW_ROW * (shown.length - 1) + 9
   const below = at.y + NODE + 36
   const above = at.y - NODE - 16 - height
-  const top = isClear(at, below, shown.length) || !isClear(at, above, shown.length) ? below : above
+  return { shown, top: isClear(at, below, shown.length) || !isClear(at, above, shown.length) ? below : above }
+}
+
+/** The room each crew label takes, so the satellites keep clear of it. */
+function crewBoxes(crew: readonly Crew[], at: Point): Box[] {
+  const { shown, top } = crewRows(crew, at)
+  return shown.map((m, k) => ({ x0: at.x - 28, y0: top + k * CREW_ROW, x1: at.x - 15 + [...(m.label as string)].length * 4.3, y1: top + k * CREW_ROW + 9 }))
+}
+
+/** The label rows of the first six: a dot, its clock arc (a lap a minute) and its name, under the station's count, or above it when that room is taken. */
+function crewLabels(crew: readonly Crew[], at: Point, c: Palette, now: number, isStill: boolean): string {
+  const { shown, top } = crewRows(crew, at)
+  if (shown.length === 0) return ''
   let out = ''
   shown.forEach((m, k) => {
     const y = top + 7 + k * CREW_ROW
@@ -828,7 +839,7 @@ export function drawMap(board: Board, now: number, setup: Setup, isFilling = fal
     body += pulse(b, a, e.status === 'ok' ? c.ash : c.red, now - (e.endedAt as number), setup.contextCost ? pulseRadius(e.tokens, 2.6) : 2.6)
   }
 
-  body += drawn.map(d => d.over).join('') + satellites(board, now, setup, c, isStill)
+  body += drawn.map(d => d.over).join('') + satellites(board, now, setup, c, isStill, crewBoxes(crewOf(board), agentsAt))
 
   // Each subagent still at work circles the agents station; a Workflow's agents are one dot between them.
   const crew = crewOf(board)
@@ -879,7 +890,8 @@ export function drawMap(board: Board, now: number, setup: Setup, isFilling = fal
       `<title>${escapeXml(setup.t.limitTitle(kind, used, untilText(resetsAt, now, setup.t)))}</title></circle>`
   }
 
-  body += timeline(board, now, c)
+  // Under reduced motion the strip's clock steps, so the picture holds still between steps.
+  body += timeline(board, isStill ? now - (now % STILL_STEP_MS) : now, c)
 
   const switchAge = board.switchedAt === undefined ? Infinity : now - board.switchedAt
   const isSwitching = switchAge >= 0 && switchAge < SWITCH_MS
@@ -1193,7 +1205,7 @@ export function recapLines(
   const files = changedItems(board.changed)
   if (files.length > 0) lines.push(t.recapFiles(files.length, files.slice(0, 3).join(', ')))
   const errors = sumOf(board.faultTotals)
-  const refused = sumOf(board.blocks)
+  const refused = sumOf(board.blockTotals)
   if (errors + refused > 0) lines.push(t.recapErrors(errors, refused))
   const cost = costText(board.cost)
   if (cost !== undefined || board.peakContext !== undefined) lines.push(t.recapCost(cost, board.peakContext))
@@ -1253,7 +1265,7 @@ export type LogLine = FeedLine & { station?: StationId }
  */
 export function logLines(entries: readonly Entry[], t: Strings, agentNames: Readonly<Record<string, string>> = {}, calls = 0, withCost = false): LogLine[] {
   const newest = entries.slice().reverse()
-  const rows = newest.map(entry => ({ entry, times: 1, tookMs: entry.endedAt === undefined ? 0 : Math.max(0, entry.endedAt - entry.startedAt) }))
+  const rows = newest.map(entry => rowOf(entry, entry.endedAt === undefined ? 0 : Math.max(0, entry.endedAt - entry.startedAt)))
   const lines: LogLine[] = rowLines(rows, t, agentNames, withCost).map((l, i) => ({ ...l, station: newest[i]?.station }))
   // A switch of model is no counted call.
   const kept = entries.filter(e => e.mark !== 'switch').length
@@ -1440,21 +1452,39 @@ type Disc = { x: number; y: number; r: number }
 const overlap = (a: Box, b: Box): boolean => a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y0 < a.y1
 const touches = (b: Box, d: Disc): boolean => Math.hypot(Math.max(b.x0 - d.x, 0, d.x - b.x1), Math.max(b.y0 - d.y, 0, d.y - b.y1)) < d.r
 
+/** The plain text of a station's count line, as the map draws it, to size the room it takes. */
+function countText(board: Board, id: StationId, hasCost: boolean): string {
+  const count = board.counts[id] ?? 0
+  const pushed = id === 'memory' ? Math.min(count, board.pushed ?? 0) : 0
+  const turn = board.turnCounts?.[id] ?? 0
+  const total = board.faultTotals?.[id] ?? 0
+  const tokens = hasCost ? (board.spent?.[id] ?? 0) : 0
+  return (
+    (pushed === 0 ? String(count) : `${count - pushed > 0 ? `${count - pushed} ` : ''}↓${pushed}`) +
+    (turn > 0 && turn < count ? ` +${turn}` : '') +
+    (total > 0 ? ` · ${total}✕` : '') +
+    (tokens > 0 ? ` · ${tokensShort(tokens)}` : '')
+  )
+}
+
 /**
  * The small labelled dots around the stations that serve files or servers: on an arc outside the station, away from the core,
  * moved along the arc (and out a ring) wherever a name, a count, another station or the edge is in the way.
  */
-function satellites(board: Board, now: number, setup: Setup, c: Palette, isStill: boolean): string {
+function satellites(board: Board, now: number, setup: Setup, c: Palette, isStill: boolean, crewRoom: Box[]): string {
   if (STATIONS.every(s => (board.satellites?.[s.id]?.length ?? 0) === 0)) return ''
   const core: Point = { x: CX, y: CY }
   const discs: Disc[] = [{ ...core, r: CORE + 16 }]
-  const boxes: Box[] = []
+  const boxes: Box[] = [...crewRoom]
   STATIONS.forEach((s, i) => {
     const p = place(i)
     discs.push({ ...p, r: s.id === 'agents' ? NODE + 34 : NODE + 12 })
     const half = ([...setup.t.stations[s.id]].length * 7.2) / 2 + 2
     boxes.push({ x0: p.x - half, y0: p.y + NODE + 3, x1: p.x + half, y1: p.y + NODE + 19 })
-    if ((board.counts[s.id] ?? 0) > 0) boxes.push({ x0: p.x - 50, y0: p.y + NODE + 19, x1: p.x + 50, y1: p.y + NODE + 32 })
+    if ((board.counts[s.id] ?? 0) > 0) {
+      const wide = ([...countText(board, s.id, setup.contextCost)].length * 5.7) / 2 + 2
+      boxes.push({ x0: p.x - wide, y0: p.y + NODE + 19, x1: p.x + wide, y1: p.y + NODE + 32 })
+    }
   })
   const rim = `paint-order="stroke" stroke="${c.ground}" stroke-width="3" stroke-linejoin="round"`
   let out = ''
@@ -1471,6 +1501,8 @@ function satellites(board: Board, now: number, setup: Setup, c: Palette, isStill
           const a = away + ((k % 2 === 1 ? 1 : -1) * Math.ceil(k / 2) * 14) / r
           const x = p.x + r * Math.cos(a)
           const y = p.y + r * Math.sin(a)
+          // A satellite is nearer its own station than any other's centre, or it is not drawn.
+          if (STATIONS.some((_, j) => j !== i && Math.hypot(x - place(j).x, y - place(j).y) <= r)) continue
           const dot: Box = { x0: x - 4, y0: y - 4, x1: x + 4, y1: y + 4 }
           for (const isRight of Math.cos(a) >= 0 ? [true, false] : [false, true]) {
             const box: Box = isRight ? { x0: x + 5, y0: y - 5, x1: x + 6 + width, y1: y + 5 } : { x0: x - 6 - width, y0: y - 5, x1: x - 5, y1: y + 5 }

@@ -126,17 +126,48 @@ const inTurn = (b: Board, f: (t: TurnSummary) => TurnSummary, n?: number): Pick<
   return turns === undefined || at < 0 ? {} : { turns: turns.map((t, i) => (i === at ? f(t) : t)) }
 }
 
+/** The first line of `body` with text in it, cleaned and cut to 72 characters. */
+function firstText(body: string): string | undefined {
+  for (const line of body.split('\n')) {
+    const text = clean(line, 72)
+    if (text !== '') return text
+  }
+  return undefined
+}
+
 /** The timeline with a mark opened for a call at its start, or its marks closed at its end. */
 function marked(b: Board, e: Entry, now: number, isStart = false): Pick<Board, 'timeline'> {
   if (e.station === 'model' || e.mark !== undefined) return {}
   const old = b.timeline ?? []
-  const isBad = e.status === 'err' || e.status === 'block' ? { bad: true as const } : {}
+  // An aborted turn lands on You as an error, and is no fault to mark.
+  const isBad = (e.status === 'err' || e.status === 'block') && e.station !== 'you' ? { bad: true as const } : {}
   if (isStart) {
-    const mark: TimelineMark = { at: e.startedAt, kind: e.waits === true ? 'wait' : e.station, ...(e.status === 'run' ? {} : { until: e.endedAt ?? now, ...isBad }) }
+    const mark: TimelineMark = {
+      at: e.startedAt,
+      of: e.id,
+      kind: e.waits === true ? 'wait' : e.station,
+      ...(e.status === 'run' ? {} : { until: e.endedAt ?? now, ...isBad }),
+    }
     return { timeline: [...old, mark].slice(-MARKS) }
   }
-  const isOwn = (m: TimelineMark): boolean => m.until === undefined && ((m.kind === e.station && m.at === e.startedAt) || (m.kind === 'wait' && m.at >= e.startedAt))
-  return { timeline: old.map(m => (isOwn(m) ? { ...m, until: now, ...(m.kind === e.station ? isBad : {}) } : m)) }
+  return { timeline: old.map(m => (m.until === undefined && m.of === e.id ? { ...m, until: now, ...(m.kind === e.station ? isBad : {}) } : m)) }
+}
+
+/** The timeline with the wait marks of one call closed: the person answered. */
+const unwaited = (b: Board, id: string, now: number): Pick<Board, 'timeline'> => ({
+  timeline: (b.timeline ?? []).map(m => (m.kind === 'wait' && m.until === undefined && m.of === id ? { ...m, until: now } : m)),
+})
+
+/** The picked running rows closed as ok at `now`, their time and marks folded in. */
+function closeRuns(b: Board, pick: (e: Entry) => boolean, now: number): Pick<Board, 'entries' | 'busyMs' | 'timeline'> {
+  let acc: Board = b
+  const entries = b.entries.map(e => {
+    if (e.status !== 'run' || !pick(e)) return e
+    const done: Entry = { ...e, status: 'ok', endedAt: now }
+    acc = { ...acc, ...busier(acc, e, now), ...marked(acc, done, now) }
+    return done
+  })
+  return { entries, busyMs: acc.busyMs, timeline: acc.timeline }
 }
 
 const oneMore = (counts: Board['faults'], station: StationId): Board['faults'] => ({ ...counts, [station]: (counts?.[station] ?? 0) + 1 })
@@ -151,10 +182,13 @@ function tally(
   status: Status,
   agentId?: string,
   turn?: number,
-): Pick<Board, 'faults' | 'faultTotals' | 'blocks' | 'agentFaults' | 'turns'> {
+): Pick<Board, 'faults' | 'faultTotals' | 'blocks' | 'blockTotals' | 'agentFaults' | 'turns'> {
   if (status !== 'err' && status !== 'block') return {}
   const agentFaults = agentId === undefined || (b.agentFaults ?? []).includes(agentId) ? {} : { agentFaults: [...(b.agentFaults ?? []), agentId].slice(-12) }
-  const bad = status === 'err' ? { faults: oneMore(b.faults, station), faultTotals: oneMore(b.faultTotals, station) } : { blocks: oneMore(b.blocks, station) }
+  const bad =
+    status === 'err'
+      ? { faults: oneMore(b.faults, station), faultTotals: oneMore(b.faultTotals, station) }
+      : { blocks: oneMore(b.blocks, station), blockTotals: oneMore(b.blockTotals, station) }
   // An error counts on the turn of the call.
   const turns = status === 'err' && station !== 'model' && station !== 'you' ? inTurn(b, t => ({ ...t, errors: t.errors + 1 }), turn) : {}
   return { ...bad, ...agentFaults, ...turns }
@@ -284,6 +318,7 @@ async function askOn($: EngineInterface, calls: Map<string, string>, call: strin
         if (isAsked) return e.waits === true ? e : { ...e, asks: true as const }
         return e.asks === true ? { ...bare(e), ranAt: now } : e
       }),
+      ...(!isAsked && b.entries.some(e => e.id === id && e.status === 'run' && e.asks === true) ? unwaited(b, id, now) : {}),
     }))
   })
 }
@@ -528,9 +563,11 @@ async function share($: EngineInterface, setup: Setup): Promise<void> {
     // A ring comes and goes with time alone, so the stations that wear one count in what decides a rewrite.
     const rings = warnings.map(w => w.station ?? '').join()
     // Without animation nothing fades the map's marks out by itself, so a still map is written again when its drawing changes.
-    const svg = framedMap(state, now, setup, 920, 860)
-    const isChanged = seen !== sharing.written || rings !== sharing.rings || (setup.motion === 'reduced' && svg !== sharing.still)
-    if (isChanged) {
+    const isMoved = seen !== sharing.written || rings !== sharing.rings
+    // The picture is built only when the board or a ring moved, or, still, to see whether its drawing did.
+    const svg = isMoved || setup.motion === 'reduced' ? framedMap(state, now, setup, 920, 860) : undefined
+    const isChanged = isMoved || (svg !== undefined && svg !== sharing.still)
+    if (isChanged && svg !== undefined) {
       sharing.written = seen
       sharing.rings = rings
       sharing.still = svg
@@ -650,7 +687,7 @@ async function showWindow($: EngineInterface, setup: Setup, opening: Opening): P
 function logFeed(state: Board, setup: Setup) {
   const { t } = setup
   return {
-    log: logCalls(state, t),
+    log: logCalls(state, setup),
     stations: STATIONS.map(s => ({ id: s.id, name: t.stations[s.id] })),
     keys: t.windowKeys,
     errorsWord: t.logErrors,
@@ -658,11 +695,12 @@ function logFeed(state: Board, setup: Setup) {
 }
 
 /** The log: every kept call, and a last line when older ones are gone, counted from the stations' totals. */
-const logCalls = (state: Board, t: Setup['t']) => logLines(state.entries, t, state.agentNames, Object.values(state.counts).reduce((n, c) => n + (c ?? 0), 0))
+const logCalls = (state: Board, setup: Setup) =>
+  logLines(state.entries, setup.t, state.agentNames, Object.values(state.counts).reduce((n, c) => n + (c ?? 0), 0), setup.contextCost)
 
 /** `/workmap log`: every call the board keeps, newest first, one a line. */
 async function logText($: EngineInterface, setup: Setup): Promise<string> {
-  const lines = logCalls(await read($, board), setup.t)
+  const lines = logCalls(await read($, board), setup)
   return lines.length === 0 ? setup.t.nothingYet : lines.map(l => l.line).join('\n')
 }
 
@@ -924,6 +962,8 @@ export const register: Register = (on, options) => {
     // A -p run or the SDK draws nowhere (surface null): no window.
     windowed.isMap = e.surface === 'terminal' && (await quietly(() => windowIsTheMap($, setup))) === true
     lastContext = undefined
+    lastTokens = undefined
+    awaiting = []
     ahead = undefined
     // A -p run or the SDK shows nowhere: it keeps no status.
     if (e.surface !== null) {
@@ -1074,7 +1114,7 @@ export const register: Register = (on, options) => {
         await update($, board, b => ({
           ...b,
           agents: (b.agents ?? []).filter(id => id !== agentId),
-          entries: b.entries.map(x => (x.status === 'run' && (x.agentId === agentId || x.task === agentId) ? { ...x, status: 'ok' as const, endedAt: now } : x)),
+          ...closeRuns(b, x => x.agentId === agentId || x.task === agentId, now),
         }))
       })
     } else {
@@ -1096,7 +1136,7 @@ export const register: Register = (on, options) => {
           phase: e.isAborted ? undefined : ('done' as const),
           answeredAt: e.isAborted ? undefined : now,
           ...inTurn(b, t => ({ ...t, endedAt: now })),
-          entries: b.entries.map(x => (x.status === 'run' && x.from === 'core' && x.task === undefined ? { ...x, status: 'ok' as const, endedAt: now } : x)),
+          ...closeRuns(b, x => x.from === 'core' && x.task === undefined, now),
         }))
       })
     }
@@ -1130,10 +1170,11 @@ export const register: Register = (on, options) => {
         }),
       )
     }
-    await quietly(() => keepSatellite($, String(e.tool), e as unknown as Record<string, unknown>, setup))
     try {
       const ran = await next(e)
       const wasRefused = ran.deny !== undefined || (e.tool_use_id !== undefined && refused.delete(e.tool_use_id))
+      // A file or a server of a call that went through becomes a satellite, an edit marking it edited.
+      if (!wasRefused && ran.isError !== true) await quietly(() => keepSatellite($, String(e.tool), e as unknown as Record<string, unknown>, setup))
       // Claude's own plan, as the main loop's task tools set it.
       if (e.agentId === undefined && !wasRefused && ran.isError !== true && PLAN_TOOLS.has(String(e.tool))) {
         await quietly(async () => {
@@ -1167,7 +1208,7 @@ export const register: Register = (on, options) => {
       // With errorReasons on, a failed call also keeps the first line of its error, cleaned and cut; a shell's exit line is no reason.
       const failed = !wasRefused && ran.isError === true
       const body = String(ran.text ?? '').replace(/^\s*(?:Error: )?Exit code \d{1,3}\b[^\n]*\n?/, '')
-      const reason = setup.errorReasons && failed ? body.split('\n').map(line => clean(line, 72)).find(line => line !== '') : undefined
+      const reason = setup.errorReasons && failed ? firstText(body) : undefined
       await finish($, id, wasRefused ? 'block' : ran.isError === true ? 'err' : 'ok', undefined, code === undefined ? undefined : Number(code), reason)
       return ran
     } catch (failure) {
