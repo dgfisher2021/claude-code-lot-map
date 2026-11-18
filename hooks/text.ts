@@ -70,6 +70,14 @@ export type Strings = {
   /** A station's tooltip: what lands there (commands in backticks), and the label of each figure. */
   stationAbout: Record<StationId, string>
   tip: { calls: string; turn: string; running: string; time: string; errors: string; session: string; refused: string; pushed: string; tokens: string; mostUsed: string; read: string }
+  /** The map window's `?` button: its keys, then the chat's commands, each with what it does. */
+  keyHelp: {
+    title: string
+    window: string
+    chat: string
+    keys: { keys: string[]; label: string; note?: string }[]
+    commands: { command: string; label: string }[]
+  }
   context: string
   andMore: (n: number) => string
   /** The changed line's count, and what /workmap changed answers when nothing was written or edited. */
@@ -228,6 +236,30 @@ const en: Strings = {
     tokens: 'Tokens added to context',
     mostUsed: 'Most used',
     read: 'read',
+  },
+  keyHelp: {
+    title: 'Keys and commands',
+    window: 'In this window',
+    chat: 'In the chat',
+    keys: [
+      { keys: ['m'], label: 'Map and list, the map alone, or the list alone' },
+      { keys: ['?'], label: 'What the marks on the map mean' },
+      { keys: ['ArrowUp', 'ArrowDown'], label: 'Scroll back through every call' },
+      { keys: ['e'], label: 'Only errors and refusals' },
+      { keys: ['1 – 9'], label: "One station's calls", note: '0 shows all again' },
+      { keys: ['a'], label: "One subagent's calls at a time" },
+      { keys: ['/'], label: 'Search the rows', note: 'Enter keeps it, Esc clears it' },
+      { keys: ['q'], label: 'Close the window' },
+    ],
+    commands: [
+      { command: '/workmap', label: 'Open the map again' },
+      { command: '/workmap help', label: 'What the marks mean' },
+      { command: '/workmap usage', label: 'Context, limits and cost' },
+      { command: '/workmap recap', label: 'The session in a few lines' },
+      { command: '/workmap log', label: 'Every call, newest first' },
+      { command: '/workmap changed', label: 'The files Claude changed' },
+      { command: '/workmap all', label: 'Every session at a glance' },
+    ],
   },
   planHeader: (done, total) => `Plan ${done}/${total}`,
   planCalls: n => `${n} ${n === 1 ? 'call' : 'calls'}`,

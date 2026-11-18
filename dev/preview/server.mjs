@@ -12,7 +12,16 @@ import { fileURLToPath } from 'node:url'
 const HERE = fileURLToPath(new URL('.', import.meta.url))
 const ROOT = resolve(HERE, '../..')
 const PORT = Number(process.env.PREVIEW_PORT ?? 4747)
-const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.json': 'application/json' }
+const TYPES = {
+  '.html': 'text/html',
+  '.js': 'text/javascript',
+  '.mjs': 'text/javascript',
+  '.css': 'text/css',
+  '.svg': 'image/svg+xml',
+  '.json': 'application/json',
+}
+/** The map window's own page parts, which the preview shares: its lines and its tooltips. */
+const WINDOW = join(ROOT, 'renderer/window')
 
 /** Types stripped, and extensionless relative imports pointed at their `.ts` file, so the browser can load the module. */
 async function moduleOf(file) {
@@ -109,8 +118,9 @@ const server = createServer(async (req, res) => {
         return send(res, 200, TYPES['.js'], `throw new Error(${JSON.stringify(`${path}: ${error.message}`)})`)
       }
     }
-    const file = normalize(join(HERE, path === '/' ? 'index.html' : path))
-    if (!file.startsWith(HERE) || !TYPES[extname(file)]) return send(res, 404, 'text/plain', 'not found')
+    const [base, rel] = path.startsWith('/window/') ? [WINDOW, path.slice(8)] : [HERE, path === '/' ? 'index.html' : path]
+    const file = normalize(join(base, rel))
+    if (!file.startsWith(base) || !TYPES[extname(file)]) return send(res, 404, 'text/plain', 'not found')
     const body = await readFile(file).catch(() => undefined)
     return body === undefined ? send(res, 404, 'text/plain', 'not found') : send(res, 200, TYPES[extname(file)], body)
   } catch (error) {
@@ -120,7 +130,7 @@ const server = createServer(async (req, res) => {
 
 // A save in the drawing code or the preview reloads every open page.
 let pending
-for (const dir of [join(ROOT, 'hooks'), HERE]) {
+for (const dir of [join(ROOT, 'hooks'), HERE, WINDOW]) {
   watch(dir, () => {
     clearTimeout(pending)
     pending = setTimeout(() => clients.forEach(c => c.write('data: reload\n\n')), 150)

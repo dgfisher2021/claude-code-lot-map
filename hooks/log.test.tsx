@@ -70,12 +70,14 @@ test('feed.json carries the log and the station names', async ($, on) => {
   await $.tool.call({ tool: 'Read', file_path: '/a/b/one.py' })
   await $.tool.call({ tool: 'Bash', command: 'npm test', description: 'Run the tests' })
   await $.command.run({ command: 'workmap', args: 'window' } as never)
-  const dir = runs.find(argv => argv[0] === 'wt.exe')?.at(-1) ?? ''
-  const feed = JSON.parse(written.filter(w => w.path === `${dir}/feed.json`).at(-1)?.text ?? '{}')
+  // From WSL the window is Edge's, opened on the live folder by its name.
+  const live = runs.find(argv => argv[1]?.endsWith('/renderer/serve.mjs'))?.[3] ?? ''
+  const feed = JSON.parse(written.filter(w => w.path === `/tmp/workmap-live-${live}/feed.json`).at(-1)?.text ?? '{}')
   expect(feed.log.map((l: { line: string }) => l.line)).toEqual([expect.stringContaining('Run the tests'), expect.stringContaining('b/one.py')])
   expect(feed.log[0].station).toBe('shell')
   expect(feed.stations).toEqual(STATIONS.map(s => ({ id: s.id, name: en.stations[s.id] })))
   expect(feed.keys).toBe(en.windowKeys)
+  expect(feed.keyHelp).toEqual(en.keyHelp)
   expect(feed.errorsWord).toBe(en.logErrors)
   await $.session.end({ reason: 'other' } as never)
 })

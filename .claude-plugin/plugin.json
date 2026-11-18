@@ -170,10 +170,11 @@
       "title": "Map window in Windows Terminal",
       "options": [
         "auto",
+        "pane",
         "off"
       ],
       "default": "auto",
-      "description": "In Windows Terminal from WSL, auto makes the map a window of its own in place of the pane: the picture, as the app draws it, with the rows under it, opened beside the session the first time you write in it. Off keeps the pane, in cells."
+      "description": "In Windows Terminal from WSL, auto makes the map a window of its own in place of the pane: an Edge app window you can drag, resize and move to another screen, with the rows under it and tooltips over it, opened the first time you write in the session. Pane splits the terminal's tab for the map instead, as a picture; off keeps the pane, in cells."
     },
     "notify": {
       "type": "boolean",

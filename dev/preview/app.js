@@ -1,5 +1,7 @@
 // The preview page: draws the window (map and rows) from the made-up session or a live one, with tooltips and notes.
 
+import { feedLines, freshList } from '/window/lines.mjs'
+import { HELP_ICON, drawLines, showHelp, showTip as showTipAt, tipAt, untitle } from '/window/ui.js'
 import { LOOP_S, boardAt } from './scene.js'
 
 const $ = id => document.getElementById(id)
@@ -82,37 +84,18 @@ function mapRoom() {
   return { w: pane.clientWidth, h: Math.min(room, Math.round((pane.clientWidth * (lib?.H ?? 430)) / (lib?.W ?? 460))) }
 }
 
+/** The lines under the map as the window draws them (renderer/window), cut to windowRows; the ? shows the feed's keys. */
+let keyHelp
 function renderRows(feed) {
+  keyHelp = feed.keyHelp
+  $('help').hidden = keyHelp === undefined
   const rows = Math.max(3, Number(state.options.windowRows) || 10)
-  const lines = [{ line: feed.now ?? '', cls: `n-${feed.nowTone ?? 'plain'}` }]
-  for (const w of feed.warnings ?? []) lines.push({ line: w, cls: 't-run' })
-  for (const p of feed.plan ?? []) lines.push({ line: p.line, cls: `t-${p.tone}${p.isBold ? ' b' : ''} wrap` })
-  if (feed.changed) lines.push({ line: feed.changed.line, cls: `t-${feed.changed.tone}` })
-  for (const p of feed.pinned ?? []) lines.push({ line: p.line, cls: `t-${p.tone}` })
-  for (const r of feed.rows ?? []) lines.push({ line: r.line, cls: `t-${r.tone}${r.isBold ? ' b' : ''}` })
-  rowsBox.replaceChildren(
-    ...lines.slice(0, rows).map(({ line, cls }) => {
-      const div = document.createElement('div')
-      div.className = cls
-      // A line that wraps breaks between its parts, never inside one: "30.0 s" stays whole.
-      if (cls.includes('wrap'))
-        div.innerHTML = line
-          .split(' · ')
-          .map(part => `<span>${esc(part)}</span>`)
-          .join(' · ')
-      else div.textContent = line
-      return div
-    }),
-  )
+  drawLines(rowsBox, feedLines(feed, freshList(), rows, false).lines.slice(0, rows))
 }
 
 function setMap(svg) {
   mapBox.innerHTML = svg
-  // The page draws its own tooltips: each <title> becomes data-title, so the browser's plain one never shows as well.
-  for (const title of mapBox.querySelectorAll('title')) {
-    title.parentElement?.setAttribute('data-title', title.textContent ?? '')
-    title.remove()
-  }
+  untitle(mapBox)
   placePins()
   showTip()
 }
@@ -136,6 +119,7 @@ function drawScene() {
     changed: lib.changedLine(board.changed, t) ?? null,
     pinned: lib.pinnedLines(board.entries, now, t),
     rows: lib.feedLines(board.entries, t, board.agentNames, board.turns, setup.contextCost),
+    keyHelp: t.keyHelp,
   })
   $('scrub').value = String(s)
   $('clock').textContent = `${s.toFixed(1)} s`
@@ -172,86 +156,20 @@ function draw() {
 // ---- tooltips ---------------------------------------------------------------------------------
 
 let pointer
-/** The title of whatever is under the pointer, walking up to the nearest element that carries one. */
-function titleAt(x, y) {
-  for (let el = document.elementFromPoint(x, y); el && el !== mapBox; el = el.parentElement) {
-    const title = el.getAttribute?.('data-title')
-    if (title) return title
-  }
-  return undefined
-}
-/** The structured tooltip of whatever is under the pointer, when the drawing gives one (a station does). */
-function tipAt(x, y) {
-  for (let el = document.elementFromPoint(x, y); el && el !== mapBox; el = el.parentElement) {
-    const data = el.getAttribute?.('data-tip')
-    if (data) return JSON.parse(data)
-  }
-  return undefined
-}
+let keysShown = false
+const showTip = () => keysShown || showTipAt(tip, mapBox, pointer)
 
-// The figures' icons on a 24-unit grid; each matches the mark it explains on the map, where there is one.
-const ICONS = {
-  calls: '<path d="M4 9h16M4 15h16M10 3 8 21M16 3l-2 18"/>',
-  turn: '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>',
-  running: '<path d="M21 12a9 9 0 1 1-6.22-8.56"/>',
-  time: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
-  errors: '<circle cx="12" cy="12" r="8" fill="currentColor" stroke="none"/>',
-  session: '<path d="M18 6 6 18M6 6l12 12"/>',
-  refused: '<circle cx="12" cy="12" r="8"/><path d="M6.5 6.5l11 11"/>',
-  pushed: '<path d="M12 5v14M19 12l-7 7-7-7"/>',
-  tokens: '<path d="m12 3 9 4.5-9 4.5-9-4.5zM3 12l9 4.5 9-4.5M3 16.5l9 4.5 9-4.5"/>',
+// The ? in the corner: the window's keys and the chat's commands, as the map window shows them.
+const help = $('help')
+help.innerHTML = HELP_ICON
+const showKeys = isShown => {
+  keysShown = isShown
+  showHelp(tip, help, isShown ? keyHelp : undefined)
 }
-// An icon carries its own size, so it stays small even before the page's styles apply.
-// A most-used item's icon: a pencil for a file edited, an eye for one only read, a server for an MCP server.
-const TOP_ICONS = {
-  edited: '<path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>',
-  read: '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
-  server: '<path d="M4 4h16v6H4zM4 14h16v6H4zM8 7h.01M8 17h.01"/>',
-}
-const svgIcon = (inner, size = 16, viewBox = '0 0 24 24', width = 2) =>
-  `<svg width="${size}" height="${size}" viewBox="${viewBox}" fill="none" stroke="currentColor" stroke-width="${width}" stroke-linecap="round" stroke-linejoin="round">${inner}</svg>`
-const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c])
-// Backticks in the words mark a command.
-const withCode = s => esc(s).replace(/`([^`]+)`/g, '<code>$1</code>')
-
-/** A station's tooltip: its icon and name, what lands there, then a row for each figure. */
-function tipHtml(t) {
-  const glyph = lib.STATIONS.find(s => s.id === t.station)?.icon ?? ''
-  const rows = t.figures
-    .map(f => `<div class="fig${f.tone ? ` t-${f.tone}` : ''}">${svgIcon(ICONS[f.icon] ?? '')}<span>${esc(f.label)}</span><b>${esc(f.value)}</b></div>`)
-    .join('')
-  const top = t.top
-    ? `<div class="tip-section">${esc(t.top.title)}</div><div class="tip-top">` +
-      t.top.items
-        .map(
-          i =>
-            `<div class="fig">${svgIcon(TOP_ICONS[i.icon] ?? '')}<span>${esc(i.name)}${i.note ? ` <small>${esc(i.note)}</small>` : ''}</span><b>${esc(i.uses)}</b></div>`,
-        )
-        .join('') +
-      '</div>'
-    : ''
-  return (
-    `<div class="tip-head">${svgIcon(`<path d="${esc(glyph)}"/>`, 20, '-10 -10 20 20', 1.4)}<strong>${esc(t.name)}</strong></div>` +
-    `<p class="tip-about">${withCode(t.about)}</p><div class="tip-figures">${rows}</div>${top}`
-  )
-}
-
-function showTip() {
-  if (helpShown) return
-  const rich = pointer && tipAt(pointer.x, pointer.y)
-  const text = pointer && !rich && titleAt(pointer.x, pointer.y)
-  tip.style.display = rich || text ? 'block' : 'none'
-  if (!rich && !text) return
-  tip.classList.toggle('rich', Boolean(rich))
-  tip.classList.remove('help')
-  if (rich) tip.innerHTML = tipHtml(rich)
-  else tip.textContent = text
-  // Beside the pointer, flipped to the other side near an edge of the window.
-  const left = pointer.x + 16 + tip.offsetWidth > innerWidth - 8 ? pointer.x - 16 - tip.offsetWidth : pointer.x + 16
-  const top = pointer.y + 18 + tip.offsetHeight > innerHeight - 8 ? pointer.y - 12 - tip.offsetHeight : pointer.y + 18
-  tip.style.left = `${Math.max(8, left)}px`
-  tip.style.top = `${Math.max(8, top)}px`
-}
+help.addEventListener('mouseenter', () => showKeys(true))
+help.addEventListener('focus', () => showKeys(true))
+help.addEventListener('mouseleave', () => showKeys(false))
+help.addEventListener('blur', () => showKeys(false))
 mapBox.addEventListener('mousemove', e => {
   pointer = { x: e.clientX, y: e.clientY }
   showTip()
@@ -260,64 +178,6 @@ mapBox.addEventListener('mouseleave', () => {
   pointer = undefined
   showTip()
 })
-
-// ---- keys and commands ----------------------------------------------------------------------
-
-// What the ? in the corner explains: the window's keys, then the commands typed in the chat.
-const KEYS = [
-  [['m'], 'Map and list, the map alone, or the list alone'],
-  [['?'], 'What the marks on the map mean'],
-  [['↑', '↓'], 'Scroll back through every call'],
-  [['e'], 'Only errors and refusals'],
-  [['1', '–', '9'], "One station's calls", '0 shows all again'],
-  [['a'], "One subagent's calls at a time"],
-  [['/'], 'Search the rows', 'Enter keeps it, Esc clears it'],
-  [['q'], 'Close the window'],
-]
-const COMMANDS = [
-  ['/workmap', 'Open the map again'],
-  ['/workmap help', 'What the marks mean'],
-  ['/workmap usage', 'Context, limits and cost'],
-  ['/workmap recap', 'The session in a few lines'],
-  ['/workmap log', 'Every call, newest first'],
-  ['/workmap changed', 'The files Claude changed'],
-  ['/workmap all', 'Every session at a glance'],
-]
-// The arrow keys drawn as icons: a character arrow is too small to read in a key cap.
-const ARROWS = { '↑': 'M12 19V5M5 12l7-7 7 7', '↓': 'M12 5v14M19 12l-7 7-7-7' }
-const keyCap = k =>
-  k === '–'
-    ? '–'
-    : ARROWS[k]
-      ? `<kbd class="arrow" aria-label="${k === '↑' ? 'Up' : 'Down'}">${svgIcon(`<path d="${ARROWS[k]}"/>`, 16)}</kbd>`
-      : `<kbd>${esc(k)}</kbd>`
-function helpHtml() {
-  const keys = KEYS.map(
-    ([keys, does, more]) => `<span>${keys.map(keyCap).join(' ')}</span><span>${esc(does)}${more ? `<br><small>${esc(more)}</small>` : ''}</span>`,
-  ).join('')
-  const commands = COMMANDS.map(([command, does]) => `<span><kbd>${esc(command)}</kbd></span><span>${esc(does)}</span>`).join('')
-  return (
-    `<div class="tip-head">${$('help').innerHTML}<strong>Keys and commands</strong></div>` +
-    // One grid for both sections, so every description starts in the same column.
-    `<div class="keys"><div class="tip-section">In this window</div>${keys}<div class="tip-section">In the chat</div>${commands}</div>`
-  )
-}
-let helpShown = false
-function showHelp(isShown) {
-  helpShown = isShown
-  tip.style.display = isShown ? 'block' : 'none'
-  if (!isShown) return
-  tip.classList.add('rich', 'help')
-  tip.innerHTML = helpHtml()
-  // Under the icon, its right edge on the icon's, kept on screen.
-  const icon = $('help').getBoundingClientRect()
-  tip.style.left = `${Math.max(8, icon.right - tip.offsetWidth)}px`
-  tip.style.top = `${icon.bottom + 6}px`
-}
-$('help').addEventListener('mouseenter', () => showHelp(true))
-$('help').addEventListener('mouseleave', () => showHelp(false))
-$('help').addEventListener('focus', () => showHelp(true))
-$('help').addEventListener('blur', () => showHelp(false))
 
 // ---- notes ------------------------------------------------------------------------------------
 
@@ -339,7 +199,7 @@ function pinOf(n, title) {
   const pin = document.createElement('span')
   pin.className = 'pin'
   pin.textContent = String(n)
-  pin.dataset.title = title
+  pin.title = title
   return pin
 }
 function placePins() {
@@ -378,7 +238,8 @@ mapBox.addEventListener('click', async e => {
   if (!e.shiftKey || !inner()) return
   const wasPlaying = state.isPlaying
   setPlaying(false)
-  const target = titleAt(e.clientX, e.clientY)
+  const found = tipAt(mapBox, e.clientX, e.clientY)
+  const target = found?.tip?.name ?? found?.text
   const text = prompt(`Note${target ? ` on "${target}"` : ''}:`)
   if (text?.trim()) {
     const { x, y } = toMap(e.clientX, e.clientY)

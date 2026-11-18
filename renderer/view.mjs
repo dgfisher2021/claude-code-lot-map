@@ -16,6 +16,7 @@ import { fileURLToPath } from 'node:url'
 import { inflateSync } from 'node:zlib'
 
 import { layout } from './layout.mjs'
+import { feedLines, freshList, listKey, nextAgent } from './window/lines.mjs'
 
 const live = process.argv[2]
 // --all: every session at a glance, in overview.mjs; this module goes no further.
@@ -152,101 +153,34 @@ function wrapLine(text) {
   return lines
 }
 
-/** The subagents feed.json names, and the one whose calls the rows show now (-1: all). */
-let crew = []
-let watched = -1
+/** The list's filters and place (lines.mjs), the feed they last applied to, and how many log lines make a page. */
+let list = freshList()
+let lastFeed = {}
+let logPage = 5
 
 /** `a` goes through the subagents one at a time, then back to all the rows. */
 function cycleAgent() {
-  watched = watched + 1 < crew.length ? watched + 1 : -1
+  list = nextAgent(list, lastFeed)
   feedAt = 0
   rows()
 }
 
-/** The rows of the watched subagent alone, under a line saying whose they are; all the rows when none is. */
-function forAgent(listed) {
-  if (watched < 0 || !crew[watched]) return listed
-  const { id, name } = crew[watched]
-  const own = listed.filter(row => row.agentId === id)
-  return [{ line: `a ${watched + 1}/${crew.length} · ${name}`, tone: 'run', isBold: true }, ...own]
-}
+/** A press's keys by the browser's names, as lines.mjs takes them: the escape sequences the list knows, then characters. */
+const KEY_NAMES = { '\x1b[A': 'ArrowUp', '\x1b[B': 'ArrowDown', '\x1b[5~': 'PageUp', '\x1b[6~': 'PageDown', '\r': 'Enter', '\n': 'Enter', '\x1b': 'Escape', '\x7f': 'Backspace', '\b': 'Backspace' }
 
-// ---- more rows on demand: scroll the log, filter it, search it ------------------------------------
-
-/** Lines scrolled past the top of the log; 0 with no filter shows the live rows. */
-let logAt = 0
-/** The filters: only errors and refusals, only one station (its id), and the typed search (`isTyping` while it is being typed). */
-let onlyErrors = false
-let onlyStation = ''
-let search = ''
-let isTyping = false
-/** How many log lines fit the list at its last drawing: a page. */
-let logPage = 5
-/** The station names and the errors' word, as feed.json last said them. */
-let stationList = []
-let errorsWord = 'errors'
-
-/**
- * Takes the keys that scroll and filter the log: ↑ ↓ PgUp PgDn, e, 0-9, / and Esc. While a search is typed every key
- * goes into it, q included. Gives back whether it took the whole press, so that the rest of the keys are left alone.
- */
+/** Takes the keys that scroll, filter and search the log; gives back whether a search took the whole press. */
 function logKeys(text) {
-  let took = isTyping
+  let took = list.isTyping
   for (const [key] of text.matchAll(/\x1b\[[0-9;?]*[ -\/]*[@-~]|[\s\S]/g)) {
-    if (key.length > 1) {
-      if (isTyping) continue
-      if (key === '\x1b[A') logAt = Math.max(0, logAt - 1)
-      else if (key === '\x1b[B') logAt += 1
-      else if (key === '\x1b[5~') logAt = Math.max(0, logAt - logPage)
-      else if (key === '\x1b[6~') logAt += logPage
-      continue
-    }
-    if (isTyping) {
-      if (key === '\r' || key === '\n') isTyping = false
-      else if (key === '\x1b') [search, isTyping] = ['', false]
-      else if (key === '\x7f' || key === '\b') search = Array.from(search).slice(0, -1).join('')
-      else if (key >= ' ') search += key
-      logAt = 0
-    } else if (key === '/') [search, isTyping, took, logAt] = ['', true, true, 0]
-    else if (key === '\x1b') [search, logAt] = ['', 0]
-    else if (key === 'e') [onlyErrors, logAt] = [!onlyErrors, 0]
-    else if (key >= '0' && key <= '9') [onlyStation, logAt] = [stationList[Number(key) - 1]?.id ?? '', 0]
+    const name = KEY_NAMES[key] ?? (key.length > 1 ? '' : key)
+    if (name === '') continue
+    const pressed = listKey(list, name, lastFeed, logPage)
+    list = pressed.list
+    took ||= pressed.took
   }
   feedAt = 0
   rows()
   return took
-}
-
-/**
- * The lines the list shows in `room` rows: the live rows, or while a filter holds or the list is scrolled, the log
- * (every call the board keeps, newest first) cut to it, under a line that says what filters and how many remain.
- */
-function logView(feed, room) {
-  if (typeof feed.keys === 'string' && feed.keys !== hintText) {
-    hintText = feed.keys
-    hint()
-  }
-  stationList = Array.isArray(feed.stations) ? feed.stations : []
-  if (typeof feed.errorsWord === 'string') errorsWord = feed.errorsWord
-  const isFiltered = onlyErrors || onlyStation !== '' || search !== '' || isTyping
-  if (!isFiltered && logAt === 0) return Array.isArray(feed.rows) ? feed.rows : []
-  const needle = search.toLowerCase()
-  const log = (Array.isArray(feed.log) ? feed.log : []).filter(
-    // The closing line, that older calls are gone, has no station and always stays.
-    l =>
-      !l.station ||
-      ((!onlyErrors || l.tone === 'bad' || l.tone === 'block') &&
-        (onlyStation === '' || l.station === onlyStation) &&
-        String(l.line).toLowerCase().includes(needle)),
-  )
-  const body = Math.max(1, room - (isFiltered ? 1 : 0))
-  logPage = body
-  logAt = Math.min(logAt, Math.max(0, log.length - body))
-  const shown = log.slice(logAt, logAt + body)
-  if (!isFiltered) return shown
-  const station = stationList.find(x => x.id === onlyStation)?.name
-  const what = [onlyErrors ? errorsWord : '', station ?? '', search !== '' || isTyping ? `/${search}${isTyping ? '_' : ''}` : ''].filter(Boolean)
-  return [{ line: `[${what.join(' · ')}] ${log.filter(l => l.station).length}`, tone: 'run' }, ...shown]
 }
 
 /** Draws the action now and the rows under it when feed.json has changed, clearing what the last ones left. */
@@ -265,8 +199,11 @@ function rows() {
     return
   }
   feedAt = stat.mtimeMs
-  crew = Array.isArray(feed.agents) ? feed.agents.filter(a => a && typeof a.id === 'string').map(a => ({ id: a.id, name: String(a.name ?? a.id) })) : []
-  if (watched >= crew.length) watched = -1
+  lastFeed = feed
+  if (typeof feed.keys === 'string' && feed.keys !== hintText) {
+    hintText = feed.keys
+    hint()
+  }
   // The rows the session's windowRows has the list keep: a change lays the window out again.
   const wanted = Math.round(Number(feed.windowRows))
   if (Number.isFinite(wanted) && wanted !== listMin) {
@@ -274,24 +211,18 @@ function rows() {
     relayout()
     return
   }
-  // The top line: a wait on the person in the accent, a finished turn in green.
-  const nowTone = { wait: '\x1b[1;38;2;225;172;110m', done: '\x1b[1;38;2;143;191;127m' }[feed.nowTone] ?? '\x1b[1m'
-  const lines = [`${nowTone}${fitLine(String(feed.now ?? ''))}\x1b[0m`]
-  // Warnings in amber, under the top line.
-  for (const line of Array.isArray(feed.warnings) ? feed.warnings : []) lines.push(`${TONES.run}${fitLine(String(line))}\x1b[0m`)
-  if (showsLegend) {
-    for (const line of Array.isArray(feed.legend) ? feed.legend : []) lines.push(...wrapLine(String(line)))
-  } else {
-    // Claude's plan, then work still going in the background, under the top line.
-    for (const { line, tone, isBold } of Array.isArray(feed.plan) ? feed.plan : []) {
-      lines.push(`${isBold === true ? '\x1b[1m' : ''}${TONES[tone] ?? ''}${fitLine(String(line))}\x1b[0m`)
-    }
-    if (feed.changed) lines.push(`${TONES[feed.changed.tone] ?? ''}${fitLine(String(feed.changed.line))}\x1b[0m`)
-    for (const { line, tone } of Array.isArray(feed.pinned) ? feed.pinned : []) lines.push(`${TONES[tone] ?? ''}${fitLine(String(line))}\x1b[0m`)
-    const listed = forAgent(logView(feed, size.feedRows - lines.length))
-    if (listed.length === 0) lines.push(`\x1b[2m${fitLine(String(feed.empty ?? ''))}\x1b[0m`)
-    for (const { line, tone, isBold } of listed) lines.push(`${isBold === true ? '\x1b[1m' : ''}${TONES[tone] ?? ''}${fitLine(String(line))}\x1b[0m`)
-  }
+  const shown = feedLines(feed, list, size.feedRows, showsLegend)
+  list = shown.list
+  logPage = shown.page ?? logPage
+  // The top line: a wait on the person in the accent, a finished turn in green; the legend wraps to the width.
+  const nowTone = { wait: '\x1b[1;38;2;225;172;110m', done: '\x1b[1;38;2;143;191;127m' }
+  const lines = shown.lines.flatMap(l =>
+    l.isNow
+      ? [`${nowTone[l.tone] ?? '\x1b[1m'}${fitLine(l.line)}\x1b[0m`]
+      : l.isLegend
+        ? wrapLine(l.line)
+        : [`${l.isBold === true ? '\x1b[1m' : ''}${TONES[l.tone] ?? ''}${fitLine(String(l.line))}\x1b[0m`],
+  )
   let text = ''
   for (let i = 0; i < size.feedRows; i++) text += `\x1b[${size.feedTop + i};1H\x1b[2K${lines[i] ?? ''}`
   out.write(text)

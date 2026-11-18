@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Work map</title>
+    <link rel="stylesheet" href="ui.css" />
+    <style>
+      :root {
+        --ground: #0a0c11;
+        --text: #cfd3da;
+        --dim: #8a909c;
+        --accent: #e1ac6e;
+        --bad: #e8654f;
+        --block: #e69646;
+        --done: #8fbf7f;
+        --mono: 'Cascadia Mono', 'Cascadia Code', Consolas, ui-monospace, monospace;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: var(--ground);
+        color: var(--text);
+        overflow: hidden;
+      }
+      body {
+        display: flex;
+        flex-direction: column;
+      }
+      #map {
+        position: relative;
+        flex: none;
+      }
+      #map svg {
+        display: block;
+      }
+      #lines {
+        font: 13px/17px var(--mono);
+        padding: 8px 10px 0;
+        overflow: hidden;
+        flex: 1;
+        min-height: 0;
+      }
+      #say {
+        position: absolute;
+        inset: 40% 0 auto;
+        text-align: center;
+        font: 13px var(--mono);
+        color: var(--dim);
+      }
+    </style>
+  </head>
+  <body>
+    <div id="map"><div id="say">Starting the map…</div></div>
+    <div id="lines" class="lines"></div>
+    <button id="help" type="button" aria-label="Keys and commands" hidden></button>
+    <div id="tip"></div>
+    <script type="module" src="window.js"></script>
+  </body>
+</html>

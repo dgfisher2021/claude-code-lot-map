@@ -1,0 +1,212 @@
+/* The lines under the map and the tooltips over it (ui.js), for the map window and the preview. A page defines the
+   colours: --text, --dim, --accent, --bad, --block, --done and --mono. */
+
+.t-run,
+.t-switch {
+  color: var(--accent);
+}
+.t-bad {
+  color: var(--bad);
+}
+.t-block {
+  color: var(--block);
+}
+.t-ok {
+  opacity: 0.55;
+}
+.b {
+  font-weight: 700;
+}
+.n-wait {
+  color: var(--accent);
+  font-weight: 700;
+}
+.n-done {
+  color: var(--done);
+  font-weight: 700;
+}
+.n-plain {
+  font-weight: 700;
+}
+/* A row keeps to one line, cut with an ellipsis; a plan line and the legend wrap. */
+.lines > div {
+  white-space: pre;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.lines > div.wrap {
+  white-space: pre-wrap;
+  padding-left: 2ch;
+  text-indent: -2ch;
+}
+.lines > div.legend {
+  white-space: normal;
+}
+.wrap span {
+  white-space: nowrap;
+}
+
+#tip {
+  position: fixed;
+  pointer-events: none;
+  background: #262a33;
+  color: var(--text);
+  border: 1px solid #3a404c;
+  border-radius: 5px;
+  padding: 5px 8px;
+  font:
+    13px/1.4 system-ui,
+    sans-serif;
+  max-width: 330px;
+  box-shadow: 0 4px 14px #0008;
+  display: none;
+  z-index: 9;
+}
+#tip.rich {
+  width: 330px;
+  max-width: 330px;
+  padding: 10px 12px 11px;
+}
+.tip-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+  color: #f0f1f4;
+}
+.tip-head svg {
+  width: 20px;
+  height: 20px;
+  color: var(--accent);
+  flex: none;
+}
+.tip-about {
+  margin: 5px 0 9px;
+  color: var(--dim);
+  font-size: 13px;
+  line-height: 1.45;
+}
+.tip-about code {
+  font: 12px var(--mono);
+  color: var(--text);
+  background: #1b1e25;
+  border: 1px solid #343a45;
+  border-radius: 3px;
+  padding: 0 3px;
+  white-space: nowrap;
+}
+.tip-figures {
+  border-top: 1px solid #3a404c;
+  padding-top: 8px;
+  display: grid;
+  gap: 5px;
+}
+.fig {
+  display: grid;
+  grid-template-columns: 16px 1fr auto;
+  gap: 8px;
+  align-items: center;
+  font-size: 13px;
+}
+.tip-figures + .section {
+  margin: 10px 0 5px;
+}
+.tip-top {
+  display: grid;
+  gap: 5px;
+}
+.fig small {
+  color: var(--dim);
+  font-size: 11px;
+}
+.fig svg {
+  width: 16px;
+  height: 16px;
+  color: var(--dim);
+}
+.fig b {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.fig.t-bad,
+.fig.t-bad svg {
+  color: var(--bad);
+}
+.fig.t-block,
+.fig.t-block svg {
+  color: var(--block);
+}
+.fig.t-run svg,
+.fig.t-run b {
+  color: var(--accent);
+}
+
+/* The ? button in the upper right corner, and the keys and commands it shows. */
+#help {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 5;
+  padding: 2px;
+  border: 0;
+  background: none;
+  color: var(--dim);
+  cursor: help;
+  line-height: 0;
+}
+#help:hover,
+#help:focus-visible {
+  color: var(--accent);
+  outline: none;
+}
+#tip.help {
+  width: 420px;
+  max-width: 420px;
+  padding: 10px 12px 11px;
+}
+#tip.help .tip-head svg {
+  color: var(--dim);
+}
+.keys {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 6px 12px;
+  align-items: center;
+  margin-top: 8px;
+}
+/* A section's label: the keys tooltip's two, and a station's Most used. */
+.section {
+  grid-column: 1 / -1;
+  margin-top: 4px;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+.keys .k {
+  white-space: nowrap;
+}
+.keys small {
+  display: block;
+  font-size: 12px;
+  color: var(--dim);
+}
+kbd {
+  display: inline-block;
+  min-width: 26px;
+  font: 14px/22px var(--mono);
+  text-align: center;
+  color: var(--text);
+  background: #1b1e25;
+  border: 1px solid #3a404c;
+  border-bottom-width: 2px;
+  border-radius: 5px;
+  padding: 0 7px;
+}
+kbd.arrow {
+  padding: 0 4px;
+}
+kbd.arrow svg {
+  display: block;
+  margin: 3px auto;
+}
