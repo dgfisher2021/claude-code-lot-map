@@ -67,13 +67,24 @@
         overflow: hidden;
         text-overflow: ellipsis;
       }
+      /* A plan line wraps, its later lines under its words rather than under its mark. */
+      #rows div.wrap {
+        white-space: pre-wrap;
+        padding-left: 2ch;
+        text-indent: -2ch;
+      }
+      #rows div.wrap span {
+        white-space: nowrap;
+      }
       #hint {
         font: 12px/17px var(--mono);
         color: var(--dim);
         opacity: 0.7;
         padding: 0 10px 6px;
+      }
+      /* The hint wraps between keys, never inside one. */
+      #hint span {
         white-space: nowrap;
-        overflow: hidden;
       }
       .t-run,
       .t-switch {
@@ -325,7 +336,10 @@
       <div id="error"></div>
       <div id="map"></div>
       <div id="rows"></div>
-      <div id="hint">m map · ? legend · ↑↓ scroll · e errors · 1-9 station · a agent · / search · q close</div>
+      <div id="hint">
+        <span>m map</span> · <span>? legend</span> · <span>↑↓ scroll</span> · <span>e errors</span> · <span>1-9 station</span> · <span>a agent</span> ·
+        <span>/ search</span> · <span>q close</span>
+      </div>
     </div>
 
     <div id="side">

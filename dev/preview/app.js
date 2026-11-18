@@ -86,7 +86,7 @@ function renderRows(feed) {
   const rows = Math.max(3, Number(state.options.windowRows) || 10)
   const lines = [{ line: feed.now ?? '', cls: `n-${feed.nowTone ?? 'plain'}` }]
   for (const w of feed.warnings ?? []) lines.push({ line: w, cls: 't-run' })
-  for (const p of feed.plan ?? []) lines.push({ line: p.line, cls: `t-${p.tone}${p.isBold ? ' b' : ''}` })
+  for (const p of feed.plan ?? []) lines.push({ line: p.line, cls: `t-${p.tone}${p.isBold ? ' b' : ''} wrap` })
   if (feed.changed) lines.push({ line: feed.changed.line, cls: `t-${feed.changed.tone}` })
   for (const p of feed.pinned ?? []) lines.push({ line: p.line, cls: `t-${p.tone}` })
   for (const r of feed.rows ?? []) lines.push({ line: r.line, cls: `t-${r.tone}${r.isBold ? ' b' : ''}` })
@@ -94,7 +94,13 @@ function renderRows(feed) {
     ...lines.slice(0, rows).map(({ line, cls }) => {
       const div = document.createElement('div')
       div.className = cls
-      div.textContent = line
+      // A line that wraps breaks between its parts, never inside one: "30.0 s" stays whole.
+      if (cls.includes('wrap'))
+        div.innerHTML = line
+          .split(' · ')
+          .map(part => `<span>${esc(part)}</span>`)
+          .join(' · ')
+      else div.textContent = line
       return div
     }),
   )
