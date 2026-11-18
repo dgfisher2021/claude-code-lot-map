@@ -1,6 +1,6 @@
 // What the map knows: which station an action belongs to, what to call it, and how to draw the board.
 // Nothing here touches the engine.
-import type { Board, Entry, PlanItem, StationId, Status, TurnSummary } from '../types'
+import type { Board, Entry, PlanItem, Satellite, StationId, Status, TurnSummary } from '../types'
 import { clean, formatMs, shortModel } from './classify'
 import { stringsFor, tokensShort } from './text'
 import type { Strings } from './text'
@@ -258,6 +258,11 @@ export function stillChangeIn(board: Board, now: number): number | undefined {
       const elapsed = now - Math.min(...running.map(e => e.startedAt))
       waits.push(STILL_STEP_MS - (elapsed % STILL_STEP_MS))
     } else if (isLit || isAlarm) waits.push(span - fade)
+    // A lit satellite goes out when its time is up.
+    for (const sat of drawnOf(board.satellites?.[s.id])) {
+      const left = satelliteLitFor(sat, now)
+      if (left !== undefined) waits.push(left)
+    }
   }
   for (const leg of legsOf(recent, now)) if (leg.age < TRAIL_HOLD_MS) waits.push(TRAIL_HOLD_MS - leg.age)
   return waits.length > 0 ? Math.max(1, Math.min(...waits)) : undefined
@@ -675,7 +680,7 @@ export function drawMap(board: Board, now: number, setup: Setup, isFilling = fal
     body += pulse(b, a, e.status === 'ok' ? c.ash : c.red, now - (e.endedAt as number), setup.contextCost ? pulseRadius(e.tokens, 2.6) : 2.6)
   }
 
-  body += drawn.map(d => d.over).join('')
+  body += drawn.map(d => d.over).join('') + satellites(board, now, setup, c, isStill)
 
   // Each subagent still at work circles the agents station.
   const crew = (board.agents ?? []).slice(0, 6)
@@ -1232,4 +1237,101 @@ export function describeNow(board: Board, t: Strings, now: number, withContext =
   const top = running[running.length - 1]
   if (top === undefined) return { text: `${t.idle}${context}`, tone: 'plain' }
   return { text: `${t.stations[top.station]}: ${top.label}${running.length > 1 ? t.andMore(running.length - 1) : ''}${context}`, tone: 'plain' }
+}
+
+// ---- satellites -------------------------------------------------------------------------------
+
+/** How many satellites a station keeps, how many it draws, and how long a name shows. */
+const SAT_KEPT = 12
+const SAT_DRAWN = 5
+const SAT_NAME = 12
+/** The lowest a satellite's label may reach: the strip under the map starts below it. */
+const SAT_BOTTOM = 428
+
+/** The satellites with one more use of `name` at `station`: twelve kept, the least used going first and never the newest. */
+export function withSatellite(sat: Board['satellites'], station: StationId, name: string, isEdited: boolean, now: number): Board['satellites'] {
+  const list = sat?.[station] ?? []
+  const had = list.find(s => s.name === name)
+  const next: Satellite = { name, uses: (had?.uses ?? 0) + 1, ...(isEdited || had?.isEdited === true ? { isEdited: true as const } : {}), lastAt: now }
+  const rest = list.filter(s => s.name !== name)
+  if (rest.length >= SAT_KEPT) {
+    const weakest = rest.reduce((w, s) => (s.uses < w.uses || (s.uses === w.uses && s.lastAt < w.lastAt) ? s : w))
+    rest.splice(rest.indexOf(weakest), 1)
+  }
+  return { ...sat, [station]: [...rest, next] }
+}
+
+/** The satellites a station draws: the most used, the latest first among equals. */
+const drawnOf = (list: readonly Satellite[] | undefined): Satellite[] => [...(list ?? [])].sort((a, b) => b.uses - a.uses || b.lastAt - a.lastAt).slice(0, SAT_DRAWN)
+
+/** How long a satellite stays lit after its use, or undefined when it is not lit. */
+const satelliteLitFor = (s: Satellite, now: number): number | undefined => (now - s.lastAt >= 0 && now - s.lastAt < GLOW_MS ? GLOW_MS - (now - s.lastAt) : undefined)
+
+type Box = { x0: number; y0: number; x1: number; y1: number }
+type Disc = { x: number; y: number; r: number }
+const overlap = (a: Box, b: Box): boolean => a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y0 < a.y1
+const touches = (b: Box, d: Disc): boolean => Math.hypot(Math.max(b.x0 - d.x, 0, d.x - b.x1), Math.max(b.y0 - d.y, 0, d.y - b.y1)) < d.r
+
+/**
+ * The small labelled dots around the stations that serve files or servers: on an arc outside the station, away from the core,
+ * moved along the arc (and out a ring) wherever a name, a count, another station or the edge is in the way.
+ */
+function satellites(board: Board, now: number, setup: Setup, c: Palette, isStill: boolean): string {
+  if (STATIONS.every(s => (board.satellites?.[s.id]?.length ?? 0) === 0)) return ''
+  const core: Point = { x: CX, y: CY }
+  const discs: Disc[] = [{ ...core, r: CORE + 16 }]
+  const boxes: Box[] = []
+  STATIONS.forEach((s, i) => {
+    const p = place(i)
+    discs.push({ ...p, r: s.id === 'agents' ? NODE + 34 : NODE + 12 })
+    const half = ([...setup.t.stations[s.id]].length * 7.2) / 2 + 2
+    boxes.push({ x0: p.x - half, y0: p.y + NODE + 3, x1: p.x + half, y1: p.y + NODE + 19 })
+    if ((board.counts[s.id] ?? 0) > 0) boxes.push({ x0: p.x - 50, y0: p.y + NODE + 19, x1: p.x + 50, y1: p.y + NODE + 32 })
+  })
+  const rim = `paint-order="stroke" stroke="${c.ground}" stroke-width="3" stroke-linejoin="round"`
+  let out = ''
+  STATIONS.forEach((s, i) => {
+    if (s.id === 'agents') return
+    const p = place(i)
+    const away = Math.atan2(p.y - CY, p.x - CX)
+    for (const sat of drawnOf(board.satellites?.[s.id])) {
+      const label = clean(sat.name, SAT_NAME)
+      const width = [...label].length * 4.4 + 1
+      let spot: { x: number; y: number; isRight: boolean; box: Box; dot: Box } | undefined
+      for (const r of [NODE + 16, NODE + 30]) {
+        for (let k = 0; k < 19 && spot === undefined; k++) {
+          const a = away + ((k % 2 === 1 ? 1 : -1) * Math.ceil(k / 2) * 14) / r
+          const x = p.x + r * Math.cos(a)
+          const y = p.y + r * Math.sin(a)
+          const dot: Box = { x0: x - 4, y0: y - 4, x1: x + 4, y1: y + 4 }
+          for (const isRight of Math.cos(a) >= 0 ? [true, false] : [false, true]) {
+            const box: Box = isRight ? { x0: x + 5, y0: y - 5, x1: x + 6 + width, y1: y + 5 } : { x0: x - 6 - width, y0: y - 5, x1: x - 5, y1: y + 5 }
+            const isIn = Math.min(dot.x0, box.x0) >= 2 && Math.max(dot.x1, box.x1) <= W - 2 && Math.min(dot.y0, box.y0) >= 2 && Math.max(dot.y1, box.y1) <= SAT_BOTTOM
+            if (isIn && ![dot, box].some(b => boxes.some(o => overlap(b, o)) || discs.some(d => touches(b, d)))) {
+              spot = { x, y, isRight, box, dot }
+              break
+            }
+          }
+        }
+        if (spot !== undefined) break
+      }
+      if (spot === undefined) continue
+      boxes.push(spot.dot, spot.box)
+      const cx = n1(spot.x)
+      const cy = n1(spot.y)
+      const fill = sat.isEdited === true ? `fill="${c.dim}"` : `fill="none" stroke="${c.dim}" stroke-width="1"`
+      const left = satelliteLitFor(sat, now)
+      const lit =
+        left === undefined
+          ? ''
+          : isStill
+            ? `<circle cx="${cx}" cy="${cy}" r="3" fill="${c.hot}" data-lit="1"/>`
+            : `<circle cx="${cx}" cy="${cy}" r="3" fill="${c.hot}" data-lit="1"><animate attributeName="opacity" values="1;0" begin="${clock(left - GLOW_MS)}" dur="${clock(GLOW_MS)}" fill="freeze"/></circle>`
+      const title = `${sat.name}: ${setup.t.callsHere(sat.uses)}${sat.isEdited === true ? ` · ${setup.t.satelliteEdited}` : ''}`
+      out +=
+        `<g><title>${escapeXml(title)}</title><circle cx="${cx}" cy="${cy}" r="3" ${fill} data-satellite="${sat.isEdited === true ? 'edited' : 'read'}"/>${lit}` +
+        `<text x="${n1(spot.x + (spot.isRight ? 6 : -6))}" y="${n1(spot.y + 2.5)}" text-anchor="${spot.isRight ? 'start' : 'end'}" ${FONT} font-size="7" ${rim} fill="${c.dim}">${escapeXml(label)}</text></g>`
+    }
+  })
+  return out
 }

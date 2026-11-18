@@ -87,6 +87,8 @@ export type Strings = {
   notifyWaiting: (label: string) => string
   notifyDone: string
   fileForYou: string
+  /** A satellite's hover title says it was edited. */
+  satelliteEdited: string
   ms: (n: number) => string
   seconds: (s: string) => string
   minutes: (m: number, s: number) => string
@@ -209,6 +211,7 @@ const en: Strings = {
   notifyWaiting: label => `Needs you: ${label}`,
   notifyDone: 'Done: your turn',
   fileForYou: 'file for you',
+  satelliteEdited: 'edited',
   ms: n => `${n} ms`,
   seconds: s => `${s} s`,
   minutes: (m, s) => `${m} min ${s} s`,
@@ -323,6 +326,7 @@ const ru: Strings = {
   notifyWaiting: label => `Ждёт тебя: ${label}`,
   notifyDone: 'Готово: твой ход',
   fileForYou: 'файл тебе',
+  satelliteEdited: 'изменён',
   ms: n => `${n} мс`,
   seconds: s => `${s} с`,
   minutes: (m, s) => `${m} мин ${s} с`,
@@ -440,6 +444,7 @@ const es: Strings = {
   notifyWaiting: label => `Te espera: ${label}`,
   notifyDone: 'Listo: te toca',
   fileForYou: 'archivo para ti',
+  satelliteEdited: 'editado',
   ms: n => `${n} ms`,
   seconds: s => `${s} s`,
   minutes: (m, s) => `${m} min ${s} s`,
@@ -557,6 +562,7 @@ const fr: Strings = {
   notifyWaiting: label => `Vous attend : ${label}`,
   notifyDone: 'Terminé : à vous',
   fileForYou: 'fichier pour vous',
+  satelliteEdited: 'modifié',
   ms: n => `${n} ms`,
   seconds: s => `${s.replace('.', ',')} s`,
   minutes: (m, s) => `${m} min ${s} s`,
@@ -672,6 +678,7 @@ const de: Strings = {
   notifyWaiting: label => `Braucht dich: ${label}`,
   notifyDone: 'Fertig: du bist dran',
   fileForYou: 'Datei für dich',
+  satelliteEdited: 'bearbeitet',
   ms: n => `${n} ms`,
   seconds: s => `${s.replace('.', ',')} s`,
   minutes: (m, s) => `${m} Min. ${s} s`,
@@ -789,6 +796,7 @@ const it: Strings = {
   notifyWaiting: label => `Ti aspetta: ${label}`,
   notifyDone: 'Fatto: tocca a te',
   fileForYou: 'file per te',
+  satelliteEdited: 'modificato',
   ms: n => `${n} ms`,
   seconds: s => `${s.replace('.', ',')} s`,
   minutes: (m, s) => `${m} min ${s} s`,
@@ -907,6 +915,7 @@ const pt: Strings = {
   notifyWaiting: label => `Espera por ti: ${label}`,
   notifyDone: 'Pronto: é a tua vez',
   fileForYou: 'ficheiro para ti',
+  satelliteEdited: 'editado',
   ms: n => `${n} ms`,
   seconds: s => `${s.replace('.', ',')} s`,
   minutes: (m, s) => `${m} min ${s} s`,
