@@ -15,6 +15,7 @@ import {
   firstLine,
   framedMap,
   keepNewest,
+  logLines,
   memoryIds,
   PLAN_TOOLS,
   pinnedLines,
@@ -532,6 +533,7 @@ async function share($: EngineInterface, setup: Setup): Promise<void> {
         pinned,
         agents: agentList(state),
         rows: feedLines(state.entries, setup.t, state.agentNames, state.turns, setup.contextCost),
+        ...logFeed(state, setup),
         empty: setup.t.nothingYet,
         legend: setup.t.legend,
         windowRows: setup.windowRows,
@@ -625,6 +627,26 @@ async function showWindow($: EngineInterface, setup: Setup, opening: Opening): P
   return placed.isPlaced ? setup.t.opened : setup.t.cannotOpen(String(placed.reason))
 }
 
+/** Every call the board keeps and what filtering it needs: the station names, the keys' hint, the errors' word. */
+function logFeed(state: Board, setup: Setup) {
+  const { t } = setup
+  return {
+    log: logCalls(state, t),
+    stations: STATIONS.map(s => ({ id: s.id, name: t.stations[s.id] })),
+    keys: t.windowKeys,
+    errorsWord: t.logErrors,
+  }
+}
+
+/** The log: every kept call, and a last line when older ones are gone, counted from the stations' totals. */
+const logCalls = (state: Board, t: Setup['t']) => logLines(state.entries, t, state.agentNames, Object.values(state.counts).reduce((n, c) => n + (c ?? 0), 0))
+
+/** `/workmap log`: every call the board keeps, newest first, one a line. */
+async function logText($: EngineInterface, setup: Setup): Promise<string> {
+  const lines = logCalls(await read($, board), setup.t)
+  return lines.length === 0 ? setup.t.nothingYet : lines.map(l => l.line).join('\n')
+}
+
 /** `/workmap changed`: every changed file, most edits first, one a line. */
 async function changedFiles($: EngineInterface, setup: Setup): Promise<string> {
   const items = changedItems((await read($, board)).changed)
@@ -674,6 +696,7 @@ async function recapText($: EngineInterface, setup: Setup): Promise<string> {
 /** `/lot-map` and `/workmap`: the pane, or in Windows Terminal the window; `window` asks for the window anywhere. */
 async function runCommand($: EngineInterface, args: string, setup: Setup, opening: Opening): Promise<{ text: string }> {
   if (args.trim() === 'changed') return { text: await changedFiles($, setup) }
+  if (args.trim() === 'log') return { text: await logText($, setup) }
   if (args.trim() === 'usage') return { text: await usageLines($, setup) }
   if (args.trim() === 'recap') return { text: await recapText($, setup) }
   if (args.trim() === 'help') return { text: setup.t.legend.join('\n') }
@@ -875,8 +898,8 @@ export const register: Register = (on, options) => {
 
   on('session.start', async ($, e, next) => {
     // Two names for one command: lot-map, as the plugin is called, and workmap.
-    await quietly(() => $.command.register({ name: 'lot-map', description: t.command, argumentHint: '[window | help | changed | usage | recap | all]' }))
-    await quietly(() => $.command.register({ name: 'workmap', description: t.command, argumentHint: '[window | help | changed | usage | recap | all]' }))
+    await quietly(() => $.command.register({ name: 'lot-map', description: t.command, argumentHint: '[window | help | changed | usage | recap | log | all]' }))
+    await quietly(() => $.command.register({ name: 'workmap', description: t.command, argumentHint: '[window | help | changed | usage | recap | log | all]' }))
     picture.canShow = setup.terminalMap && setup.terminalPicture === 'auto' && (await quietly(() => showsPictures($))) === true
     windowed.isAsked = false
     // A -p run or the SDK draws nowhere (surface null): no window.

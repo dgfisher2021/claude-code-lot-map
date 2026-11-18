@@ -1204,6 +1204,22 @@ export function feedLines(
   return [header, ...rowLines(foldRows(mine, FEED_MAX - 1 - heads.length), t, agentNames, withCost), ...heads]
 }
 
+/** A line of the log, with the station of its call so that the window can filter; the closing line has none. */
+export type LogLine = FeedLine & { station?: StationId }
+
+/**
+ * Every call the board keeps, newest first and unfolded, in the rows' own format. When `calls`, the running total of
+ * counted calls from `counts`, is more than the board holds, a last line says older calls are gone.
+ */
+export function logLines(entries: readonly Entry[], t: Strings, agentNames: Readonly<Record<string, string>> = {}, calls = 0, withCost = false): LogLine[] {
+  const newest = entries.slice().reverse()
+  const rows = newest.map(entry => ({ entry, times: 1, tookMs: entry.endedAt === undefined ? 0 : Math.max(0, entry.endedAt - entry.startedAt) }))
+  const lines: LogLine[] = rowLines(rows, t, agentNames, withCost).map((l, i) => ({ ...l, station: newest[i]?.station }))
+  // A switch of model is no counted call.
+  const kept = entries.filter(e => e.mark !== 'switch').length
+  return calls > kept ? [...lines, { line: t.logGone(kept, calls), tone: 'plain' }] : lines
+}
+
 function rowLines(rows: readonly Row[], t: Strings, agentNames: Readonly<Record<string, string>>, withCost: boolean): FeedLine[] {
   const column = columnOf(t)
   return rows.map(({ entry, times, tookMs, tokens, isShared }) => {

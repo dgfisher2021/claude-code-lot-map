@@ -53,6 +53,7 @@ process.stdin.on('data', data => {
     cell = { w: Number(reply[2]), h: Number(reply[1]) }
     relayout()
   }
+  if (logKeys(data.toString())) return
   // Keys, with every escape sequence the terminal sends taken out first.
   const keys = text.replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g, '')
   if (/[q\x03]/.test(keys)) quit(0)
@@ -69,6 +70,9 @@ process.stdin.on('data', data => {
   }
   if (keys.includes('a')) cycleAgent()
 })
+
+/** The hint line: the session sends it in its own language with feed.json. */
+let hintText = 'q closes · ? legend · m map/list · ↑↓ scroll · e errors · 1-9 station · / find · a subagents'
 
 /** The rows the list keeps under the map: the session's `windowRows`, once feed.json says it. */
 let listMin = 10
@@ -103,7 +107,7 @@ function relayout() {
 
 function hint() {
   // Cut to the width: a line wrapping off the last row would scroll the window.
-  out.write(`\x1b[${size.rows};1H\x1b[2K\x1b[2m${fitLine('q closes · ? legend · m map/list · a subagents')}\x1b[0m`)
+  out.write(`\x1b[${size.rows};1H\x1b[2K\x1b[2m${fitLine(hintText)}\x1b[0m`)
 }
 
 /** A line in the middle of the map's room, until the first picture covers it. */
@@ -165,6 +169,84 @@ function forAgent(listed) {
   return [{ line: `a ${watched + 1}/${crew.length} · ${name}`, tone: 'run', isBold: true }, ...own]
 }
 
+// ---- more rows on demand: scroll the log, filter it, search it ------------------------------------
+
+/** Lines scrolled past the top of the log; 0 with no filter shows the live rows. */
+let logAt = 0
+/** The filters: only errors and refusals, only one station (its id), and the typed search (`isTyping` while it is being typed). */
+let onlyErrors = false
+let onlyStation = ''
+let search = ''
+let isTyping = false
+/** How many log lines fit the list at its last drawing: a page. */
+let logPage = 5
+/** The station names and the errors' word, as feed.json last said them. */
+let stationList = []
+let errorsWord = 'errors'
+
+/**
+ * Takes the keys that scroll and filter the log: ↑ ↓ PgUp PgDn, e, 0-9, / and Esc. While a search is typed every key
+ * goes into it, q included. Gives back whether it took the whole press, so that the rest of the keys are left alone.
+ */
+function logKeys(text) {
+  let took = isTyping
+  for (const [key] of text.matchAll(/\x1b\[[0-9;?]*[ -\/]*[@-~]|[\s\S]/g)) {
+    if (key.length > 1) {
+      if (isTyping) continue
+      if (key === '\x1b[A') logAt = Math.max(0, logAt - 1)
+      else if (key === '\x1b[B') logAt += 1
+      else if (key === '\x1b[5~') logAt = Math.max(0, logAt - logPage)
+      else if (key === '\x1b[6~') logAt += logPage
+      continue
+    }
+    if (isTyping) {
+      if (key === '\r' || key === '\n') isTyping = false
+      else if (key === '\x1b') [search, isTyping] = ['', false]
+      else if (key === '\x7f' || key === '\b') search = Array.from(search).slice(0, -1).join('')
+      else if (key >= ' ') search += key
+      logAt = 0
+    } else if (key === '/') [search, isTyping, took, logAt] = ['', true, true, 0]
+    else if (key === '\x1b') [search, logAt] = ['', 0]
+    else if (key === 'e') [onlyErrors, logAt] = [!onlyErrors, 0]
+    else if (key >= '0' && key <= '9') [onlyStation, logAt] = [stationList[Number(key) - 1]?.id ?? '', 0]
+  }
+  feedAt = 0
+  rows()
+  return took
+}
+
+/**
+ * The lines the list shows in `room` rows: the live rows, or while a filter holds or the list is scrolled, the log
+ * (every call the board keeps, newest first) cut to it, under a line that says what filters and how many remain.
+ */
+function logView(feed, room) {
+  if (typeof feed.keys === 'string' && feed.keys !== hintText) {
+    hintText = feed.keys
+    hint()
+  }
+  stationList = Array.isArray(feed.stations) ? feed.stations : []
+  if (typeof feed.errorsWord === 'string') errorsWord = feed.errorsWord
+  const isFiltered = onlyErrors || onlyStation !== '' || search !== '' || isTyping
+  if (!isFiltered && logAt === 0) return Array.isArray(feed.rows) ? feed.rows : []
+  const needle = search.toLowerCase()
+  const log = (Array.isArray(feed.log) ? feed.log : []).filter(
+    // The closing line, that older calls are gone, has no station and always stays.
+    l =>
+      !l.station ||
+      ((!onlyErrors || l.tone === 'bad' || l.tone === 'block') &&
+        (onlyStation === '' || l.station === onlyStation) &&
+        String(l.line).toLowerCase().includes(needle)),
+  )
+  const body = Math.max(1, room - (isFiltered ? 1 : 0))
+  logPage = body
+  logAt = Math.min(logAt, Math.max(0, log.length - body))
+  const shown = log.slice(logAt, logAt + body)
+  if (!isFiltered) return shown
+  const station = stationList.find(x => x.id === onlyStation)?.name
+  const what = [onlyErrors ? errorsWord : '', station ?? '', search !== '' || isTyping ? `/${search}${isTyping ? '_' : ''}` : ''].filter(Boolean)
+  return [{ line: `[${what.join(' · ')}] ${log.filter(l => l.station).length}`, tone: 'run' }, ...shown]
+}
+
 /** Draws the action now and the rows under it when feed.json has changed, clearing what the last ones left. */
 function rows() {
   let stat
@@ -204,7 +286,7 @@ function rows() {
     }
     if (feed.changed) lines.push(`${TONES[feed.changed.tone] ?? ''}${fitLine(String(feed.changed.line))}\x1b[0m`)
     for (const { line, tone } of Array.isArray(feed.pinned) ? feed.pinned : []) lines.push(`${TONES[tone] ?? ''}${fitLine(String(line))}\x1b[0m`)
-    const listed = forAgent(Array.isArray(feed.rows) ? feed.rows : [])
+    const listed = forAgent(logView(feed, size.feedRows - lines.length))
     if (listed.length === 0) lines.push(`\x1b[2m${fitLine(String(feed.empty ?? ''))}\x1b[0m`)
     for (const { line, tone, isBold } of listed) lines.push(`${isBold === true ? '\x1b[1m' : ''}${TONES[tone] ?? ''}${fitLine(String(line))}\x1b[0m`)
   }
