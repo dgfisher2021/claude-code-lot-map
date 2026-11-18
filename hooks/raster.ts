@@ -14,6 +14,7 @@ import {
   RIPPLE_MS,
   STATIONS,
   STILL_STEP_MS,
+  STRIP,
   SWITCH_MS,
   TRAIL_FADE_MS,
   TRAIL_HOLD_MS,
@@ -33,6 +34,7 @@ import {
   shortModel,
   stateOf,
   stationState,
+  stripOf,
   warningsOf,
   wearOf,
 } from './map'
@@ -523,6 +525,7 @@ export function paintMap(board: Board, now: number, setup: Setup, columns: numbe
 
   // The stations themselves, their names and counts under them.
   const hasSigns = NODE * s >= 3.5
+  let lowestName = -1
   STATIONS.forEach((st, i) => {
     const p = place(i)
     const { count, running, isLit, isAlarm, fade, span } = states[i] ?? stationState(st.id, recent, board, now)
@@ -560,9 +563,11 @@ export function paintMap(board: Board, now: number, setup: Setup, columns: numbe
       if (kept > 0 && width(parts.slice(1)) + glyphs(` ·${kept}`).length <= 10) parts.push({ text: ` ·${kept}`, fg: c.dim })
     }
     const length = parts.reduce((n, part) => n + glyphs(part.text).length, 0)
+    const nameRow = Math.min(rows - 1, Math.ceil(rowOf(p.y + NODE) - 0.3))
+    lowestName = Math.max(lowestName, nameRow)
     words.push({
       col: clamp(Math.round(colOf(p.x) - length / 2), 0, Math.max(0, columns - length)),
-      row: Math.min(rows - 1, Math.ceil(rowOf(p.y + NODE) - 0.3)),
+      row: nameRow,
       parts,
       ...(rim !== undefined ? { bg: rim } : {}),
     })
@@ -594,6 +599,25 @@ export function paintMap(board: Board, now: number, setup: Setup, columns: numbe
       })
     }
   })
+
+  // The timeline strip as a row of quarter blocks under the lowest name, where the map has a row to spare.
+  const stripRow = Math.floor(rowOf(STRIP.y + STRIP.h / 2))
+  const strip = stripRow > lowestName && stripRow < rows ? stripOf(board, now) : undefined
+  if (strip !== undefined) {
+    const col0 = Math.round(colOf(STRIP.x0))
+    const cols = Math.max(1, Math.round(colOf(STRIP.x1)) - col0)
+    // Per cell, the strongest mark in it: a fault, then a wait, then memory, then any other.
+    const cells: { glyph: string; fg: Rgb; rank: number }[] = []
+    const claim = (k: number, glyph: string, fg: Rgb, rank: number): void => {
+      if (k >= 0 && k < cols && rank > (cells[k]?.rank ?? 0)) cells[k] = { glyph, fg, rank }
+    }
+    for (const { from, to, kind, bad } of strip.marks) {
+      const [glyph, fg, rank] = bad ? ['▄', c.red, 4] : kind === 'wait' ? ['▚', c.accent, 3] : kind === 'memory' ? ['▄', c.mem, 2] : ['▄', c.accent, 1]
+      for (let k = Math.floor(from * cols); k <= Math.min(cols - 1, Math.floor(to * cols)); k++) claim(k, glyph as string, fg as Rgb, rank as number)
+    }
+    for (const t of strip.ticks) claim(Math.min(cols - 1, Math.floor(t * cols)), '▘', c.bone, 0.5)
+    cells.forEach((cell, k) => words.push({ col: col0 + k, row: stripRow, parts: [{ text: cell.glyph, fg: cell.fg }], ...(rim !== undefined ? { bg: rim } : {}) }))
+  }
 
   // Each subagent still at work circles the agents station.
   const agentsAt = place(indexOf('agents'))

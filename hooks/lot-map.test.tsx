@@ -674,13 +674,13 @@ test('the context ring, the crew, the model change and the light theme are drawn
 
   // Left to itself the map is drawn dark and carries the rules that repaint it on a light surface; a set theme carries none.
   expect(bare).toContain('<style>@media (prefers-color-scheme: light){[fill="#0a0c11"]{fill:#f5f2ea}')
-  expect(bare).toContain('<rect width="460" height="430" rx="12" fill="#0a0c11"/>')
+  expect(bare).toContain('<rect width="460" height="448" rx="12" fill="#0a0c11"/>')
   const dark = drawMap({ entries: [], counts: {} }, now, setupFrom({ theme: 'dark' }))
   expect(dark).not.toContain('<style>')
   expect(dark).not.toContain('#f5f2ea')
   const light = drawMap({ entries: [], counts: {} }, now, setupFrom({ theme: 'light' }))
   expect(light).not.toContain('<style>')
-  expect(light).toContain('<rect width="460" height="430" rx="12" fill="#f5f2ea"/>')
+  expect(light).toContain('<rect width="460" height="448" rx="12" fill="#f5f2ea"/>')
   // Whatever is lit, every color the dark drawing uses is one the rules know.
   const lit = drawMap(
     { entries: [entry('memory', now - 100, { from: 'inbound' }), entry('shell', now - 50, { status: 'err' }), entry('files', now - 20, { status: 'run', endedAt: undefined })], counts: { files: 50, memory: 3 }, pushed: 1, faults: { shell: 1 }, context: 80, agents: ['a'], switchedAt: now - 10, model: 'claude-fable-5-2' },
@@ -784,7 +784,7 @@ test('the ring can be turned so that the person is at the bottom and the network
 
 test('the map paints its ground unless told to leave the surface showing', () => {
   const board = { entries: [], counts: {} } as never
-  const ground = /<rect width="460" height="430" rx="12"/
+  const ground = /<rect width="460" height="448" rx="12"/
   expect(drawMap(board, 0, SETUP)).toMatch(ground)
   expect(drawMap(board, 0, setupFrom({ ...OWN, background: 'clear' }))).toMatch(ground)
   const bare = drawMap(board, 0, setupFrom({ ...OWN, background: 'transparent' }))
@@ -868,7 +868,7 @@ test('colors of your own replace their places in the palette, and nothing but a 
   const own = draw({ theme: 'dark', colors: ['accent=#FF9900', 'background = #123', 'route=#00ff88'] })
   expect(own).toContain('#ff9900')
   expect(own).not.toContain('#e1ac6e')
-  expect(own).toContain('<rect width="460" height="430" rx="12" fill="#112233"/>')
+  expect(own).toContain('<rect width="460" height="448" rx="12" fill="#112233"/>')
   expect(own).toContain('stroke="#00ff88"')
   // The rest of the palette is as it was.
   expect(own).toContain('#ebe6dc')
@@ -1059,7 +1059,7 @@ const BUSY: Board = {
 }
 
 test('the terminal map takes the width of its pane, keeps the ring round, and gives way where it would not read', () => {
-  expect(mapSize(60, 40, 'dock')).toEqual({ columns: 60, rows: 28, isBeside: false })
+  expect(mapSize(60, 40, 'dock')).toEqual({ columns: 60, rows: 29, isBeside: false })
   expect(mapSize(60, 30, 'dock')).toEqual({ columns: 60, rows: 22, isBeside: false })
   expect(mapSize(200, 80, 'dock')).toEqual({ columns: 120, rows: 44, isBeside: false })
   expect(mapSize(40, 40, 'dock')).toBeUndefined()
@@ -1068,8 +1068,8 @@ test('the terminal map takes the width of its pane, keeps the ring round, and gi
   expect(mapSize(60, 20, 'dock')).toEqual({ columns: 60, rows: 20, isBeside: false })
   expect(mapSize(60, 19, 'dock')).toBeUndefined()
   // Inline above the prompt the pane is wide and short: the map keeps to the left, the rows beside it.
-  expect(mapSize(168, 22, 'inline')).toEqual({ columns: 47, rows: 22, isBeside: true })
-  expect(mapSize(168, 40, 'inline')).toEqual({ columns: 51, rows: 24, isBeside: true })
+  expect(mapSize(168, 22, 'inline')).toEqual({ columns: 45, rows: 22, isBeside: true })
+  expect(mapSize(168, 40, 'inline')).toEqual({ columns: 49, rows: 24, isBeside: true })
   expect(mapSize(168, 17, 'inline')).toBeUndefined()
   expect(mapSize(70, 22, 'inline')).toBeUndefined()
 })
@@ -1815,7 +1815,7 @@ test('in a terminal the map is drawn in cells above the rows, and a narrow pane 
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
   const map = await ui.find({ type: 'Raster' })
   expect(map?.props.columns).toBe(60)
-  expect(map?.props.rows).toBe(28)
+  expect(map?.props.rows).toBe(29)
   const text = linesOf(String(map?.props.cells), 60).join('\n')
   expect(text).toContain('Файлы 1')
   expect(text).toContain('ДОМ')
@@ -1830,7 +1830,7 @@ test('in a terminal the map is drawn in cells above the rows, and a narrow pane 
 
   const inline = await $.ui.mount({ ...PANE, props: { ...PANE.props, bodyColumns: 168, placement: 'inline', scroll: { offset: 0, bodyRows: 22 } }, surface: 'terminal' })
   const beside = await inline.find({ type: 'Raster' })
-  expect([beside?.props.columns, beside?.props.rows]).toEqual([47, 22])
+  expect([beside?.props.columns, beside?.props.rows]).toEqual([45, 22])
   expect((await inline.find({ type: 'Text', text: /b\/content\.py/ }))?.text).toContain('Файлы')
   await inline.unmount()
 })
@@ -1927,14 +1927,14 @@ test('in a terminal that shows pictures the map is the drawing a renderer paints
   // Until the first frame the map stays in cells, and the renderer is handed the map at the box's size.
   expect(await ui.find({ type: 'Raster' })).toBeDefined()
   expect(written.at(-1)?.path).toBe('/tmp/lot-map-test/map.svg')
-  expect(written.at(-1)?.text).toMatch(/^<svg [^>]*width="720" height="672"/)
+  expect(written.at(-1)?.text).toMatch(/^<svg [^>]*width="720" height="696"/)
   expect(written.at(-1)?.text).toContain('Files')
 
   renderer.say('frame 1')
   await clock.settle()
   const image = await ui.find({ type: 'Image' })
   expect(image?.props.source).toEqual({ file: '/tmp/lot-map-test/frame.png', format: 'png', generation: 1 })
-  expect([image?.props.columns, image?.props.rows]).toEqual([60, 28])
+  expect([image?.props.columns, image?.props.rows]).toEqual([60, 29])
   expect(await ui.find({ type: 'Raster' })).toBeUndefined()
   expect((await ui.find({ type: 'Text', text: /b\/content\.py/ }))?.text).toContain('Files')
 
