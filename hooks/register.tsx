@@ -3,7 +3,9 @@ import type { EngineInterface, Register, Timer } from 'claude-code'
 
 import type { AgentInfo, Board, Entry, StationId, Status, TurnSummary } from '../types'
 import {
+  H,
   STATIONS,
+  W,
   agentList,
   changedItems,
   changedLine,
@@ -561,7 +563,7 @@ async function share($: EngineInterface, setup: Setup): Promise<void> {
     // Without animation nothing fades the map's marks out by itself, so a still map is written again when its drawing changes.
     const isMoved = seen !== sharing.written
     // The picture is built only when the board moved, or, still, to see whether its drawing did.
-    const svg = isMoved || setup.motion === 'reduced' ? framedMap(state, now, setup, 920, 860) : undefined
+    const svg = isMoved || setup.motion === 'reduced' ? framedMap(state, now, setup, W * 2, H * 2) : undefined
     const isChanged = isMoved || (svg !== undefined && svg !== sharing.still)
     // The repository and branch, asked again every half minute while the window is wanted: a checkout changes the branch.
     // Asked aside, never awaited here: a slow git must not hold the map; its answer goes in with the next write.
