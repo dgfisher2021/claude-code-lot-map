@@ -67,6 +67,9 @@ export type Strings = {
   timeShare: (pct: number) => string
   thisTurn: (n: number) => string
   errorsInSession: (n: number) => string
+  /** A station's tooltip: what lands there (commands in backticks), and the label of each figure. */
+  stationAbout: Record<StationId, string>
+  tip: { calls: string; turn: string; running: string; time: string; errors: string; session: string; refused: string; pushed: string; tokens: string }
   context: string
   andMore: (n: number) => string
   /** The changed line's count, and what /workmap changed answers when nothing was written or edited. */
@@ -200,6 +203,30 @@ const en: Strings = {
   timeShare: n => `${n}% of the time`,
   thisTurn: n => `${n} this turn`,
   errorsInSession: n => `${n} ${n === 1 ? 'error' : 'errors'} in this session`,
+  stationAbout: {
+    you: 'your messages, questions and files sent to you, the task list, the plan, and what you are asked to approve',
+    model: 'each model request, context compaction',
+    memory: "Claude Code's memory folder, plus whatever you name in the options",
+    files:
+      "Read, Write, Edit, Grep, Glob, a language server's code intelligence, and shell commands that work on files and nothing else: they read, search, move, delete or edit in place (`cat`, `grep`, `mv`, `rm`, `sed`, `tee`, `find … -delete`)",
+    shell: 'every other shell command',
+    web: 'web fetch and search, MCP servers, work kept on claude.ai (artifacts, projects, designs), and shell commands known to reach the network: `curl`, `gh`, `ssh`, `rsync`, `git push`, `npm install`, `docker pull` and the like, also inside `$(…)`',
+    browser: 'browser tools',
+    agents: 'subagents, workflows, schedules, and waiting on background work; their own calls start from this station',
+    skills: 'skills, tool search, and the skill, plugin and connector catalogue',
+    hooks: 'settings hooks that refuse a call, ask for permission, add context or take a moment',
+  },
+  tip: {
+    calls: 'Calls this session',
+    turn: 'Since your last message',
+    running: 'Running now',
+    time: 'Share of the busy time',
+    errors: 'Errors since your last message',
+    session: 'Errors this session',
+    refused: 'Refused since your last message',
+    pushed: 'Brought in by hooks, unasked',
+    tokens: 'Added to the context',
+  },
   planHeader: (done, total) => `Plan ${done}/${total}`,
   planCalls: n => `${n} ${n === 1 ? 'call' : 'calls'}`,
   turnHeader: (n, time, calls, errors) =>
@@ -1009,4 +1036,5 @@ const pt: Strings = {
 
 const TABLES = new Map<unknown, Strings>([['en', en], ['ru', ru], ['es', es], ['fr', fr], ['de', de], ['it', it], ['pt', pt]])
 
-export const stringsFor = (language: unknown): Strings => TABLES.get(language) ?? en
+// A key a language does not have yet reads in English.
+export const stringsFor = (language: unknown): Strings => ({ ...en, ...TABLES.get(language) })

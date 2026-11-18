@@ -72,7 +72,7 @@ function mapRoom() {
   const rows = Math.max(3, Number(state.options.windowRows) || 10)
   const room = Math.max(120, pane.clientHeight - (rows + 1) * LINE_H - 16)
   // As large as the width allows while the rows keep their room, as renderer/layout.mjs lays out the window.
-  return { w: pane.clientWidth, h: Math.min(room, Math.round((pane.clientWidth * 448) / 460)) }
+  return { w: pane.clientWidth, h: Math.min(room, Math.round((pane.clientWidth * (lib?.H ?? 430)) / (lib?.W ?? 460))) }
 }
 
 function renderRows(feed) {
@@ -162,13 +162,58 @@ function titleAt(x, y) {
   }
   return undefined
 }
+/** The structured tooltip of whatever is under the pointer, when the drawing gives one (a station does). */
+function tipAt(x, y) {
+  for (let el = document.elementFromPoint(x, y); el && el !== mapBox; el = el.parentElement) {
+    const data = el.getAttribute?.('data-tip')
+    if (data) return JSON.parse(data)
+  }
+  return undefined
+}
+
+// The figures' icons on a 24-unit grid; each matches the mark it explains on the map, where there is one.
+const ICONS = {
+  calls: '<path d="M4 9h16M4 15h16M10 3 8 21M16 3l-2 18"/>',
+  turn: '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>',
+  running: '<path d="M21 12a9 9 0 1 1-6.22-8.56"/>',
+  time: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+  errors: '<rect x="5" y="5" width="14" height="14" fill="currentColor" stroke="none"/>',
+  session: '<path d="M18 6 6 18M6 6l12 12"/>',
+  refused: '<circle cx="12" cy="12" r="8"/><path d="M6.5 6.5l11 11"/>',
+  pushed: '<path d="M12 5v14M19 12l-7 7-7-7"/>',
+  tokens: '<path d="m12 3 9 4.5-9 4.5-9-4.5zM3 12l9 4.5 9-4.5M3 16.5l9 4.5 9-4.5"/>',
+}
+const svgIcon = (inner, viewBox = '0 0 24 24', width = 2) =>
+  `<svg viewBox="${viewBox}" fill="none" stroke="currentColor" stroke-width="${width}" stroke-linecap="round" stroke-linejoin="round">${inner}</svg>`
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c])
+// Backticks in the words mark a command.
+const withCode = s => esc(s).replace(/`([^`]+)`/g, '<code>$1</code>')
+
+/** A station's tooltip: its icon and name, what lands there, then a row for each figure. */
+function tipHtml(t) {
+  const glyph = lib.STATIONS.find(s => s.id === t.station)?.icon ?? ''
+  const rows = t.figures
+    .map(f => `<div class="fig${f.tone ? ` t-${f.tone}` : ''}">${svgIcon(ICONS[f.icon] ?? '')}<span>${esc(f.label)}</span><b>${esc(f.value)}</b></div>`)
+    .join('')
+  return (
+    `<div class="tip-head">${svgIcon(`<path d="${esc(glyph)}"/>`, '-10 -10 20 20', 1.4)}<strong>${esc(t.name)}</strong></div>` +
+    `<p class="tip-about">${withCode(t.about)}</p><div class="tip-figures">${rows}</div>`
+  )
+}
+
 function showTip() {
-  const text = pointer && titleAt(pointer.x, pointer.y)
-  tip.style.display = text ? 'block' : 'none'
-  if (!text) return
-  tip.textContent = text
-  tip.style.left = `${Math.min(pointer.x + 14, innerWidth - tip.offsetWidth - 8)}px`
-  tip.style.top = `${pointer.y + 16}px`
+  const rich = pointer && tipAt(pointer.x, pointer.y)
+  const text = pointer && !rich && titleAt(pointer.x, pointer.y)
+  tip.style.display = rich || text ? 'block' : 'none'
+  if (!rich && !text) return
+  tip.classList.toggle('rich', Boolean(rich))
+  if (rich) tip.innerHTML = tipHtml(rich)
+  else tip.textContent = text
+  // Beside the pointer, flipped to the other side near an edge of the window.
+  const left = pointer.x + 16 + tip.offsetWidth > innerWidth - 8 ? pointer.x - 16 - tip.offsetWidth : pointer.x + 16
+  const top = pointer.y + 18 + tip.offsetHeight > innerHeight - 8 ? pointer.y - 12 - tip.offsetHeight : pointer.y + 18
+  tip.style.left = `${Math.max(8, left)}px`
+  tip.style.top = `${Math.max(8, top)}px`
 }
 mapBox.addEventListener('mousemove', e => {
   pointer = { x: e.clientX, y: e.clientY }
@@ -182,7 +227,7 @@ mapBox.addEventListener('mouseleave', () => {
 // ---- notes ------------------------------------------------------------------------------------
 
 let notes = []
-/** The map's own coordinates (its 460 by 448 drawing) of a point on the screen, and back. */
+/** The map's own coordinates (its W by H drawing) of a point on the screen, and back. */
 const inner = () => mapBox.querySelector('svg svg')
 function toMap(x, y) {
   const svg = inner()

@@ -138,7 +138,7 @@ export function wearOf(board: Board, id: StationId, setup: Setup): number {
 // ---- drawing ----------------------------------------------------------------------------------
 
 export const W = 460
-export const H = 448
+export const H = 430
 export const CX = 230
 export const CY = 212
 export const RX = 176
@@ -508,6 +508,41 @@ type Scene = {
   isStill: boolean
 }
 
+/** A figure in a station's tooltip: an icon each surface draws its own way, what it counts, and the number. */
+export type TipFigure = {
+  icon: 'calls' | 'turn' | 'running' | 'time' | 'errors' | 'session' | 'refused' | 'pushed' | 'tokens'
+  label: string
+  value: string
+  tone?: 'bad' | 'block' | 'run'
+}
+
+/** A station's tooltip: its name, what lands there, and its figures; the calls and this turn always, the rest when they have something. */
+export type StationTip = { station: StationId; name: string; about: string; figures: TipFigure[] }
+
+export function stationTip(board: Board, id: StationId, t: Strings, running = 0, spent?: Board['spent']): StationTip {
+  const count = board.counts[id] ?? 0
+  const pushed = id === 'memory' ? Math.min(count, board.pushed ?? 0) : 0
+  const share = timeShareOf(board, id)
+  const tokens = spent?.[id] ?? 0
+  const when = (n: number, figure: TipFigure): TipFigure[] => (n > 0 ? [figure] : [])
+  return {
+    station: id,
+    name: t.stations[id],
+    about: t.stationAbout[id],
+    figures: [
+      { icon: 'calls', label: t.tip.calls, value: String(count) },
+      { icon: 'turn', label: t.tip.turn, value: String(board.turnCounts?.[id] ?? 0) },
+      ...when(running, { icon: 'running', label: t.tip.running, value: String(running), tone: 'run' }),
+      ...when(share, { icon: 'time', label: t.tip.time, value: `${share}%` }),
+      ...when(pushed, { icon: 'pushed', label: t.tip.pushed, value: String(pushed) }),
+      ...when(board.faults?.[id] ?? 0, { icon: 'errors', label: t.tip.errors, value: String(board.faults?.[id] ?? 0), tone: 'bad' }),
+      ...when(board.faultTotals?.[id] ?? 0, { icon: 'session', label: t.tip.session, value: String(board.faultTotals?.[id] ?? 0), tone: 'bad' }),
+      ...when(board.blocks?.[id] ?? 0, { icon: 'refused', label: t.tip.refused, value: String(board.blocks?.[id] ?? 0), tone: 'block' }),
+      ...when(tokens, { icon: 'tokens', label: t.tip.tokens, value: tokensShort(tokens) }),
+    ],
+  }
+}
+
 function station(
   s: (typeof STATIONS)[number],
   i: number,
@@ -619,7 +654,9 @@ function station(
     total > 0 ? t.errorsInSession(total) : '',
   ]
   const title = `${names[s.id]}: ${figures.filter(f => f !== '').join(' · ')}`
-  return { under, over: `<g><title>${escapeXml(title)}</title>${over}</g>` }
+  // The title for a surface that shows only text; the tooltip's parts for one that draws its own.
+  const tip = escapeXml(JSON.stringify(stationTip(board, s.id, t, running.length, spent)))
+  return { under, over: `<g data-tip="${tip}"><title>${escapeXml(title)}</title>${over}</g>` }
 }
 
 
@@ -737,43 +774,6 @@ export function agentList(board: Board): { id: string; name: string }[] {
   return ids.map(id => ({ id, name: board.agentNames?.[id] ?? id }))
 }
 
-/** The timeline strip's place under the map: its top, its height, and where it starts and ends across. */
-export const STRIP = { y: 432, h: 6, x0: 20, x1: 440 }
-
-/** A mark of the timeline as a part of the strip, 0 to 1 across. */
-export type StripMark = { from: number; to: number; kind: TimelineMark['kind']; bad: boolean }
-
-/** The strip: the marks and the turns' starts as places across, from the first mark or turn to now; none while the board has neither. */
-export function stripOf(board: Board, now: number): { marks: StripMark[]; ticks: number[] } | undefined {
-  const marks = board.timeline ?? []
-  const turns = board.turns ?? []
-  const first = Math.min(marks[0]?.at ?? Infinity, turns[0]?.startedAt ?? Infinity)
-  if (!Number.isFinite(first)) return undefined
-  const span = Math.max(now - first, 1000)
-  const across = (t: number): number => Math.min(1, Math.max(0, (t - first) / span))
-  return {
-    marks: marks.map(m => ({ from: across(m.at), to: across(m.until ?? now), kind: m.kind, bad: m.bad === true })),
-    ticks: turns.map(t => across(t.startedAt)),
-  }
-}
-
-/** Where time went, in a thin strip under the ring: a mark for each call, a gap for none. */
-function timeline(board: Board, now: number, c: Palette): string {
-  const strip = stripOf(board, now)
-  if (strip === undefined) return ''
-  const { y, h, x0, x1 } = STRIP
-  const wide = x1 - x0
-  let out = `<rect x="${x0}" y="${y}" width="${wide}" height="${h}" rx="1.5" fill="${c.line}" opacity=".35"/>`
-  for (const { from, to, kind, bad } of strip.marks) {
-    const width = Math.min(wide, Math.max(1.5, (to - from) * wide))
-    const x = Math.min(x1 - width, x0 + from * wide)
-    const place = `class="tl" data-kind="${kind}" x="${n1(x)}" y="${y}" width="${n1(width)}" height="${h}"`
-    const color = bad ? c.red : kind === 'memory' ? c.mem : c.accent
-    out += kind === 'wait' ? `<rect ${place} fill="${c.accent}" fill-opacity=".3" stroke="${c.accent}" stroke-width="1" stroke-dasharray="2 1.5"/>` : `<rect ${place} fill="${color}"/>`
-  }
-  for (const t of strip.ticks) out += `<rect class="tick" x="${n1(x0 + t * (x1 - x0))}" y="${y - 4}" width="1" height="3" fill="${c.bone}"/>`
-  return `<g class="timeline">${out}</g>`
-}
 
 export function drawMap(board: Board, now: number, setup: Setup, isFilling = false): string {
   const c = paletteOf(setup)
@@ -889,9 +889,6 @@ export function drawMap(board: Board, now: number, setup: Setup, isFilling = fal
       `<circle ${arc} stroke="${used >= 90 ? c.red : used >= 70 ? c.accent : c.ash}" pathLength="100" stroke-dasharray="${used} 100" transform="rotate(-90 ${CX} ${CY})">` +
       `<title>${escapeXml(setup.t.limitTitle(kind, used, untilText(resetsAt, now, setup.t)))}</title></circle>`
   }
-
-  // Under reduced motion the strip's clock steps, so the picture holds still between steps.
-  body += timeline(board, isStill ? now - (now % STILL_STEP_MS) : now, c)
 
   const switchAge = board.switchedAt === undefined ? Infinity : now - board.switchedAt
   const isSwitching = switchAge >= 0 && switchAge < SWITCH_MS
@@ -1425,7 +1422,7 @@ export function describeNow(board: Board, t: Strings, now: number, withContext =
 const SAT_KEPT = 12
 const SAT_DRAWN = 5
 const SAT_NAME = 12
-/** The lowest a satellite's label may reach: the strip under the map starts below it. */
+/** The lowest a satellite's label may reach: just inside the map's bottom edge. */
 const SAT_BOTTOM = 428
 
 /** The satellites with one more use of `name` at `station`: twelve kept, the least used going first and never the newest. */
