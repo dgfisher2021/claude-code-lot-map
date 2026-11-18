@@ -117,6 +117,8 @@ export type Board = {
   limits?: { kind: LimitKind; percent: number; resetsAt?: string }[]
   /** What the session has cost so far, in US dollars: an estimate. */
   cost?: number
+  /** The cost when a plan limit was first seen reached: what comes after is extra usage, billed at API rates. */
+  paidFrom?: number
   /** With `contextCost`: about how many tokens each station's calls added to the context this session. */
   spent?: Partial<Record<StationId, number>>
   /** With `contextCost`: the three calls that added the most to the context this session, by label, the heaviest first. */

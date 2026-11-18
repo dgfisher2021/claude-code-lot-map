@@ -163,6 +163,8 @@ export type Palette = {
   memHot: string
   /** The route between stations: as light as the words on a dark ground, a soft grey on a light one, where a thin dark line weighs much more. */
   trail: string
+  /** The five-hour limit's ring: yellow, between the session's grey and the week's red. */
+  yellow: string
 }
 
 const DARK: Palette = {
@@ -180,6 +182,7 @@ const DARK: Palette = {
   memHot: '#a5e6dc',
   // One step away from `bone`, so that the light rules can give the route a color of its own.
   trail: '#ebe6dd',
+  yellow: '#e5c07b',
 }
 
 const LIGHT: Palette = {
@@ -196,6 +199,7 @@ const LIGHT: Palette = {
   mem: '#1c8c81',
   memHot: '#136a62',
   trail: '#9c978b',
+  yellow: '#a67c00',
 }
 
 /** The dark palette at full contrast: text at 7:1 or more against the ground, every mark at 4.5:1 or more. */
@@ -213,6 +217,7 @@ const CONTRAST: Palette = {
   mem: '#4de3d1',
   memHot: '#b3fff5',
   trail: '#f0f0f0',
+  yellow: '#ffd866',
 }
 
 const PALETTES = { auto: DARK, dark: DARK, light: LIGHT, contrast: CONTRAST }
@@ -247,6 +252,7 @@ export const COLOR_NAMES: Record<string, keyof Palette> = {
   memory: 'mem',
   memoryActive: 'memHot',
   route: 'trail',
+  yellow: 'yellow',
 }
 
 /**
@@ -771,7 +777,7 @@ export function agentList(board: Board): { id: string; name: string }[] {
 }
 
 
-/** A warning triangle on a 24-unit grid: a limit reached. */
+/** A warning triangle on a 24-unit grid: usage billed at API rates. */
 const WARNING = 'M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h16.9a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0zM12 9v4M12 17h.01'
 
 /** The usage rings: the first's middle, each band's width, and the step from one band to the next. */
@@ -783,7 +789,11 @@ const RING_STEP = 4.6
 export type UsageRow = { color: string; label: string; value: string; note?: string; ring?: number; isReached?: true }
 
 /** The core's tooltip: the model answering, then the session's context, the five-hour and weekly limits, and the cost. */
-export type UsageTip = { kind: 'usage'; name: string; about: string; rows: UsageRow[] }
+/**
+ * The core's tooltip. `billed` is set once usage is billed at API rates: a plan limit reached (the dollars since then), or
+ * no plan limits at all, as on an API key (the session's dollars).
+ */
+export type UsageTip = { kind: 'usage'; name: string; about: string; rows: UsageRow[]; billed?: string }
 
 export function usageTip(board: Board, now: number, setup: Setup, c: Palette): UsageTip {
   const { t } = setup
@@ -796,19 +806,29 @@ export function usageTip(board: Board, now: number, setup: Setup, c: Palette): U
     const note = [...(isReached ? [t.usage.reached] : []), ...(until === undefined ? [] : [t.resetsIn(until)])].join(' · ')
     return [{ color, label: t.limitNames[kind], value: `${pct(found.percent)}%`, ring: pct(found.percent), ...(note === '' ? {} : { note }), ...(isReached ? { isReached: true as const } : {}) }]
   }
-  const spent = costText(board.cost)
+  const isReached = board.limits?.some(l => l.percent >= 100) === true
+  const isApiKey = (board.limits?.length ?? 0) === 0 && board.cost !== undefined
+  const billed = isApiKey ? costText(board.cost) : isReached ? costText(Math.max(0, (board.cost ?? 0) - (board.paidFrom ?? 0))) ?? '$0.00' : undefined
+  const atApi = costText(board.cost)
+  const cost: UsageRow[] =
+    billed !== undefined
+      ? [{ color: '', label: t.usage.extra, value: billed, note: `${t.usage.billed} · ${t.usage.estimate}`, isReached: true }]
+      : atApi !== undefined
+        ? [{ color: '', label: t.usage.atApi, value: atApi, note: t.usage.covered }]
+        : []
   return {
     kind: 'usage',
-    name: board.model === undefined ? setup.core : shortModel(board.model),
+    name: (board.model === undefined ? setup.core : shortModel(board.model)).toUpperCase(),
     about: t.usage.about,
     rows: [
       board.context === undefined
-        ? { color: c.accent, label: t.usage.session, value: '–' }
-        : { color: c.accent, label: t.usage.session, value: `${pct(board.context)}%`, ring: pct(board.context) },
-      ...limit('five_hour', c.ash),
-      ...limit('seven_day', c.mem),
-      ...(spent === undefined ? [] : [{ color: '', label: t.usage.cost, value: spent, note: t.usage.estimate }]),
+        ? { color: c.ash, label: t.usage.session, value: '–' }
+        : { color: c.ash, label: t.usage.session, value: `${pct(board.context)}%`, ring: pct(board.context) },
+      ...limit('five_hour', c.yellow),
+      ...limit('seven_day', c.red),
+      ...cost,
     ],
+    ...(billed === undefined ? {} : { billed }),
   }
 }
 
@@ -890,19 +910,22 @@ export function drawMap(board: Board, now: number, setup: Setup, isFilling = fal
       : `<g><animateTransform attributeName="transform" type="rotate" from="0 ${spin}" to="360 ${spin}" begin="${clock(-((now + (k * lap) / crew.length) % lap))}" dur="${clock(lap)}" repeatCount="indefinite"/>${mark}</g>`
   })
 
+  // While usage is billed at API rates the core and its glow are red.
+  const usage = usageTip(board, now, setup, c)
+  const glow = usage.billed === undefined ? c.accent : c.red
   // The core breathes at rest and quickens while something runs.
   const period = anyRunning ? 1600 : 4800
   const breath = `begin="${clock(-(now % period))}" dur="${clock(period)}" repeatCount="indefinite"`
   // It reaches a little past the outermost usage ring.
   body += isStill
-    ? `<circle cx="${CX}" cy="${CY}" r="${CORE + 20}" fill="${c.accent}" opacity="${anyRunning ? '.16' : '.08'}"/>`
-    : `<circle cx="${CX}" cy="${CY}" r="${CORE + 12}" fill="${c.accent}" opacity=".08">` +
+    ? `<circle cx="${CX}" cy="${CY}" r="${CORE + 20}" fill="${glow}" opacity="${anyRunning ? '.16' : '.08'}"/>`
+    : `<circle cx="${CX}" cy="${CY}" r="${CORE + 12}" fill="${glow}" opacity=".08">` +
       `<animate attributeName="r" values="${CORE + 8};${CORE + 22};${CORE + 8}" ${breath}/>` +
       `<animate attributeName="opacity" values=".05;${anyRunning ? '.24' : '.12'};.05" ${breath}/></circle>`
 
   // The core and its usage rings are one thing to hover: the model, then what is used.
-  const usage = usageTip(board, now, setup, c)
-  let ringed = `<circle cx="${CX}" cy="${CY}" r="${CORE}" fill="${c.raised}" stroke="${anyRunning ? c.accent : c.line}" stroke-width="1.3"/>`
+  const rim = usage.billed !== undefined ? c.red : anyRunning ? c.accent : c.line
+  let ringed = `<circle cx="${CX}" cy="${CY}" r="${CORE}" fill="${c.raised}" stroke="${rim}" stroke-width="${usage.billed === undefined ? 1.3 : 1.8}"/>`
   // One ring per measure, innermost first, each its own colour on a muted track, filling clockwise from the top.
   usage.rows.forEach((row, k) => {
     if (row.ring === undefined) return
@@ -917,23 +940,23 @@ export function drawMap(board: Board, now: number, setup: Setup, isFilling = fal
   const switchAge = board.switchedAt === undefined ? Infinity : now - board.switchedAt
   const isSwitching = switchAge >= 0 && switchAge < SWITCH_MS
   // The model in the middle: it is always Claude, so the model is what tells one session from another.
-  const name = board.model === undefined ? setup.core : shortModel(board.model)
+  const name = usage.name
   const nameSize = Math.min(15, 62 / (0.62 * Math.max(4, [...name].length)))
   if (board.context !== undefined) {
     ringed += `<text x="${CX}" y="${CY - 13}" text-anchor="middle" ${FONT} font-size="9" fill="${c.dim}">${Math.round(Math.max(0, Math.min(100, board.context)))}%</text>`
   }
   ringed += `<text x="${CX}" y="${CY + 5}" text-anchor="middle" ${FONT} font-size="${n1(nameSize)}" letter-spacing="${n1(nameSize * 0.06)}" fill="${isSwitching ? c.hot : c.bone}">${escapeXml(name)}</text>`
   const plain = [usage.name, ...usage.rows.map(r => `${r.label} ${r.value}`)].join(' · ')
-  // A limit reached wears a warning at the core's upper right, outside its rings.
-  if (usage.rows.some(r => r.isReached === true)) {
-    const at = (CORE + 19) * Math.SQRT1_2
-    const bx = CX + at
-    const by = CY - at
-    ringed +=
-      `<circle cx="${n1(bx)}" cy="${n1(by)}" r="9" fill="${c.raised}" stroke="${c.red}" stroke-width="1.2"/>` +
-      `<path transform="translate(${n1(bx - 6)} ${n1(by - 6.3)}) scale(.5)" d="${WARNING}" fill="none" stroke="${c.red}" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>`
+  const tip = `data-tip="${escapeXml(JSON.stringify(usage))}"`
+  body += `<g ${tip}><title>${escapeXml(plain)}</title>${ringed}</g>`
+  // Usage billed at API rates: a warning and its dollars in the map's upper left corner, the core's tooltip on hover.
+  if (usage.billed !== undefined) {
+    body +=
+      `<g ${tip}><title>${escapeXml(plain)}</title>` +
+      `<circle cx="22" cy="22" r="10" fill="${c.raised}" stroke="${c.red}" stroke-width="1.2"/>` +
+      `<path transform="translate(16 15.7) scale(.5)" d="${WARNING}" fill="none" stroke="${c.red}" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>` +
+      `<text x="37" y="26" ${FONT} font-size="12" font-weight="700" fill="${c.red}">${escapeXml(usage.billed)}</text></g>`
   }
-  body += `<g data-tip="${escapeXml(JSON.stringify(usage))}"><title>${escapeXml(plain)}</title>${ringed}</g>`
 
   // A changed model rings at the core and at its station for a few seconds.
   if (isSwitching && !isStill) {

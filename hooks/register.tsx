@@ -1367,7 +1367,15 @@ export const register: Register = (on, options) => {
       for (const { kind, percentUsed, resetsAt } of e.rateLimits) {
         if (kind === 'five_hour' || kind === 'seven_day') limits.push({ kind, percent: percentUsed, ...(resetsAt === undefined ? {} : { resetsAt }) })
       }
-      await update($, board, b => ({ ...b, limits: limits.length > 0 ? limits : undefined, cost: e.cost?.usd, ...peaked(b, e.context.percent) }))
+      // The first time a plan limit reads reached, the cost so far is what the plan covered; the rest is billed.
+      const isReached = limits.some(l => l.percent >= 100)
+      await update($, board, b => ({
+        ...b,
+        limits: limits.length > 0 ? limits : undefined,
+        cost: e.cost?.usd,
+        ...(isReached && b.paidFrom === undefined ? { paidFrom: b.cost ?? 0 } : {}),
+        ...peaked(b, e.context.percent),
+      }))
     })
     await quietly(async () => {
       const { percent, window } = e.context
