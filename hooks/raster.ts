@@ -597,7 +597,7 @@ export function paintMap(board: Board, now: number, setup: Setup, columns: numbe
 
   // Each subagent still at work circles the agents station.
   const agentsAt = place(indexOf('agents'))
-  const crew = (board.agents ?? []).slice(0, 6)
+  const crew = board.agents ?? []
   crew.forEach((agent, k) => {
     const lap = 7000
     const turn = (isStill ? k / crew.length : ((now + (k * lap) / crew.length) % lap) / lap) * 2 * Math.PI

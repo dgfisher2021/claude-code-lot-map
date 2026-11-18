@@ -1,9 +1,10 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register, Timer } from 'claude-code'
 
-import type { Board, Entry, StationId, Status, TurnSummary } from '../types'
+import type { AgentInfo, Board, Entry, StationId, Status, TurnSummary } from '../types'
 import {
   STATIONS,
+  agentList,
   changedItems,
   changedLine,
   classify,
@@ -70,6 +71,26 @@ async function quietly<T>(work: () => Promise<T>): Promise<T | undefined> {
   } catch {
     return undefined
   }
+}
+
+/** What a spawn tells of its subagent, kept by id (the last 24): its parent, its type's name and, under a running Workflow call, that call's row. */
+const spawnInfo = (b: Board, id: string, e: { parentAgentId?: string; subagentType?: string }, now: number, workflow: string): Pick<Board, 'agentInfo'> => {
+  const run = b.entries.find(x => x.status === 'run' && x.agentId === undefined && x.station === 'agents' && x.label === workflow)
+  const info: AgentInfo = {
+    at: now,
+    ...(e.parentAgentId ? { parent: e.parentAgentId } : {}),
+    ...(e.subagentType ? { type: Array.from(clean(e.subagentType)).slice(0, 24).join('') } : {}),
+    ...(run !== undefined ? { run: run.id } : {}),
+  }
+  return { agentInfo: Object.fromEntries([...Object.entries(b.agentInfo ?? {}), [id, info]].slice(-24)) }
+}
+
+/** Keeps what a spawn told of its subagent. */
+async function noteSpawn($: EngineInterface, id: string, e: { parentAgentId?: string; subagentType?: string }, workflow: string): Promise<void> {
+  await quietly(async () => {
+    const now = await $.clock.now()
+    await update($, board, b => ({ ...b, ...spawnInfo(b, id, e, now, workflow) }))
+  })
 }
 
 type Start = {
@@ -509,6 +530,7 @@ async function share($: EngineInterface, setup: Setup): Promise<void> {
         warnings: warnings.map(w => w.line),
         changed,
         pinned,
+        agents: agentList(state),
         rows: feedLines(state.entries, setup.t, state.agentNames, state.turns, setup.contextCost),
         empty: setup.t.nothingYet,
         legend: setup.t.legend,
@@ -917,6 +939,7 @@ export const register: Register = (on, options) => {
         update($, board, b => ({ ...b, agentNames: Object.fromEntries([...Object.entries(b.agentNames ?? {}), [agentId, name]].slice(-12)) })),
       )
     }
+    if (agentId !== undefined) await noteSpawn($, agentId, e, t.workflow)
     return spawned
   })
 
