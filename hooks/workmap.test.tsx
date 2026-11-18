@@ -736,7 +736,7 @@ test('colors of your own replace their places in the palette, and nothing but a 
   const own = draw({ theme: 'dark', colors: ['accent=#FF9900', 'background = #123', 'route=#00ff88'] })
   expect(own).toContain('#ff9900')
   expect(own).not.toContain('#e1ac6e')
-  expect(own).toContain('<rect width="460" height="442" rx="12" fill="#112233"/>')
+  expect(own).toContain('<rect width="460" height="454" rx="12" fill="#112233"/>')
   expect(own).toContain('stroke="#00ff88"')
   // The rest of the palette is as it was.
   expect(own).toContain('#ebe6dc')
@@ -959,7 +959,7 @@ test('/workmap window keeps the live map for a window of its own and splits the 
   const dir = split.at(-1) ?? ''
   const maps = () => written.filter(w => w.path === `${dir}/map.svg`)
   expect(maps().length).toBe(1)
-  expect(maps()[0]?.text).toMatch(/^<svg [^>]*width="920" height="884"/)
+  expect(maps()[0]?.text).toMatch(/^<svg [^>]*width="920" height="908"/)
   expect(written.some(w => w.path === `${dir}/alive`)).toBe(true)
   // The rows under the map go with it, as the pane writes them.
   const feed = JSON.parse(written.find(w => w.path === `${dir}/feed.json`)?.text ?? '{}')

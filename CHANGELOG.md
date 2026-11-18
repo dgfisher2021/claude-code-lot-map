@@ -2,6 +2,11 @@
 
 What changed in each version of workmap, newest first; up to 0.12.0 it was called lot-map. To get a new version, see [Updating](README.md#updating).
 
+## 1.2.3 (2026-11-18)
+
+- The window's title shows where Claude works now: the repository, branch and worktree of its latest edit, write, `cd` or `git -C`, changed the moment a call names a new one, else the session's folder. A read does not move it, since Claude reads other repositories too.
+- More room under the map: the word under the bottom station sits clear of the window's handle. The map is 24 units taller than in 1.2.1.
+
 ## 1.2.2 (2026-11-18)
 
 - The word under the bottom station, Network's `fetching` or, with `layout` set to `you-bottom`, User's `needs you`, is whole again: the map ended above it, so in the window the handle under the map seemed to cut it off. The map is 12 units taller.
