@@ -553,6 +553,27 @@ function tickLine($: EngineInterface, next: number | undefined): void {
   lineTick.timer = next === undefined ? undefined : $.clock.after(Math.max(50, next), () => void quietly(async () => $.ui.invalidate('ui.render')))
 }
 
+/** Where the session works, for the window's title: the repository, its branch, and the worktree when it is one. */
+type Place = { repo: string; branch?: string; worktree?: string }
+const place: { at: number; value?: Place } = { at: 0 }
+
+/** The folder's repository by one `git rev-parse` (its common folder, its top, its branch); a folder outside git, by its name. */
+async function placeOf($: EngineInterface): Promise<Place | undefined> {
+  const cwd = overview.cwd
+  if (cwd === '') return undefined
+  const base = (path: string): string => path.split(/[\\/]/).filter(Boolean).at(-1) ?? path
+  const ran = await quietly(() => $.process.run(['git', '-C', cwd, 'rev-parse', '--path-format=absolute', '--git-common-dir', '--show-toplevel', '--abbrev-ref', 'HEAD']))
+  const [common = '', top = '', branch = ''] = ran?.exitCode === 0 ? ran.stdout.trim().split('\n') : []
+  if (common === '') return { repo: base(cwd) }
+  const root = common.replace(/[\\/]\.git[\\/]?$/, '')
+  return {
+    repo: base(root),
+    ...(branch !== '' && branch !== 'HEAD' ? { branch } : {}),
+    // A worktree's top is not the repository's own folder.
+    ...(top !== '' && top !== root ? { worktree: base(top) } : {}),
+  }
+}
+
 /** Writes the map when the board has changed, and the heartbeat every few seconds, so the window knows the session lives. */
 async function share($: EngineInterface, setup: Setup): Promise<void> {
   const dir = sharing.dir
@@ -569,6 +590,11 @@ async function share($: EngineInterface, setup: Setup): Promise<void> {
     // The picture is built only when the board or a ring moved, or, still, to see whether its drawing did.
     const svg = isMoved || setup.motion === 'reduced' ? framedMap(state, now, setup, 920, 860) : undefined
     const isChanged = isMoved || (svg !== undefined && svg !== sharing.still)
+    // The repository and branch, asked again every half minute while the window is wanted: a checkout changes the branch.
+    if (now - place.at >= 30_000) {
+      place.at = now
+      place.value = await placeOf($)
+    }
     if (isChanged && svg !== undefined) {
       sharing.written = seen
       sharing.rings = rings
@@ -595,6 +621,7 @@ async function share($: EngineInterface, setup: Setup): Promise<void> {
         empty: setup.t.nothingYet,
         legend: setup.t.legend,
         windowRows: setup.windowRows,
+        ...(place.value === undefined ? {} : { place: place.value }),
       }
       await $.fs.write(`${dir}/feed.json`, JSON.stringify(feed))
     }

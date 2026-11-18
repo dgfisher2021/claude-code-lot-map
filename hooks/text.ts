@@ -86,6 +86,8 @@ export type Strings = {
     weekReached: string
     fiveReached: string
     apiKey: string
+    context: string
+    contextHint: string
   }
   /** A word under a station for what it is doing now. */
   doing: Record<Exclude<StationId, 'agents' | 'you' | 'model'> | 'reading' | 'editing' | 'searching' | 'thinking' | 'compacting' | 'needsYou' | 'permission', string>
@@ -262,10 +264,12 @@ const en: Strings = {
     covered: 'your plan covers it',
     extra: 'Extra usage',
     billed: 'billed at API rates',
-    apiCost: 'API cost',
+    apiCost: 'API Cost',
     weekReached: 'Weekly limit reached',
     fiveReached: '5-hour limit reached',
     apiKey: 'Billed through an API key',
+    context: 'Session Context',
+    contextHint: '/clear or /compact',
   },
   doing: {
     memory: 'recalling',

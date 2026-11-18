@@ -270,32 +270,46 @@ export function watchLocal(box) {
 const WARNING_ICON = '<path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h16.9a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0zM12 9v4M12 17h.01"/>'
 
 /**
- * The window's own chip for usage billed at API rates, in its upper left corner: the cost and why, from the map's chip
- * (`g[data-api]`), which it hides, since the map's corner is not the window's.
+ * The window's own chips, in its header's left: usage billed at API rates (cost and why) and a context nearly full (what to
+ * do), from the core's usage in the map, whose own chips (`g[data-corner]`) it hides, as the map's corner is not the window's.
  */
-export function drawApi(chip, mapBox) {
-  const g = mapBox.querySelector('g[data-api]')
-  if (g) g.style.display = 'none'
-  const tip = g ? JSON.parse(g.dataset.tip ?? '{}') : undefined
-  chip.hidden = tip?.billed === undefined
-  if (chip.hidden) return
-  chip.dataset.tip = JSON.stringify(tip)
-  chip.innerHTML = `${svgIcon(WARNING_ICON, 22)}<div><strong>${esc(tip.apiLabel)}: ${esc(tip.billed)}</strong><small>${esc(tip.why ?? '')}</small></div>`
+export function drawStatus(box, mapBox) {
+  const corner = mapBox.querySelector('g[data-corner]')
+  if (corner) corner.style.display = 'none'
+  const core = [...mapBox.querySelectorAll('g[data-tip]')].find(g => g.dataset.tip?.includes('"kind":"usage"'))
+  const tip = core ? JSON.parse(core.dataset.tip) : undefined
+  const chips = [
+    ...(tip?.billed ? [{ tone: 'bad', line: `${tip.apiLabel}: ${tip.billed}`, under: tip.why ?? '' }] : []),
+    ...(tip?.full ? [{ tone: 'warn', line: `${tip.full.label}: ${tip.full.value}`, under: tip.full.hint }] : []),
+  ]
+  box.dataset.tip = tip ? JSON.stringify(tip) : ''
+  box.innerHTML = chips
+    .map(c => `<div class="chip ${c.tone}">${svgIcon(WARNING_ICON, 22)}<div><strong>${esc(c.line)}</strong><small>${esc(c.under)}</small></div></div>`)
+    .join('')
 }
 
-/** Hovering the chip shows the core's usage tooltip under it, its left edge on the chip's. */
-export function wireApi(tipEl, chip) {
-  chip.addEventListener('mouseenter', () => {
-    if (!chip.dataset.tip) return
+/** Hovering a chip shows the core's usage tooltip under the chips, its left edge on theirs. */
+export function wireStatus(tipEl, box) {
+  box.addEventListener('mouseenter', () => {
+    if (!box.dataset.tip || box.children.length === 0) return
     tipEl.classList.add('rich', 'help')
-    tipEl.innerHTML = usageHtml(JSON.parse(chip.dataset.tip))
+    tipEl.innerHTML = usageHtml(JSON.parse(box.dataset.tip))
     tipEl.style.display = 'block'
-    const at = chip.getBoundingClientRect()
+    const at = box.getBoundingClientRect()
     tipEl.style.left = `${Math.max(8, at.left)}px`
     tipEl.style.top = `${at.bottom + 6}px`
   })
-  chip.addEventListener('mouseleave', () => {
+  box.addEventListener('mouseleave', () => {
     tipEl.style.display = 'none'
     tipEl.classList.remove('help')
   })
+}
+
+/** The header's title: the repository, and under it the branch and the worktree when the session is in one. */
+export function drawTitle(box, place) {
+  box.hidden = !place?.repo
+  if (box.hidden) return
+  const under = [place.branch, place.worktree ? `worktree ${place.worktree}` : undefined].filter(Boolean).join(' · ')
+  box.innerHTML = `<strong>${esc(place.repo)}</strong>${under ? `<small>${esc(under)}</small>` : ''}`
+  document.title = `${place.repo}${place.branch ? ` · ${place.branch}` : ''} · Work map`
 }

@@ -777,7 +777,10 @@ export function agentList(board: Board): { id: string; name: string }[] {
 }
 
 
-/** A warning triangle on a 24-unit grid: usage billed at API rates. */
+/** From this fill the session's context is called nearly full, with a word on clearing or compacting it. */
+const CONTEXT_FULL = 90
+
+/** A warning triangle on a 24-unit grid: usage billed at API rates, or a context nearly full. */
 const WARNING = 'M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h16.9a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0zM12 9v4M12 17h.01'
 
 /** The usage rings: the first's middle, each band's width, and the step from one band to the next. */
@@ -793,7 +796,17 @@ export type UsageRow = { color: string; label: string; value: string; note?: str
  * The core's tooltip. `billed` is set once usage is billed at API rates: a plan limit reached (the dollars since then), or
  * no plan limits at all, as on an API key (the session's dollars).
  */
-export type UsageTip = { kind: 'usage'; name: string; about: string; rows: UsageRow[]; billed?: string; apiLabel?: string; why?: string }
+export type UsageTip = {
+  kind: 'usage'
+  name: string
+  about: string
+  rows: UsageRow[]
+  billed?: string
+  apiLabel?: string
+  why?: string
+  /** The session's context once it is nearly full (90% or more), with what to do about it. */
+  full?: { label: string; value: string; hint: string }
+}
 
 export function usageTip(board: Board, now: number, setup: Setup, c: Palette): UsageTip {
   const { t } = setup
@@ -828,6 +841,9 @@ export function usageTip(board: Board, now: number, setup: Setup, c: Palette): U
       ...limit('seven_day', c.red),
       ...cost,
     ],
+    ...(board.context !== undefined && board.context >= CONTEXT_FULL
+      ? { full: { label: t.usage.context, value: `${pct(board.context)}%`, hint: t.usage.contextHint } }
+      : {}),
     ...(billed === undefined
       ? {}
       : {
@@ -960,15 +976,23 @@ export function drawMap(board: Board, now: number, setup: Setup, isFilling = fal
   const plain = [usage.name, ...usage.rows.map(r => `${r.label} ${r.value}`)].join(' · ')
   const tip = `data-tip="${escapeXml(JSON.stringify(usage))}"`
   body += `<g ${tip}><title>${escapeXml(plain)}</title>${ringed}</g>`
-  // Usage billed at API rates: a warning, its cost and why, in the map's upper left corner, the core's tooltip on hover.
-  // A window draws its own in the window's corner and hides this one (`data-api`).
-  if (usage.billed !== undefined) {
-    body +=
-      `<g data-api="1" ${tip}><title>${escapeXml(plain)}</title>` +
-      `<circle cx="22" cy="24" r="10" fill="${c.raised}" stroke="${c.red}" stroke-width="1.2"/>` +
-      `<path transform="translate(16 17.7) scale(.5)" d="${WARNING}" fill="none" stroke="${c.red}" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>` +
-      `<text x="38" y="23" ${FONT} font-size="11.5" font-weight="700" fill="${c.red}">${escapeXml(`${usage.apiLabel}: ${usage.billed}`)}</text>` +
-      `<text x="38" y="34" ${FONT} font-size="8.5" fill="${c.dim}">${escapeXml(usage.why ?? '')}</text></g>`
+  // In the map's upper left corner, each with the core's tooltip: usage billed at API rates (its cost and why), and a context
+  // nearly full (what to do). A window draws its own in its header and hides these (`data-corner`).
+  const chips = [
+    ...(usage.billed === undefined ? [] : [{ color: c.red, line: `${usage.apiLabel}: ${usage.billed}`, under: usage.why ?? '' }]),
+    ...(usage.full === undefined ? [] : [{ color: c.accent, line: `${usage.full.label}: ${usage.full.value}`, under: usage.full.hint }]),
+  ]
+  if (chips.length > 0) {
+    body += `<g data-corner="1" ${tip}><title>${escapeXml(plain)}</title>`
+    chips.forEach((chip, k) => {
+      const y = 24 + k * 30
+      body +=
+        `<circle cx="22" cy="${y}" r="10" fill="${c.raised}" stroke="${chip.color}" stroke-width="1.2"/>` +
+        `<path transform="translate(16 ${n1(y - 6.3)}) scale(.5)" d="${WARNING}" fill="none" stroke="${chip.color}" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>` +
+        `<text x="38" y="${y - 1}" ${FONT} font-size="11.5" font-weight="700" fill="${chip.color}">${escapeXml(chip.line)}</text>` +
+        `<text x="38" y="${y + 10}" ${FONT} font-size="8.5" fill="${c.dim}">${escapeXml(chip.under)}</text>`
+    })
+    body += '</g>'
   }
 
   // A changed model rings at the core and at its station for a few seconds.

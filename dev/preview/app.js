@@ -1,7 +1,20 @@
 // The preview page: draws the window (map and rows) from the made-up session or a live one, with tooltips and notes.
 
 import { feedLines, freshList } from '/window/lines.mjs'
-import { drawApi, drawLines, drawLocal, setHelp, showTip as showTipAt, tipAt, untitle, watchLocal, wireApi, wireHelp, wireSplit } from '/window/ui.js'
+import {
+  drawLines,
+  drawLocal,
+  drawStatus,
+  drawTitle,
+  setHelp,
+  showTip as showTipAt,
+  tipAt,
+  untitle,
+  watchLocal,
+  wireHelp,
+  wireSplit,
+  wireStatus,
+} from '/window/ui.js'
 import { LOOP_S, boardAt } from './scene.js'
 
 const $ = id => document.getElementById(id)
@@ -83,7 +96,7 @@ function mapRoom() {
   const local = $('local').hidden ? 0 : $('local').offsetHeight
   // The lines' height as dragged at the handle, or windowRows until it is.
   const list = state.listPx > 0 ? state.listPx : rows * LINE_H + 12
-  const room = Math.max(120, pane.clientHeight - list - local - $('split').offsetHeight)
+  const room = Math.max(120, pane.clientHeight - list - local - $('split').offsetHeight - $('top').offsetHeight)
   // As large as the width allows while the rows keep their room, as renderer/layout.mjs lays out the window.
   return { w: pane.clientWidth, h: Math.min(room, Math.round((pane.clientWidth * (lib?.H ?? 430)) / (lib?.W ?? 460))) }
 }
@@ -93,6 +106,7 @@ let keyHelp
 function renderRows(feed) {
   keyHelp = feed.keyHelp
   setHelp(help, keyHelp)
+  drawTitle($('title'), feed.place)
   drawLocal($('local'), feed.local)
   const rows = Math.max(3, Number(state.options.windowRows) || 10)
   // Every line the window would hold; the box scrolls when they overflow.
@@ -102,7 +116,7 @@ function renderRows(feed) {
 function setMap(svg) {
   mapBox.innerHTML = svg
   untitle(mapBox)
-  drawApi($('api'), mapBox)
+  drawStatus($('status'), mapBox)
   placePins()
   showTip()
 }
@@ -127,6 +141,7 @@ function drawScene() {
     pinned: lib.pinnedLines(board.entries, now, t),
     rows: lib.feedLines(board.entries, t, board.agentNames, board.turns, setup.contextCost),
     keyHelp: t.keyHelp,
+    place: { repo: 'claude-code-lot-map', branch: 'worktree-preview', worktree: 'preview' },
     local: { title: t.localTitle, hosts: (board.local ?? []).map(l => l.host) },
   })
   $('scrub').value = String(s)
@@ -168,7 +183,7 @@ const showTip = () => showTipAt(tip, mapBox, pointer)
 
 // The ? in the corner: the window's keys, as the map window shows them.
 wireHelp(tip, help, () => keyHelp)
-wireApi(tip, $('api'))
+wireStatus(tip, $('status'))
 wireSplit(
   $('split'),
   px => {

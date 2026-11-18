@@ -2,7 +2,7 @@
 // are the terminal window's: m, ?, the arrows and PgUp/PgDn, e, 1-9 and 0, a, / and q.
 
 import { feedLines, freshList, listKey, nextAgent } from './lines.mjs'
-import { drawApi, drawLines, drawLocal, setHelp, showTip, untitle, watchLocal, wireApi, wireHelp, wireSplit } from './ui.js'
+import { drawLines, drawLocal, drawStatus, drawTitle, setHelp, showTip, untitle, watchLocal, wireHelp, wireSplit, wireStatus } from './ui.js'
 
 const $ = id => document.getElementById(id)
 const mapBox = $('map')
@@ -52,7 +52,7 @@ function load(key) {
 function mapSize() {
   if (view === 'list') return { w: 0, h: 0 }
   // The line of local servers, when it shows, takes its room from the map's.
-  const room = innerHeight - (localBox.hidden ? 0 : localBox.offsetHeight)
+  const room = innerHeight - $('top').offsetHeight - (localBox.hidden ? 0 : localBox.offsetHeight)
   const listRows = Math.max(3, Number(feed.windowRows) || 10)
   const list = listPx > 0 ? listPx : listRows * LINE_H + 8
   const tall = view === 'map' ? room : Math.max(MAP_MIN_ROWS * 17, room - list - splitBox.offsetHeight)
@@ -70,7 +70,7 @@ function drawMap() {
   drawn = key
   mapBox.innerHTML = svg.replace(/^(<svg\b[^>]*?)\swidth="\d+"\sheight="\d+"/, `$1 width="${w}" height="${h}"`)
   untitle(mapBox)
-  drawApi($('api'), mapBox)
+  drawStatus($('status'), mapBox)
   showTip(tip, mapBox, pointer)
 }
 
@@ -101,8 +101,9 @@ async function fetchFeed() {
   if (next === undefined) return
   const isResized = next.windowRows !== feed.windowRows
   feed = next
-  // The ? shows once the session sends its keys.
+  // The ? shows once the session sends its keys; the title once it names its repository.
   setHelp(help, feed.keyHelp)
+  drawTitle($('title'), feed.place)
   const hadLocal = !localBox.hidden
   if (drawLocal(localBox, feed.local) !== hadLocal || isResized) {
     drawn = ''
@@ -164,7 +165,7 @@ mapBox.addEventListener('mouseleave', () => {
   showTip(tip, mapBox, pointer)
 })
 wireHelp(tip, help, () => feed.keyHelp)
-wireApi(tip, $('api'))
+wireStatus(tip, $('status'))
 wireSplit(
   splitBox,
   px => {
