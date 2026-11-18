@@ -63,7 +63,7 @@ try {
  * Frames a second by how long ago the map changed: quick while pulses fly and rings spread, slower while glows fade,
  * slow while a call runs (its clock hands move), and slowest when only the core breathes. Each frame costs a capture.
  */
-const FPS = Number(process.env.WORKMAP_FPS) || 15
+const FPS = Number(process.env.WORKMAP_FPS) || (pageUrl === undefined ? 15 : 24)
 const pace = (sinceChange, isRunning) => (sinceChange < 4000 ? FPS : sinceChange < 20_000 ? 4 : isRunning ? 2 : 0.5)
 const dir = mkdtempSync(join(tmpdir(), 'workmap-'))
 writeFileSync(join(dir, 'pid'), String(process.pid))
@@ -341,12 +341,13 @@ async function input(line) {
   const message = JSON.parse(line)
   if (Array.isArray(message.size)) {
     const [width, height] = message.size.map(Number)
-    if (width > 0 && height > 0) await resize(Math.min(width, 4096), Math.min(height, 4096))
+    if (width > 0 && height > 0) await fitPage(Math.min(width, 4096), Math.min(height, 4096), Math.min(3, Math.max(0.5, Number(message.zoom) || 1)))
   } else if (message.mouse) {
+    // The window counts its own pixels; the page, zoomed, counts its own.
     const { type, x, y, button = 'none', dy = 0 } = message.mouse
     const isClick = type === 'mousePressed' || type === 'mouseReleased'
     const buttons = type === 'mouseReleased' ? 0 : (BUTTONS[button] ?? 0)
-    await send('Input.dispatchMouseEvent', { type, x, y, button, buttons, clickCount: isClick ? 1 : 0, deltaX: 0, deltaY: dy }, page)
+    await send('Input.dispatchMouseEvent', { type, x: x / zoom, y: y / zoom, button, buttons, clickCount: isClick ? 1 : 0, deltaX: 0, deltaY: dy }, page)
   } else if (typeof message.key === 'string') {
     const key = message.key
     const named = CODES[key] === undefined ? {} : { code: key, windowsVirtualKeyCode: CODES[key] }
@@ -360,6 +361,21 @@ async function resize(width, height) {
   if (width === size.width && height === size.height) return
   size = { width, height }
   await send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: false }, page)
+}
+
+/** The page's zoom: its text and boxes that much larger, as Ctrl+Plus makes them in a browser. */
+let zoom = 1
+
+/**
+ * Lays the page out for a window `width` by `height` pixels at `scale`: its own size is the window's divided by it, and
+ * it is painted at the window's pixels, a pixel or two short where the division does not come out even.
+ */
+async function fitPage(width, height, scale) {
+  const css = { width: Math.floor(width / scale), height: Math.floor(height / scale) }
+  if (css.width === size.width && css.height === size.height && scale === zoom) return
+  zoom = scale
+  size = css
+  await send('Emulation.setDeviceMetricsOverride', { ...css, deviceScaleFactor: scale, mobile: false }, page)
 }
 
 let shownAt = 0

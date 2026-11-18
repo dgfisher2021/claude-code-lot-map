@@ -29,7 +29,9 @@ const out = process.stdout
 /** The live folder's name after `workmap-live-`: the page's address names the session by it. */
 const name = /\/workmap-live-([a-z0-9]{1,32})$/.exec(live ?? '')?.[1]
 /** At most this many pictures a second go to the terminal, and none while it still reads the last. */
-const MAX_FPS = 10
+const MAX_FPS = 24
+/** How much larger than Edge the page is drawn: Windows Terminal scales a picture to its cells, which makes it smaller. */
+const ZOOM = Number(process.env.WORKMAP_ZOOM) || 1.25
 /** The session is gone when its heartbeat is this old. */
 const STALE_MS = 15_000
 /** The page's ground, for the pane's last row, which the picture leaves free. */
@@ -68,7 +70,9 @@ const CLEAR = `${GROUND}\x1b[H\x1b[J`
 function relayout() {
   size = fit()
   out.write(CLEAR)
-  tell({ size: [size.w, size.h] })
+  // The screen was cleared: the next frame goes out whole.
+  shown = undefined
+  tell({ size: [size.w, size.h], zoom: ZOOM })
 }
 
 /** A line in the middle of the pane, until the first picture covers it. */
@@ -150,6 +154,8 @@ function heard(data) {
 let renderer
 /** The renderer's folder, once it is ready: frames appear there as frame.png. */
 let rdir
+/** The frame last drawn, so that only the rows of cells that changed go out again. */
+let shown
 /** Why the map cannot be drawn, once it cannot. */
 let failed
 let isQuitting = false
@@ -191,11 +197,27 @@ function draw() {
   }
   try {
     const png = decodePng(readFileSync(join(rdir, 'frame.png')))
-    // A frame painted for the size before a resize would spill over the last row: one at the new size comes next.
-    if (png.width !== size.w || png.height !== size.h) return
-    const picture = sixel(png)
+    // A frame painted for the size before a resize would spill over the last row: one at the new size comes next. The
+    // zoom can leave a frame a pixel or two short of the size.
+    if (png.width > size.w || png.height > size.h || png.width < size.w - 4 || png.height < size.h - 4) return
+    const isWhole = shown === undefined || shown.width !== png.width || shown.height !== png.height || shown.bpp !== png.bpp
+    const stride = png.width * png.bpp
+    const rowOf = r => [r * cell.h * stride, Math.min((r + 1) * cell.h, png.height) * stride]
+    const isChanged = r => isWhole || png.px.compare(shown.px, ...rowOf(r), ...rowOf(r)) !== 0
+    const rows = Math.ceil(png.height / cell.h)
+    // Each run of rows of cells that changed goes out as a picture of its own, at its row; the rest stay as they are.
+    let text = ''
+    for (let row = 0; row < rows; row++) {
+      if (!isChanged(row)) continue
+      let end = row + 1
+      while (end < rows && isChanged(end)) end++
+      const [from, to] = [rowOf(row)[0], rowOf(end - 1)[1]]
+      text += `\x1b[${row + 1};1H${sixel({ width: png.width, height: (to - from) / stride, bpp: png.bpp, px: png.px.subarray(from, to) })}`
+      row = end
+    }
+    shown = png
     lastDraw = Date.now()
-    out.write(`\x1b[1;1H${picture}`)
+    if (text !== '') out.write(text)
   } catch {
     // A frame caught mid-write: the next one comes soon.
   }
@@ -207,7 +229,7 @@ if (await ensureServer()) {
   createInterface({ input: renderer.stdout }).on('line', line => {
     if (line.startsWith('ready ')) {
       rdir = line.slice(6)
-      tell({ size: [size.w, size.h] })
+      tell({ size: [size.w, size.h], zoom: ZOOM })
     } else if (line.startsWith('frame ')) draw()
     else if (line.startsWith('open ')) openLink(line.slice(5))
     else if (line === 'close') quit(0)
