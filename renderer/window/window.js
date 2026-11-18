@@ -2,12 +2,11 @@
 // are the terminal window's: m, ?, the arrows and PgUp/PgDn, e, 1-9 and 0, a, / and q.
 
 import { feedLines, freshList, listKey, nextAgent } from './lines.mjs'
-import { drawLines, drawLocal, drawStatus, drawTitle, markLocal, setHelp, showTip, untitle, watchLocal, wireHelp, wireSplit, wireStatus } from './ui.js'
+import { drawLines, drawStatus, drawTitle, markLocal, setHelp, setLocal, showTip, untitle, watchLocal, wireHelp, wireSplit, wireStatus } from './ui.js'
 
 const $ = id => document.getElementById(id)
 const mapBox = $('map')
 const linesBox = $('lines')
-const localBox = $('local')
 const splitBox = $('split')
 const help = $('help')
 const tip = $('tip')
@@ -52,7 +51,7 @@ function load(key) {
 function mapSize() {
   if (view === 'list') return { w: 0, h: 0 }
   // The line of local servers, when it shows, takes its room from the map's.
-  const room = innerHeight - $('top').offsetHeight - (localBox.hidden ? 0 : localBox.offsetHeight)
+  const room = innerHeight - $('top').offsetHeight
   const listRows = Math.max(3, Number(feed.windowRows) || 10)
   const list = listPx > 0 ? listPx : listRows * LINE_H + 8
   const tall = view === 'map' ? room : Math.max(MAP_MIN_ROWS * 17, room - list - splitBox.offsetHeight)
@@ -71,7 +70,7 @@ function drawMap() {
   mapBox.innerHTML = svg.replace(/^(<svg\b[^>]*?)\swidth="\d+"\sheight="\d+"/, `$1 width="${w}" height="${h}"`)
   untitle(mapBox)
   drawStatus($('status'), mapBox)
-  markLocal(mapBox, localBox)
+  markLocal(mapBox)
   showTip(tip, mapBox, pointer)
 }
 
@@ -105,11 +104,8 @@ async function fetchFeed() {
   // The ? shows once the session sends its keys; the title once it names its repository.
   setHelp(help, feed.keyHelp)
   drawTitle($('title'), feed.place)
-  const hadLocal = !localBox.hidden
-  if (drawLocal(localBox, feed.local) !== hadLocal || isResized) {
-    drawn = ''
-    drawMap()
-  }
+  setLocal(feed.local)
+  if (isResized) drawMap()
   drawRows()
 }
 
@@ -180,4 +176,4 @@ wireSplit(
     } catch {}
   },
 )
-watchLocal(localBox, () => markLocal(mapBox, localBox))
+watchLocal(() => markLocal(mapBox))

@@ -251,7 +251,7 @@ const en: Strings = {
     tokens: 'Tokens added to context',
     mostUsed: 'Most used',
     read: 'read',
-    local: 'Local servers Claude used',
+    local: 'Local servers',
     working: 'Working now',
   },
   localTitle: 'Local',

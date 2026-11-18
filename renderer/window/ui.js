@@ -220,7 +220,8 @@ export function setHelp(button, help) {
 
 // ---- local servers -------------------------------------------------------------------------------
 
-/** Whether each local server answered when last asked: true, false, or not yet asked. */
+/** The local servers Claude's calls used (the feed's `local`), and whether each answered when last asked. */
+let localHosts = []
 const answered = new Map()
 
 /** Asks `host` whether anything answers there; an opaque answer is an answer. Loopback only, never another address. */
@@ -232,46 +233,20 @@ async function isUp(host) {
   )
 }
 
-/**
- * The line of local servers Claude's calls used (the feed's `local`): each a link that opens it, with a dot, green while it
- * answers. Hidden when there are none. Returns whether the line shows, so the page can give the map the room.
- */
-export function drawLocal(box, local) {
-  const hosts = local?.hosts ?? []
-  box.hidden = hosts.length === 0
-  if (box.hidden) return false
-  // Only servers that answer show; one not asked yet shows until it is.
-  const links = hosts.map(host => {
-    const state = answered.get(host)
-    return `<a href="http://${esc(host)}/" target="_blank" rel="noopener" data-host="${esc(host)}"${state === false ? ' hidden' : ''}><i class="dot${state === true ? ' up' : ''}"></i>${esc(host)}</a>`
-  })
-  box.innerHTML = `<span class="local-title">${esc(local.title)}</span>${links.join('')}`
-  box.hidden = box.querySelector('a[data-host]:not([hidden])') === null
-  return !box.hidden
+/** Takes the feed's local servers, to ask them and to mark Browser by them. */
+export function setLocal(local) {
+  localHosts = local?.hosts ?? []
 }
 
-/**
- * Asks every local server in `box` now and every five seconds, while the page is in view, colours its dot, and calls
- * `after` once a round is done.
- */
-export function watchLocal(box, after = () => {}) {
+/** Asks every local server now and every five seconds, while the page is in view, then calls `after`. */
+export function watchLocal(after) {
   const ask = async () => {
     if (document.hidden) return
-    for (const link of box.querySelectorAll('a[data-host]')) {
-      const host = link.dataset.host
-      const up = await isUp(host)
-      answered.set(host, up)
-      link.querySelector('.dot')?.classList.toggle('up', up)
-      link.querySelector('.dot')?.classList.toggle('down', !up)
-      // A server that does not answer leaves the line until it does again.
-      link.hidden = !up
-    }
-    box.hidden = box.querySelector('a[data-host]:not([hidden])') === null
+    for (const host of localHosts) answered.set(host, await isUp(host))
     after()
   }
   void ask()
   setInterval(ask, 5000)
-  return ask
 }
 
 // ---- billed usage --------------------------------------------------------------------------------
@@ -332,27 +307,41 @@ export function drawTitle(box, place) {
 }
 
 /**
- * In a window, Browser's badge counts the local servers answering now, in the amber of the map's other counts (×3), and is
- * gone while none answer: the map draws how many Claude used, which only the window can tell apart.
+ * In a window, Browser says which local servers answer now, as Shell says it is running: the first under its name (`+1` for
+ * more), a click on it opens it; its badge counts them in the amber of the map's other counts; its tooltip lists them; and
+ * its circle, icon and spoke wear a steady amber. With none answering, Browser is as it was. The map draws the servers
+ * Claude used, which only the window can tell apart.
  */
-export function markLocal(mapBox, localBox) {
+export function markLocal(mapBox) {
+  const live = localHosts.filter(h => answered.get(h) === true)
+  const shown = live.length > 0 ? '' : 'none'
   const badge = mapBox.querySelector('circle[data-local]')
-  if (!badge) return
-  const live = [...localBox.querySelectorAll('a[data-host]')].filter(a => answered.get(a.dataset.host) === true).length
-  const label = badge.nextElementSibling
-  for (const el of [badge, label]) if (el) el.style.display = live > 0 ? '' : 'none'
-  badge.style.stroke = 'var(--accent)'
-  if (label) {
-    label.textContent = String(live)
-    label.style.fill = 'var(--accent)'
+  const label = mapBox.querySelector('text[data-local-label]')
+  for (const el of [badge, badge?.nextElementSibling, label]) if (el) el.style.display = shown
+  if (badge) {
+    badge.style.stroke = 'var(--accent)'
+    badge.nextElementSibling.textContent = String(live.length)
+    badge.nextElementSibling.style.fill = 'var(--accent)'
   }
-  // While one answers, Browser's circle, icon and spoke wear a steady amber: something there is up, nothing is called.
-  const node = badge.parentElement?.querySelector('circle[r="22"]')
-  const icon = badge.parentElement?.querySelector('path[transform]')
-  for (const el of [node, icon]) if (el) el.style.stroke = live > 0 ? 'var(--accent)' : ''
+  if (label) {
+    label.textContent = live.length > 1 ? `${live[0]} +${live.length - 1}` : (live[0] ?? '')
+    label.style.cursor = 'pointer'
+    label.onclick = () => live[0] && window.open(`http://${live[0]}/`, '_blank', 'noopener')
+  }
+  const station = (badge ?? label)?.closest('g[data-tip]')
+  if (station) {
+    // Browser's tooltip lists the servers up now, from the list the map drew, kept aside the first time.
+    station.dataset.tipAll ??= station.dataset.tip
+    const tip = JSON.parse(station.dataset.tipAll)
+    if (tip.top) tip.top.items = tip.top.items.filter(i => live.includes(i.name))
+    if (tip.top && tip.top.items.length === 0) delete tip.top
+    station.dataset.tip = JSON.stringify(tip)
+    for (const el of [station.querySelector('circle[r="22"]'), station.querySelector('path[transform]')])
+      if (el) el.style.stroke = live.length > 0 ? 'var(--accent)' : ''
+  }
   const spoke = mapBox.querySelector('line[data-spoke="browser"]')
   if (spoke) {
-    spoke.style.stroke = live > 0 ? 'var(--accent)' : ''
-    spoke.style.opacity = live > 0 ? '0.6' : ''
+    spoke.style.stroke = live.length > 0 ? 'var(--accent)' : ''
+    spoke.style.opacity = live.length > 0 ? '0.6' : ''
   }
 }

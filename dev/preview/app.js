@@ -3,7 +3,6 @@
 import { feedLines, freshList } from '/window/lines.mjs'
 import {
   drawLines,
-  drawLocal,
   drawStatus,
   drawTitle,
   markLocal,
@@ -11,6 +10,7 @@ import {
   showTip as showTipAt,
   tipAt,
   untitle,
+  setLocal,
   watchLocal,
   wireHelp,
   wireSplit,
@@ -94,10 +94,9 @@ function setTime(s) {
 /** The map's room in the pane: what is left above the rows and the gap. */
 function mapRoom() {
   const rows = Math.max(3, Number(state.options.windowRows) || 10)
-  const local = $('local').hidden ? 0 : $('local').offsetHeight
   // The lines' height as dragged at the handle, or windowRows until it is.
   const list = state.listPx > 0 ? state.listPx : rows * LINE_H + 12
-  const room = Math.max(120, pane.clientHeight - list - local - $('split').offsetHeight - $('top').offsetHeight)
+  const room = Math.max(120, pane.clientHeight - list - $('split').offsetHeight - $('top').offsetHeight)
   // As large as the width allows while the rows keep their room, as renderer/layout.mjs lays out the window.
   return { w: pane.clientWidth, h: Math.min(room, Math.round((pane.clientWidth * (lib?.H ?? 430)) / (lib?.W ?? 460))) }
 }
@@ -108,7 +107,7 @@ function renderRows(feed) {
   keyHelp = feed.keyHelp
   setHelp(help, keyHelp)
   drawTitle($('title'), feed.place)
-  drawLocal($('local'), feed.local)
+  setLocal(feed.local)
   const rows = Math.max(3, Number(state.options.windowRows) || 10)
   // Every line the window would hold; the box scrolls when they overflow.
   drawLines(rowsBox, feedLines(feed, freshList(), Math.max(rows, 200), false).lines)
@@ -118,7 +117,7 @@ function setMap(svg) {
   mapBox.innerHTML = svg
   untitle(mapBox)
   drawStatus($('status'), mapBox)
-  markLocal(mapBox, $('local'))
+  markLocal(mapBox)
   placePins()
   showTip()
 }
@@ -194,7 +193,7 @@ wireSplit(
   },
   save,
 )
-watchLocal($('local'), () => markLocal(mapBox, $('local')))
+watchLocal(() => markLocal(mapBox))
 mapBox.addEventListener('mousemove', e => {
   pointer = { x: e.clientX, y: e.clientY }
   showTip()

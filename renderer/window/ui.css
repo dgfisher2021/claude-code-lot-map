@@ -296,46 +296,6 @@ kbd.arrow svg {
   margin: 3px auto;
 }
 
-/* The local servers Claude's calls used, under the map: links, each with a dot, green while it answers. */
-#local {
-  flex: none;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 4px 14px;
-  padding: 6px 10px 0;
-  font: 13px/17px var(--mono);
-}
-#local[hidden] {
-  display: none;
-}
-#local .local-title {
-  color: var(--dim);
-}
-#local a {
-  color: var(--text);
-  text-decoration: none;
-  white-space: nowrap;
-}
-#local a:hover {
-  color: var(--accent);
-  text-decoration: underline;
-}
-#local .dot {
-  display: inline-block;
-  width: 7px;
-  height: 7px;
-  margin-right: 6px;
-  border-radius: 50%;
-  background: var(--dim);
-  opacity: 0.5;
-  vertical-align: 1px;
-}
-#local .dot.up {
-  background: var(--done);
-  opacity: 1;
-}
-
 /* The core's tooltip: a swatch of each ring's colour, as a chart's legend has, and when each limit resets under it. */
 .fig .swatch {
   display: block;

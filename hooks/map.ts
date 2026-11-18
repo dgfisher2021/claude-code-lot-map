@@ -699,6 +699,10 @@ function station(
   const doing = doingOf(s.id, running, board, t)
   if (doing !== undefined) {
     over += `<text x="${x}" y="${n1(p.y + NAME_DROP + 12)}" text-anchor="middle" ${FONT} font-size="9.5" ${rim} fill="${doing.isWait ? c.accent : hot}">${escapeXml(doing.word)}</text>`
+  } else if (s.id === 'browser' && (board.local?.length ?? 0) > 0) {
+    // Under Browser's name, as Shell says it runs: the newest local server Claude used. A window shows those answering.
+    const host = board.local?.[0]?.host ?? ''
+    over += `<text data-local-label="1" x="${x}" y="${n1(p.y + NAME_DROP + 12)}" text-anchor="middle" ${FONT} font-size="9.5" ${rim} fill="${c.accent}">${escapeXml(host)}</text>`
   }
   if (doing?.badge !== undefined) {
     const bx = p.x + corner
