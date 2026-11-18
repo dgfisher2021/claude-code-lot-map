@@ -663,7 +663,11 @@ async function recapText($: EngineInterface, setup: Setup): Promise<string> {
   const state = await read($, board)
   const now = await $.clock.now()
   const startedAt = await quietly(async () => (await $.session.usage()).startedAt)
-  const lines = recapLines(state, startedAt, now, setup.t)
+  // Each station's share of the busy time, for the stations that have any: the model and the person keep none.
+  const busy = Object.entries(state.busyMs ?? {}).filter(([, ms]) => (ms ?? 0) > 0)
+  const total = busy.reduce((sum, [, ms]) => sum + (ms ?? 0), 0)
+  const shares = total > 0 ? (Object.fromEntries(busy.map(([id, ms]) => [id, (ms ?? 0) / total])) as Partial<Record<StationId, number>>) : undefined
+  const lines = recapLines(state, startedAt, now, setup.t, shares)
   return lines.length === 0 ? setup.t.recapNothing : lines.join('\n')
 }
 
