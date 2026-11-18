@@ -17,7 +17,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 
 import { isLiveName, route } from './window/route.mjs'
 
-const PORT = Number(process.env.WORKMAP_PORT) || 47470
+export const PORT = Number(process.env.WORKMAP_PORT) || 47470
 const HERE = fileURLToPath(new URL('.', import.meta.url))
 /** The session is gone when its heartbeat is this old, as view.mjs reads it. */
 const STALE_MS = 15_000
@@ -125,17 +125,21 @@ async function answers() {
   }
 }
 
+/** Starts the server unless one answers; whether one answers then. The Sixel window (view.mjs) starts it this way too. */
+export async function ensureServer() {
+  if (await answers()) return true
+  spawn(process.execPath, [fileURLToPath(import.meta.url)], { detached: true, stdio: 'ignore' }).unref()
+  for (let i = 0; i < 40 && !(await answers()); i++) await new Promise(r => setTimeout(r, 100))
+  return answers()
+}
+
 /**
  * Starts the server unless one answers, then opens Edge on the session's page: an app window of its own profile, so
  * that Edge keeps its size and place; one address for every session, so that each window opens where the last was.
  */
 async function open(name) {
   if (liveOf(name) === undefined) return false
-  if (!(await answers())) {
-    spawn(process.execPath, [fileURLToPath(import.meta.url)], { detached: true, stdio: 'ignore' }).unref()
-    for (let i = 0; i < 40 && !(await answers()); i++) await new Promise(r => setTimeout(r, 100))
-    if (!(await answers())) return false
-  }
+  if (!(await ensureServer())) return false
   const edge = spawnSync(
     'cmd.exe',
     [

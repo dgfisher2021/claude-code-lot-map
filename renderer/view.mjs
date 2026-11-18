@@ -1,22 +1,22 @@
 #!/usr/bin/env node
-// The map in a window of its own, for a terminal that shows Sixel pictures (Windows Terminal 1.22 and later, foot,
-// mlterm, WezTerm and others). Usage: node view.mjs <live folder>
+// The map window in a pane of a terminal that shows Sixel pictures (Windows Terminal 1.22 and later, foot, mlterm,
+// WezTerm and others): the page the Edge window shows (renderer/window), served by serve.mjs and painted by render.mjs
+// in headless Chromium at the pane's size, each frame drawn as Sixel. The mouse and the keys go to the page, so its
+// header, tooltips, list and keys work as they do in Edge. Usage: node view.mjs <live folder>
 //
-// workmap keeps the session's live map in the folder (map.svg), the rows under it (feed.json) and a heartbeat (alive)
-// while `/workmap window` is on. The rows are drawn as text under the picture, as the pane draws them. The window
-// marks itself shown (shown) while it runs, so the session opens no second one.
-// This window runs render.mjs at its own size, draws each frame as Sixel, and closes when the heartbeat stops, or on
-// q or ctrl+c. `--all <sessions folder>` shows every session as tiles instead (overview.mjs).
+// workmap keeps the session's live map in the folder (map.svg, feed.json) and a heartbeat (alive) while the window is
+// wanted. The window marks itself shown (shown) while it runs, so the session opens no second one, and closes when the
+// heartbeat stops, when the page closes itself (q, or its session ended), or on ctrl+c.
+// `--all <sessions folder>` shows every session as tiles instead (overview.mjs).
 
 import { spawn } from 'node:child_process'
-import { readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { createInterface } from 'node:readline'
 import { fileURLToPath } from 'node:url'
 import { inflateSync } from 'node:zlib'
 
-import { layout } from './layout.mjs'
-import { feedLines, freshList, listKey, nextAgent } from './window/lines.mjs'
+import { PORT, ensureServer } from './serve.mjs'
 
 const live = process.argv[2]
 // --all: every session at a glance, in overview.mjs; this module goes no further.
@@ -26,12 +26,16 @@ if (live === '--all') {
 }
 const here = dirname(fileURLToPath(import.meta.url))
 const out = process.stdout
+/** The live folder's name after `workmap-live-`: the page's address names the session by it. */
+const name = /\/workmap-live-([a-z0-9]{1,32})$/.exec(live ?? '')?.[1]
 /** At most this many pictures a second go to the terminal, and none while it still reads the last. */
 const MAX_FPS = 10
 /** The session is gone when its heartbeat is this old. */
 const STALE_MS = 15_000
+/** The page's ground, for the pane's last row, which the picture leaves free. */
+const GROUND = '\x1b[48;2;10;12;17m'
 
-if (!live || !out.isTTY) {
+if (name === undefined || !out.isTTY) {
   process.stderr.write('usage: node view.mjs <live folder>, in a terminal that shows Sixel pictures\n')
   process.exit(2)
 }
@@ -43,10 +47,85 @@ const [envW, envH] = (process.env.WORKMAP_CELL ?? '').split('x').map(Number)
 let cell = envW > 0 && envH > 0 ? { w: envW, h: envH } : { w: 8, h: 17 }
 let asked = !(envW > 0 && envH > 0)
 
+/**
+ * The picture's size: the pane's width, and its height less the last row. Windows Terminal scrolls the screen for a
+ * picture that reaches the last row, with every frame.
+ */
+function fit() {
+  const cols = out.columns || 80
+  const rows = out.rows || 24
+  return { cols, rows, w: cols * cell.w, h: Math.max(1, rows - 1) * cell.h }
+}
+
+let size = fit()
+
+/**
+ * Clears the screen in place, in the page's ground. Windows Terminal answers ED 2 (ESC [ 2 J) by moving the screen,
+ * pictures and all, into the scrollback, so a window cleared that way grew by a screen at each resize.
+ */
+const CLEAR = `${GROUND}\x1b[H\x1b[J`
+
+function relayout() {
+  size = fit()
+  out.write(CLEAR)
+  tell({ size: [size.w, size.h] })
+}
+
+/** A line in the middle of the pane, until the first picture covers it. */
+function say(text) {
+  out.write(`${GROUND}\x1b[${Math.max(1, Math.floor(size.rows / 2))};1H\x1b[2K${Array.from(text).slice(0, size.cols).join('')}`)
+}
+
+// Raw from the start: the terminal's replies are then never echoed onto the pane.
 process.stdin.setRawMode?.(true)
-process.stdin.resume()
-process.stdin.on('data', data => {
-  const text = data.toString('latin1')
+// The alternate screen keeps no scrollback, and leaving it gives the pane back as it was. The mouse is reported with
+// every move (1003) in SGR form (1006), and focus coming and going (1004).
+out.write(`\x1b[?1049h\x1b[?25l\x1b[?1003h\x1b[?1006h\x1b[?1004h${CLEAR}`)
+say('Starting the map…')
+if (asked) out.write('\x1b[16t')
+out.on('resize', relayout)
+
+// ---- the mouse and the keys, to the page ----------------------------------------------------------
+
+/** A press's keys by the browser's names, as the page takes them: the escape sequences it knows, then characters. */
+const KEY_NAMES = {
+  '\x1b[A': 'ArrowUp',
+  '\x1b[B': 'ArrowDown',
+  '\x1b[5~': 'PageUp',
+  '\x1b[6~': 'PageDown',
+  '\r': 'Enter',
+  '\n': 'Enter',
+  '\x1b': 'Escape',
+  '\x7f': 'Backspace',
+  '\b': 'Backspace',
+}
+const BUTTONS = ['left', 'middle', 'right']
+/** The button held down, so that a move while it is held drags. */
+let held = 'none'
+
+/**
+ * One SGR mouse report, at a cell, sent to the page at that cell's centre. The terminal never says the pointer left the
+ * pane, so its first column, where the pointer leaves for the session beside it, and its last row, under the picture,
+ * count as outside the page: its tooltips close as they do when the pointer leaves Edge.
+ */
+function mouse(code, col, row, isRelease) {
+  const isOut = col <= 1 || row >= size.rows
+  const x = isOut ? -1 : Math.round((col - 0.5) * cell.w)
+  const y = isOut ? -1 : Math.round((row - 0.5) * cell.h)
+  if (code & 64) tell({ mouse: { type: 'mouseWheel', x, y, dy: code & 1 ? 120 : -120 } })
+  else if (code & 32) tell({ mouse: { type: 'mouseMoved', x, y, button: held } })
+  else if (isRelease) {
+    tell({ mouse: { type: 'mouseReleased', x, y, button: BUTTONS[code & 3] ?? 'left' } })
+    held = 'none'
+  } else {
+    held = BUTTONS[code & 3] ?? 'left'
+    tell({ mouse: { type: 'mousePressed', x, y, button: held } })
+  }
+}
+
+/** Takes what the terminal sends: its cell size, the mouse, focus going, and keys, which go to the page. */
+function heard(data) {
+  const text = data.toString()
   // The cell size the terminal answers: CSI 6 ; height ; width t
   const reply = /\x1b\[6;(\d+);(\d+)t/.exec(text)
   if (reply && asked) {
@@ -54,231 +133,53 @@ process.stdin.on('data', data => {
     cell = { w: Number(reply[2]), h: Number(reply[1]) }
     relayout()
   }
-  // Ctrl+C always closes, even while a search is typed.
-  if (text.includes('\x03')) quit(0)
-  if (logKeys(data.toString())) return
-  // Keys, with every escape sequence the terminal sends taken out first.
-  const keys = text.replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g, '')
-  if (/[q\x03]/.test(keys)) quit(0)
-  // ? swaps the rows for the legend, and back.
-  if (keys.includes('?')) {
-    showsLegend = !showsLegend
-    feedAt = 0
-    rows()
+  // Ctrl+C always closes; q too once the map cannot be drawn, since no page is there to take it.
+  if (text.includes('\x03') || (failed !== undefined && text.includes('q'))) return quit(0)
+  for (const [, code, col, row, end] of text.matchAll(/\x1b\[<(\d+);(\d+);(\d+)([Mm])/g)) mouse(Number(code), Number(col), Number(row), end === 'm')
+  // Focus leaving the pane: the pointer has gone with it.
+  if (text.includes('\x1b[O')) tell({ mouse: { type: 'mouseMoved', x: -1, y: -1, button: 'none' } })
+  const keys = text.replace(/\x1b\[<[\d;]*[Mm]|\x1b\[[IO]|\x1b\[6;\d+;\d+t/g, '')
+  for (const [key] of keys.matchAll(/\x1b\[[0-9;?]*[ -/]*[@-~]|[\s\S]/gu)) {
+    const named = KEY_NAMES[key] ?? ([...key].length === 1 && key >= ' ' ? key : '')
+    if (named !== '') tell({ key: named })
   }
-  // m goes round the map with the list, the map alone, and the list alone.
-  if (keys.includes('m')) {
-    view = view === 'both' ? 'map' : view === 'map' ? 'list' : 'both'
-    relayout()
-  }
-  if (keys.includes('a')) cycleAgent()
-})
-
-/** The hint line: the session sends it in its own language with feed.json. */
-let hintText = 'q closes · ? legend · m map/list · ↑↓ scroll · e errors · 1-9 station · / find · a subagents'
-
-/** The rows the list keeps under the map: the session's `windowRows`, once feed.json says it. */
-let listMin = 10
-/** What the window shows: the map with the list under it, the map alone, or the list alone. `m` goes round them. */
-let view = 'both'
-
-/** The layout for the window as it is now (layout.mjs), with its size in cells and where the feed's rows go. */
-function fit() {
-  const cols = out.columns || 80
-  const rows = out.rows || 24
-  const at = layout({ cols, rows, cell, listRows: listMin, view })
-  return { ...at, rows, cols, feedTop: at.listTop, feedRows: at.listRows }
 }
 
-let size = fit()
+// ---- the renderer, painting the page at this window's size ------------------------------------------
 
-/**
- * Clears the screen in place. Windows Terminal answers ED 2 (ESC [ 2 J) by moving the screen, pictures and all, into
- * the scrollback, so a window cleared that way grew by a screen at each resize.
- */
-const CLEAR = '\x1b[H\x1b[J'
-
-function relayout() {
-  size = fit()
-  out.write(CLEAR)
-  hint()
-  fedKey = ''
-  feed()
-  feedAt = 0
-  rows()
-}
-
-function hint() {
-  // Cut to the width: a line wrapping off the last row would scroll the window.
-  out.write(`\x1b[${size.rows};1H\x1b[2K\x1b[2m${fitLine(hintText)}\x1b[0m`)
-}
-
-/** A line in the middle of the map's room, until the first picture covers it. */
-function say(text) {
-  out.write(`\x1b[${Math.max(1, Math.floor(size.feedTop / 2))};1H\x1b[2K${text}`)
-}
-
-// ---- the feed under the map, as the pane writes it ---------------------------------------------
-
-/** Colours of the rows, as the app's dark theme gives them: at work and a change of model in the accent, faults in red. */
-const TONES = {
-  run: '\x1b[38;2;225;172;110m',
-  switch: '\x1b[38;2;225;172;110m',
-  bad: '\x1b[38;2;232;101;79m',
-  // A refusal: a rule at work, in the warning colour rather than the error's.
-  block: '\x1b[38;2;230;150;70m',
-  ok: '\x1b[2m',
-}
-let feedAt = 0
-
-/** Cuts a line to the window's width, by characters. */
-const fitLine = text => Array.from(text).slice(0, size.cols).join('')
-
-/** Whether the legend stands where the rows go: `?` swaps them. */
-let showsLegend = false
-
-/** Breaks a line of the legend at spaces to the window's width, a word too long for it cut. */
-function wrapLine(text) {
-  const lines = []
-  let line = ''
-  for (const word of text.split(' ')) {
-    const next = line === '' ? word : `${line} ${word}`
-    if (Array.from(next).length <= size.cols) line = next
-    else {
-      if (line !== '') lines.push(line)
-      line = fitLine(word)
-    }
-  }
-  if (line !== '') lines.push(line)
-  return lines
-}
-
-/** The list's filters and place (lines.mjs), the feed they last applied to, and how many log lines make a page. */
-let list = freshList()
-let lastFeed = {}
-let logPage = 5
-
-/** `a` goes through the subagents one at a time, then back to all the rows. */
-function cycleAgent() {
-  list = nextAgent(list, lastFeed)
-  feedAt = 0
-  rows()
-}
-
-/** A press's keys by the browser's names, as lines.mjs takes them: the escape sequences the list knows, then characters. */
-const KEY_NAMES = { '\x1b[A': 'ArrowUp', '\x1b[B': 'ArrowDown', '\x1b[5~': 'PageUp', '\x1b[6~': 'PageDown', '\r': 'Enter', '\n': 'Enter', '\x1b': 'Escape', '\x7f': 'Backspace', '\b': 'Backspace' }
-
-/** Takes the keys that scroll, filter and search the log; gives back whether a search took the whole press. */
-function logKeys(text) {
-  let took = list.isTyping
-  for (const [key] of text.matchAll(/\x1b\[[0-9;?]*[ -\/]*[@-~]|[\s\S]/g)) {
-    const name = KEY_NAMES[key] ?? (key.length > 1 ? '' : key)
-    if (name === '') continue
-    const pressed = listKey(list, name, lastFeed, logPage)
-    list = pressed.list
-    took ||= pressed.took
-  }
-  feedAt = 0
-  rows()
-  return took
-}
-
-/** Draws the action now and the rows under it when feed.json has changed, clearing what the last ones left. */
-function rows() {
-  let stat
-  try {
-    stat = statSync(join(live, 'feed.json'))
-  } catch {
-    return
-  }
-  if (stat.mtimeMs === feedAt || size.feedRows === 0) return
-  let feed
-  try {
-    feed = JSON.parse(readFileSync(join(live, 'feed.json'), 'utf8'))
-  } catch {
-    return
-  }
-  feedAt = stat.mtimeMs
-  lastFeed = feed
-  if (typeof feed.keys === 'string' && feed.keys !== hintText) {
-    hintText = feed.keys
-    hint()
-  }
-  // The rows the session's windowRows has the list keep: a change lays the window out again.
-  const wanted = Math.round(Number(feed.windowRows))
-  if (Number.isFinite(wanted) && wanted !== listMin) {
-    listMin = wanted
-    relayout()
-    return
-  }
-  const shown = feedLines(feed, list, size.feedRows, showsLegend)
-  list = shown.list
-  logPage = shown.page ?? logPage
-  // The top line: a wait on the person in the accent, a finished turn in green; the legend wraps to the width.
-  const nowTone = { wait: '\x1b[1;38;2;225;172;110m', done: '\x1b[1;38;2;143;191;127m' }
-  const lines = shown.lines.flatMap(l =>
-    l.isNow
-      ? [`${nowTone[l.tone] ?? '\x1b[1m'}${fitLine(l.line)}\x1b[0m`]
-      : l.isLegend
-        ? wrapLine(l.line)
-        : [`${l.isBold === true ? '\x1b[1m' : ''}${TONES[l.tone] ?? ''}${fitLine(String(l.line))}\x1b[0m`],
-  )
-  let text = ''
-  for (let i = 0; i < size.feedRows; i++) text += `\x1b[${size.feedTop + i};1H\x1b[2K${lines[i] ?? ''}`
-  out.write(text)
-}
-
-// The alternate screen keeps no scrollback, and leaving it gives the pane back as it was.
-out.write(`\x1b[?1049h\x1b[?25l${CLEAR}`)
-hint()
-say('Starting the map…')
-if (asked) out.write('\x1b[16t')
-out.on('resize', relayout)
-
-// ---- the renderer, fed the live map at this window's size ---------------------------------------
-
-const renderer = spawn(process.execPath, [join(here, 'render.mjs')], { stdio: ['ignore', 'pipe', 'ignore'] })
+let renderer
+/** The renderer's folder, once it is ready: frames appear there as frame.png. */
 let rdir
-let fedKey = ''
+/** Why the map cannot be drawn, once it cannot. */
+let failed
+let isQuitting = false
 
-/** Copies the live map to the renderer at this window's size, when either has changed. */
-function feed() {
-  // The list alone needs no picture.
-  if (rdir === undefined || size.w === 0) return
-  let stat
+/** Sends the renderer one line: the window's size, the mouse or a key. */
+function tell(message) {
+  if (rdir !== undefined && renderer?.stdin.writable) renderer.stdin.write(`${JSON.stringify(message)}\n`)
+}
+
+/** The map cannot be drawn: the window says why, and stays until q or ctrl+c closes it. */
+function cannot(why) {
+  failed ??= why
+  out.write(CLEAR)
+  say(`The map cannot be drawn: ${failed}.`)
+  out.write(`\x1b[${size.rows};1H\x1b[2m${'press q to close this window'.slice(0, size.cols)}\x1b[0m`)
+}
+
+/** A local server the page's Browser station opens, in the person's own browser: a localhost address, nothing else. */
+function openLink(url) {
+  if (!/^http:\/\/localhost(:\d{1,5})?\/$/.test(url)) return
+  const [command, args] = existsSync('/mnt/c') ? ['cmd.exe', ['/c', 'start', '', url]] : ['xdg-open', [url]]
   try {
-    stat = statSync(join(live, 'map.svg'))
-  } catch {
-    return
-  }
-  const key = `${stat.mtimeMs}:${size.w}x${size.h}`
-  if (key === fedKey) return
-  const svg = readFileSync(join(live, 'map.svg'), 'utf8')
-  if (!svg.trimEnd().endsWith('</svg>')) return
-  fedKey = key
-  const sized = svg.replace(/^(<svg\b[^>]*?)\swidth="\d+"\sheight="\d+"/, `$1 width="${size.w}" height="${size.h}"`)
-  writeFileSync(join(rdir, 'map.svg.tmp'), sized)
-  renameSync(join(rdir, 'map.svg.tmp'), join(rdir, 'map.svg'))
+    spawn(command, args, { cwd: existsSync('/mnt/c') ? '/mnt/c' : undefined, detached: true, stdio: 'ignore' })
+      .on('error', () => {})
+      .unref()
+  } catch {}
 }
 
 let lastDraw = 0
 let later
-
-createInterface({ input: renderer.stdout }).on('line', line => {
-  if (line.startsWith('ready ')) {
-    rdir = line.slice(6)
-    feed()
-  } else if (line.startsWith('frame ')) draw()
-  else if (line.startsWith('error ')) failed = line.slice(6)
-})
-// Without its renderer the window has nothing to show: it says why, and stays until a key closes it.
-let failed = ''
-renderer.on('exit', () => {
-  if (isQuitting) return
-  out.write(CLEAR)
-  say(`The map cannot be drawn: ${failed || 'its renderer stopped'}.`)
-  out.write(`\x1b[${size.rows};1H\x1b[2m${fitLine('press q to close this window')}\x1b[0m`)
-})
 
 /** Draws the newest frame, unless one went out a moment ago or the terminal is still reading it: then it is drawn later. */
 function draw() {
@@ -290,15 +191,34 @@ function draw() {
   }
   try {
     const png = decodePng(readFileSync(join(rdir, 'frame.png')))
-    // A frame painted for the size before a resize would spill over the rows: one at the new size comes next.
+    // A frame painted for the size before a resize would spill over the last row: one at the new size comes next.
     if (png.width !== size.w || png.height !== size.h) return
     const picture = sixel(png)
     lastDraw = Date.now()
-    out.write(`\x1b[1;${size.col + 1}H${picture}`)
+    out.write(`\x1b[1;1H${picture}`)
   } catch {
     // A frame caught mid-write: the next one comes soon.
   }
 }
+
+// The page's server, one for every session's window, started unless one answers; then the renderer, on the page.
+if (await ensureServer()) {
+  renderer = spawn(process.execPath, [join(here, 'render.mjs'), '--page', `http://127.0.0.1:${PORT}/?live=${name}`], { stdio: ['pipe', 'pipe', 'ignore'] })
+  createInterface({ input: renderer.stdout }).on('line', line => {
+    if (line.startsWith('ready ')) {
+      rdir = line.slice(6)
+      tell({ size: [size.w, size.h] })
+    } else if (line.startsWith('frame ')) draw()
+    else if (line.startsWith('open ')) openLink(line.slice(5))
+    else if (line === 'close') quit(0)
+    else if (line.startsWith('error ')) failed = line.slice(6)
+  })
+  renderer.on('exit', () => isQuitting || cannot('its renderer stopped'))
+} else cannot(`its server did not start on port ${PORT}`)
+
+// What the terminal sent while the server started waited for this: raw mode kept its replies from being echoed.
+process.stdin.on('data', heard)
+process.stdin.resume()
 
 /** Marks the window shown, so that the session opens no second one beside it. */
 function markShown() {
@@ -308,8 +228,6 @@ function markShown() {
 }
 
 markShown()
-setInterval(feed, 60)
-setInterval(rows, 200)
 setInterval(() => {
   let beat = 0
   try {
@@ -321,12 +239,11 @@ setInterval(() => {
   } else markShown()
 }, 2000)
 
-let isQuitting = false
 function quit(code) {
   if (isQuitting) return
   isQuitting = true
-  renderer.kill('SIGTERM')
-  out.write(`${CLEAR}\x1b[?1049l\x1b[?25h`)
+  renderer?.kill('SIGTERM')
+  out.write(`\x1b[?1004l\x1b[?1006l\x1b[?1003l\x1b[0m\x1b[H\x1b[J\x1b[?1049l\x1b[?25h`)
   process.stdin.setRawMode?.(false)
   setTimeout(() => process.exit(code), 100)
 }
