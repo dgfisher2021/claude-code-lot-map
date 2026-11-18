@@ -554,6 +554,9 @@ export function paintMap(board: Board, now: number, setup: Setup, columns: numbe
           break
         }
       }
+      // The satellites' count, when it fits.
+      const kept = board.satellites?.[st.id]?.length ?? 0
+      if (kept > 0 && width(parts.slice(1)) + glyphs(` ·${kept}`).length <= 10) parts.push({ text: ` ·${kept}`, fg: c.dim })
     }
     const length = parts.reduce((n, part) => n + glyphs(part.text).length, 0)
     words.push({

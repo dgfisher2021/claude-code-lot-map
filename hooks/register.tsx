@@ -28,6 +28,7 @@ import {
   taskOf,
   untilText,
   warningsOf,
+  withSatellite,
   costText,
 } from './map'
 import type { Setup } from './map'
@@ -120,6 +121,19 @@ function tally(
   // An error counts on the turn of the call.
   const turns = status === 'err' && station !== 'model' && station !== 'you' ? inTurn(b, t => ({ ...t, errors: t.errors + 1 }), turn) : {}
   return { ...bad, ...agentFaults, ...turns }
+}
+
+/** The calls that read or change a file. */
+const FILE_TOOLS = new Set(['Read', 'Write', 'Edit', 'NotebookEdit'])
+
+/** A file or an MCP server a call used becomes a satellite of its station; a memory server does not, as Memory shows its records. */
+async function keepSatellite($: EngineInterface, tool: string, input: Record<string, unknown>, setup: Setup): Promise<void> {
+  const seen = classify(tool, input, setup)
+  const server = /^mcp__([^_].*?)__.+$/.exec(tool)?.[1]
+  const name = FILE_TOOLS.has(tool) ? (seen.station === 'files' && seen.label !== tool ? seen.label : undefined) : server
+  if (name === undefined || seen.station === 'memory' || seen.station === 'agents' || setup.memoryServers.has(server ?? '')) return
+  const now = await $.clock.now()
+  await update($, board, b => ({ ...b, satellites: withSatellite(b.satellites, seen.station, clean(name, 40), CHANGING_TOOLS.has(tool), now) }))
 }
 
 async function begin($: EngineInterface, start: Start): Promise<string | undefined> {
@@ -1041,6 +1055,7 @@ export const register: Register = (on, options) => {
         }),
       )
     }
+    await quietly(() => keepSatellite($, String(e.tool), e as unknown as Record<string, unknown>, setup))
     try {
       const ran = await next(e)
       const wasRefused = ran.deny !== undefined || (e.tool_use_id !== undefined && refused.delete(e.tool_use_id))

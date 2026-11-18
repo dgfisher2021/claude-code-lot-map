@@ -55,6 +55,9 @@ export type PlanItem = {
 /** The rate-limit windows the map shows. */
 export type LimitKind = 'five_hour' | 'seven_day'
 
+/** A file or MCP server a station serves: its name, how often it was used, whether it was edited, and when last. */
+export type Satellite = { name: string; uses: number; isEdited?: true; lastAt: number }
+
 export type Board = {
   entries: Entry[]
   counts: Partial<Record<StationId, number>>
@@ -90,6 +93,8 @@ export type Board = {
   plan?: PlanItem[]
   /** A changed file's label to how many times it was written or edited; the 40 most recently changed. */
   changed?: Record<string, number>
+  /** The files and MCP servers a station serves most, by station: twelve kept, the five most used drawn. */
+  satellites?: Partial<Record<StationId, Satellite[]>>
   /** The person's messages this session as turns, the last twelve; the newest is the open one. */
   turns?: TurnSummary[]
   /** The rate-limit windows the engine last reported: how much of each is used, and when it resets (ISO 8601). */
