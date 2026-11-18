@@ -55,7 +55,6 @@ test('/workmap log lists every kept call and says when older ones are gone', asy
   expect(lines[79]).toContain('s11')
   expect(lines.join('\n')).not.toContain('s10')
   expect(lines[80]).toBe(en.logGone(80, 90))
-  expect((await $.command.run({ command: 'lot-map', args: 'log' } as never)).text).toBe(lines.join('\n'))
 })
 
 test('feed.json carries the log and the station names', async ($, on) => {
@@ -70,7 +69,7 @@ test('feed.json carries the log and the station names', async ($, on) => {
   })
   await $.tool.call({ tool: 'Read', file_path: '/a/b/one.py' })
   await $.tool.call({ tool: 'Bash', command: 'npm test', description: 'Run the tests' })
-  await $.command.run({ command: 'lot-map', args: 'window' } as never)
+  await $.command.run({ command: 'workmap', args: 'window' } as never)
   const dir = runs.find(argv => argv[0] === 'wt.exe')?.at(-1) ?? ''
   const feed = JSON.parse(written.filter(w => w.path === `${dir}/feed.json`).at(-1)?.text ?? '{}')
   expect(feed.log.map((l: { line: string }) => l.line)).toEqual([expect.stringContaining('Run the tests'), expect.stringContaining('b/one.py')])
@@ -81,7 +80,7 @@ test('feed.json carries the log and the station names', async ($, on) => {
   await $.session.end({ reason: 'other' } as never)
 })
 
-test('both commands hint at log', async ($, on) => {
+test('the command hints at log', async ($, on) => {
   mock.clock(on, { now: NOW })
   mock.env(on, {})
   const hints: string[] = []
@@ -92,6 +91,6 @@ test('both commands hint at log', async ($, on) => {
   on('session.start', (_, e) => ({ cwd: e.cwd }))
   on('fs.write', () => ({ value: undefined }))
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
-  expect(hints.length).toBe(2)
-  for (const h of hints) expect(h).toContain('log')
+  expect(hints).toHaveLength(1)
+  expect(hints[0]).toContain('log')
 })

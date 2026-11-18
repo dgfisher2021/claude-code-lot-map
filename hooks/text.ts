@@ -48,7 +48,7 @@ export type Strings = {
   noCounts: string
   /** In a terminal pane too narrow for the map: how wide it would need to be. */
   tooNarrow: (columns: number) => string
-  /** After `/lot-map window`: the map opened in a pane of its own, already open, or how to open it by hand. */
+  /** After `/workmap window`: the map opened in a pane of its own, already open, or how to open it by hand. */
   windowOpened: string
   windowOpen: string
   windowByHand: (command: string) => string

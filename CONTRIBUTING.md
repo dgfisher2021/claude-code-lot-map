@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for wanting to help. lot-map is small and kept by one person in his own time, so a few rules keep it easy to review.
+Thanks for wanting to help. workmap is small and kept by one person, so a few rules keep it easy to review.
 
 ## Before you write code
 
@@ -37,13 +37,13 @@ Neither needs an account. To see your change live, point Claude Code at your che
 claude --plugin-dir .
 ```
 
-It takes the place of an installed lot-map for that session and starts with the default options. Afterwards you may find the engine's types in `.claude-plugin/types/` and a `tsconfig.json` beside them, for your editor; both are ignored by git.
+It takes the place of an installed workmap for that session and starts with the default options. Afterwards you may find the engine's types in `.claude-plugin/types/` and a `tsconfig.json` beside them, for your editor; both are ignored by git.
 
 CI runs the first two on every pull request. On your first one a maintainer has to approve the run, so it may wait a little.
 
 ## A pull request
 
-- **Open it against `next`, not `main`.** Installs follow `main`, so it changes only at a release; `next` collects what the next release will hold. Branch from `next` too.
+- **Open it against `main`.** Branch from `main`; installs follow it.
 - **One thing per pull request.** A fix and a feature are two.
 - **A test for what you changed.** Tests here state behaviour in their names (`a password never reaches a label…`); add yours the same way, and for a bug, one that fails without the fix.
 - **Say what you checked and what you did not:** the commands, the Claude Code version, the system, and whether you saw it in the desktop app or a terminal.
@@ -52,26 +52,26 @@ CI runs the first two on every pull request. On your first one a maintainer has 
 
 ## A new language
 
-Like [#20](https://github.com/alexeyw/lot-map/pull/20) and [#31](https://github.com/alexeyw/lot-map/pull/31):
+Like upstream lot-map's [#20](https://github.com/alexeyw/lot-map/pull/20) and [#31](https://github.com/alexeyw/lot-map/pull/31):
 
 1. one more table in `hooks/text.ts`, with every key the English one has;
 2. one more value of `language` in `.claude-plugin/plugin.json`;
 3. the `language` row of the README's options;
-4. the two language tests in `hooks/lot-map.test.tsx`: the `LANGUAGES` list and the pane's row.
+4. the two language tests in `hooks/workmap.test.tsx`: the `LANGUAGES` list and the pane's row.
 
 Please translate a language you speak.
 
 ## Where things are
 
-| File | What is in it |
-| --- | --- |
-| `hooks/classify.ts` | what a call is called and where it lands (`classify`) |
-| `hooks/map.ts` | colours, the drawing, the rows, the warnings |
-| `hooks/register.tsx` | the hooks and the pane |
-| `hooks/text.ts` | the words, one table per language |
-| `hooks/lot-map.test.tsx` | the tests |
-| `types/index.d.ts` | the board's shape |
-| `.claude-plugin/plugin.json` | the manifest and the options |
+| File                         | What is in it                                         |
+| ---------------------------- | ----------------------------------------------------- |
+| `hooks/classify.ts`          | what a call is called and where it lands (`classify`) |
+| `hooks/map.ts`               | colours, the drawing, the rows, the warnings          |
+| `hooks/register.tsx`         | the hooks and the pane                                |
+| `hooks/text.ts`              | the words, one table per language                     |
+| `hooks/workmap.test.tsx`     | the tests                                             |
+| `types/index.d.ts`           | the board's shape                                     |
+| `.claude-plugin/plugin.json` | the manifest and the options                          |
 
 ## Licence
 

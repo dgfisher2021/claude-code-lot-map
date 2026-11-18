@@ -1,11 +1,11 @@
 {
-  "name": "lot-map",
+  "name": "workmap",
   "owner": {
-    "name": "alexeyw"
+    "name": "dgfisher2021"
   },
   "plugins": [
     {
-      "name": "lot-map",
+      "name": "workmap",
       "source": "./"
     }
   ]

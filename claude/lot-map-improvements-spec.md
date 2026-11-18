@@ -1,6 +1,6 @@
 # lot-map improvements: the map and the task list
 
-Status: wave 1 shipped in 0.10.0 (PR #5, 2026-11-16). Wave 2 shipped in 0.11.0 (2026-11-17), with what wave 1 left and upstream's fixes; see [Left after wave 1](#left-after-wave-1) and [Left after wave 2](#left-after-wave-2). Wave 3 shipped in 0.12.0 (2026-11-17), items 21–30; item 31, the rename, waits for the person's word. See [Left after wave 3](#left-after-wave-3). Written 2026-11-16 against lot-map 0.9.0 (fork `main`). The items are in three waves, numbered in the order they would be built.
+Status: wave 1 shipped in 0.10.0 (PR #5, 2026-11-16). Wave 2 shipped in 0.11.0 (2026-11-17), with what wave 1 left and upstream's fixes; see [Left after wave 1](#left-after-wave-1) and [Left after wave 2](#left-after-wave-2). Wave 3 shipped in 0.12.0 (2026-11-17), items 21–30, and item 31 as workmap 1.0.0 the same day. See [Left after wave 3](#left-after-wave-3). Written 2026-11-16 against lot-map 0.9.0 (fork `main`). The items are in three waves, numbered in the order they would be built.
 
 ## Goal
 
@@ -433,7 +433,9 @@ Checked on 2026-11-17 against the `wave-3` branch at 0.12.0, with a real Windows
 - A cell glow can outlast its time by up to five seconds under reduced motion.
 - A workflow cluster counts at most 24 agents.
 
-### 31. Rename to workmap and own the repo (repo · effort medium)
+### 31. Rename to workmap and own the repo (repo · effort medium) — done in 1.0.0
+
+**Done:** the plugin, marketplace, command, folders and variables are workmap in 1.0.0; the repository is `dgfisher2021/workmap`, still marked as a fork of `alexeyw/lot-map` until GitHub Support detaches it.
 
 **Allowed:** the licence is MIT, copyright Aleksei Volodin. You may rename, change and publish it as your own, as long as `LICENSE` with his notice stays. Add your own copyright line for your changes.
 

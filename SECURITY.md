@@ -2,9 +2,9 @@
 
 ## Reporting a vulnerability
 
-Please report it privately, not in a public issue: open the repository's [Security tab](https://github.com/alexeyw/lot-map/security) and choose **Report a vulnerability**. GitHub keeps the report between you and the maintainer until a fix is out.
+Please report it privately, not in a public issue: open the repository's [Security tab](https://github.com/dgfisher2021/workmap/security) and choose **Report a vulnerability**. GitHub keeps the report between you and the maintainer until a fix is out.
 
-Say what you saw, on which version of lot-map and of Claude Code, and how to see it again. A session you can describe in a few steps is worth more than a long explanation.
+Say what you saw, on which version of workmap and of Claude Code, and how to see it again. A session you can describe in a few steps is worth more than a long explanation.
 
 I maintain this alone and in my own time. I read every report and answer as soon as I can; a fix goes out as a new version, with a line in the [changelog](CHANGELOG.md) and credit to you unless you ask otherwise.
 
@@ -25,4 +25,4 @@ What the mod is handed and what it keeps is described in [PRIVACY.md](PRIVACY.md
 
 ## What does not
 
-A wrong label, a station that does not light up, or a drawing fault is a bug: open an ordinary [issue](https://github.com/alexeyw/lot-map/issues). A problem in Claude Code itself, in its mods API or in another plugin belongs to its own maintainers.
+A wrong label, a station that does not light up, or a drawing fault is a bug: open an ordinary [issue](https://github.com/dgfisher2021/workmap/issues). A problem in Claude Code itself, in its mods API or in another plugin belongs to its own maintainers.
