@@ -638,6 +638,94 @@ export function framedMap(board: Board, now: number, setup: Setup, width: number
   )
 }
 
+// ---- the crew at the agents station -----------------------------------------------------------
+
+/** A subagent still at work, or a Workflow's agents as one: its label and when it began. */
+type Crew = { label?: string; since?: number; isFaulty: boolean; isRun: boolean }
+
+const CREW_LABELS = 6
+const CREW_ROW = 9
+
+/** The crew in `board.agents` order: each subagent, a Workflow's agents as one with `done/started`. */
+function crewOf(board: Board): Crew[] {
+  const live = board.agents ?? []
+  const info = board.agentInfo ?? {}
+  const faulty = board.agentFaults ?? []
+  const first = (id: string): number | undefined => {
+    const own = board.entries.filter(e => e.agentId === id).map(e => e.startedAt)
+    return own.length > 0 ? Math.min(...own) : info[id]?.at
+  }
+  const seen = new Set<string>()
+  const crew: Crew[] = []
+  for (const id of live) {
+    const run = info[id]?.run
+    if (run === undefined) {
+      const name = Array.from(board.agentNames?.[id] ?? '').slice(0, 10).join('')
+      const since = first(id)
+      crew.push({ ...(name === '' ? {} : { label: name }), ...(since === undefined ? {} : { since }), isFaulty: faulty.includes(id), isRun: false })
+    } else if (!seen.has(run)) {
+      seen.add(run)
+      const all = Object.keys(info).filter(x => info[x]?.run === run)
+      const starts = all.map(first).filter((x): x is number => x !== undefined)
+      crew.push({
+        label: `${all.filter(x => !live.includes(x)).length}/${all.length}`,
+        ...(starts.length > 0 ? { since: Math.min(...starts) } : {}),
+        isFaulty: all.some(x => faulty.includes(x)),
+        isRun: true,
+      })
+    }
+  }
+  return crew
+}
+
+/** Whether a stack of `rows` labels with its top edge at `top` beside `at` stands clear of the canvas edge and of every other station's name and count. */
+function isClear(at: Point, top: number, rows: number): boolean {
+  const bottom = top + CREW_ROW * (rows - 1) + 9
+  return (
+    top >= 2 &&
+    bottom <= H - 2 &&
+    STATIONS.every((s, i) => {
+      const p = place(i)
+      return s.id === 'agents' || at.x - 30 >= p.x + 33 || at.x + 26 <= p.x - 33 || bottom <= p.y - 30 || top >= p.y + 54
+    })
+  )
+}
+
+/** The label rows of the first six: a dot, its clock arc (a lap a minute) and its name, under the station's count, or above it when that room is taken. */
+function crewLabels(crew: readonly Crew[], at: Point, c: Palette, now: number, isStill: boolean): string {
+  const shown = crew.filter(m => m.label !== undefined).slice(0, CREW_LABELS)
+  if (shown.length === 0) return ''
+  const height = CREW_ROW * (shown.length - 1) + 9
+  const below = at.y + NODE + 36
+  const above = at.y - NODE - 16 - height
+  const top = isClear(at, below, shown.length) || !isClear(at, above, shown.length) ? below : above
+  let out = ''
+  shown.forEach((m, k) => {
+    const y = top + 7 + k * CREW_ROW
+    const cx = at.x - 24
+    const cy = y - 2.5
+    const ring = `cx="${n1(cx)}" cy="${n1(cy)}" r="3.4" fill="none" stroke-width="1" pathLength="1"`
+    out += `<circle ${ring} stroke="${c.line}"/><circle cx="${n1(cx)}" cy="${n1(cy)}" r="1.6" fill="${m.isFaulty ? c.red : c.hot}"/>`
+    if (m.since !== undefined) {
+      const elapsed = Math.max(0, now - m.since)
+      const held = isStill ? elapsed - (elapsed % STILL_STEP_MS) : elapsed
+      const done = held % 60_000
+      const arc = `<circle ${ring} stroke="${m.isFaulty ? c.red : c.hot}" stroke-dasharray="1 1" transform="rotate(-90 ${n1(cx)} ${n1(cy)})"`
+      out += isStill
+        ? `${arc} stroke-dashoffset="${n1(1 - done / 60_000)}"/>`
+        : `${arc} stroke-dashoffset="1"><animate attributeName="stroke-dashoffset" values="1;0" begin="${clock(-done)}" dur="${clock(60_000)}" repeatCount="indefinite"/></circle>`
+    }
+    out += `<text x="${n1(at.x - 17)}" y="${n1(y)}" text-anchor="start" ${FONT} font-size="7" paint-order="stroke" stroke="${c.ground}" stroke-width="3" stroke-linejoin="round" fill="${c.ash}">${escapeXml(m.label as string)}</text>`
+  })
+  return out
+}
+
+/** Every subagent the window can pick: those named, then those still at work, each with its id. */
+export function agentList(board: Board): { id: string; name: string }[] {
+  const ids = [...new Set([...Object.keys(board.agentNames ?? {}), ...(board.agents ?? [])])]
+  return ids.map(id => ({ id, name: board.agentNames?.[id] ?? id }))
+}
+
 export function drawMap(board: Board, now: number, setup: Setup, isFilling = false): string {
   const c = paletteOf(setup)
   orient(setup)
@@ -704,19 +792,20 @@ export function drawMap(board: Board, now: number, setup: Setup, isFilling = fal
 
   body += drawn.map(d => d.over).join('') + satellites(board, now, setup, c, isStill)
 
-  // Each subagent still at work circles the agents station.
-  const crew = (board.agents ?? []).slice(0, 6)
-  crew.forEach((agent, k) => {
+  // Each subagent still at work circles the agents station; a Workflow's agents are one dot between them.
+  const crew = crewOf(board)
+  crew.forEach((member, k) => {
     const lap = 7000
     const spin = `${n1(agentsAt.x)} ${n1(agentsAt.y)}`
     // A subagent a call of which failed or was refused circles in red.
-    const dot = (board.agentFaults ?? []).includes(agent) ? c.red : c.hot
-    const mark = `<circle cx="${n1(agentsAt.x)}" cy="${n1(agentsAt.y - NODE - 6)}" r="3" fill="${dot}"/>`
+    const dot = member.isFaulty ? c.red : c.hot
+    const mark = `<circle cx="${n1(agentsAt.x)}" cy="${n1(agentsAt.y - NODE - 6)}" r="${member.isRun ? 4 : 3}" fill="${dot}"/>`
     // Standing still, each keeps its own place on the circle.
     body += isStill
       ? `<g transform="rotate(${n1((360 * k) / crew.length)} ${spin})">${mark}</g>`
       : `<g><animateTransform attributeName="transform" type="rotate" from="0 ${spin}" to="360 ${spin}" begin="${clock(-((now + (k * lap) / crew.length) % lap))}" dur="${clock(lap)}" repeatCount="indefinite"/>${mark}</g>`
   })
+  body += crewLabels(crew, agentsAt, c, now, isStill)
 
   // A name longer than three letters shrinks to stay inside the circle.
   const coreSize = Math.min(17, 62 / (0.75 * setup.core.length))
@@ -1072,7 +1161,7 @@ export function recapLines(
 }
 
 /** A row of the feed as written: at work, finished, gone wrong, refused, a change of model, or plain words. */
-export type FeedLine = { line: string; tone: 'run' | 'ok' | 'bad' | 'block' | 'switch' | 'plain'; isBold?: true }
+export type FeedLine = { line: string; agentId?: string; tone: 'run' | 'ok' | 'bad' | 'block' | 'switch' | 'plain'; isBold?: true }
 
 /** The most lines the rows take, headers included. */
 const FEED_MAX = 16
@@ -1128,7 +1217,8 @@ function rowLines(rows: readonly Row[], t: Strings, agentNames: Readonly<Record<
     const agent = entry.agentId === undefined ? undefined : agentNames[entry.agentId]
     const label = agent === undefined ? entry.label : `↳ ${agent} · ${entry.label}`
     const line = `${mark} ${t.stations[entry.station].padEnd(column)} ${label}${times > 1 ? `  +${times - 1}` : ''}${exit}${entry.reason === undefined ? '' : ` — ${entry.reason}`}${took === '' ? '' : `  ${took}`}`
-    return { line, tone: isSwitch ? 'switch' : entry.status === 'run' ? 'run' : entry.status === 'ok' ? 'ok' : entry.status === 'block' ? 'block' : 'bad' }
+    const tone = isSwitch ? 'switch' : entry.status === 'run' ? 'run' : entry.status === 'ok' ? 'ok' : entry.status === 'block' ? 'block' : 'bad'
+    return { line, ...(entry.agentId === undefined ? {} : { agentId: entry.agentId }), tone }
   })
 }
 

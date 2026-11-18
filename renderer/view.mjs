@@ -67,6 +67,7 @@ process.stdin.on('data', data => {
     view = view === 'both' ? 'map' : view === 'map' ? 'list' : 'both'
     relayout()
   }
+  if (keys.includes('a')) cycleAgent()
 })
 
 /** The rows the list keeps under the map: the session's `windowRows`, once feed.json says it. */
@@ -102,7 +103,7 @@ function relayout() {
 
 function hint() {
   // Cut to the width: a line wrapping off the last row would scroll the window.
-  out.write(`\x1b[${size.rows};1H\x1b[2K\x1b[2m${fitLine('q closes · ? legend · m map/list')}\x1b[0m`)
+  out.write(`\x1b[${size.rows};1H\x1b[2K\x1b[2m${fitLine('q closes · ? legend · m map/list · a subagents')}\x1b[0m`)
 }
 
 /** A line in the middle of the map's room, until the first picture covers it. */
@@ -145,6 +146,25 @@ function wrapLine(text) {
   return lines
 }
 
+/** The subagents feed.json names, and the one whose calls the rows show now (-1: all). */
+let crew = []
+let watched = -1
+
+/** `a` goes through the subagents one at a time, then back to all the rows. */
+function cycleAgent() {
+  watched = watched + 1 < crew.length ? watched + 1 : -1
+  feedAt = 0
+  rows()
+}
+
+/** The rows of the watched subagent alone, under a line saying whose they are; all the rows when none is. */
+function forAgent(listed) {
+  if (watched < 0 || !crew[watched]) return listed
+  const { id, name } = crew[watched]
+  const own = listed.filter(row => row.agentId === id)
+  return [{ line: `a ${watched + 1}/${crew.length} · ${name}`, tone: 'run', isBold: true }, ...own]
+}
+
 /** Draws the action now and the rows under it when feed.json has changed, clearing what the last ones left. */
 function rows() {
   let stat
@@ -161,6 +181,8 @@ function rows() {
     return
   }
   feedAt = stat.mtimeMs
+  crew = Array.isArray(feed.agents) ? feed.agents.filter(a => a && typeof a.id === 'string').map(a => ({ id: a.id, name: String(a.name ?? a.id) })) : []
+  if (watched >= crew.length) watched = -1
   // The rows the session's windowRows has the list keep: a change lays the window out again.
   const wanted = Math.round(Number(feed.windowRows))
   if (Number.isFinite(wanted) && wanted !== listMin) {
@@ -182,7 +204,7 @@ function rows() {
     }
     if (feed.changed) lines.push(`${TONES[feed.changed.tone] ?? ''}${fitLine(String(feed.changed.line))}\x1b[0m`)
     for (const { line, tone } of Array.isArray(feed.pinned) ? feed.pinned : []) lines.push(`${TONES[tone] ?? ''}${fitLine(String(line))}\x1b[0m`)
-    const listed = Array.isArray(feed.rows) ? feed.rows : []
+    const listed = forAgent(Array.isArray(feed.rows) ? feed.rows : [])
     if (listed.length === 0) lines.push(`\x1b[2m${fitLine(String(feed.empty ?? ''))}\x1b[0m`)
     for (const { line, tone, isBold } of listed) lines.push(`${isBold === true ? '\x1b[1m' : ''}${TONES[tone] ?? ''}${fitLine(String(line))}\x1b[0m`)
   }
