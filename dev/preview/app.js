@@ -28,7 +28,14 @@ function load() {
   }
 }
 const state = load()
+// ?window=<session id> shows that session alone, filling the window, as the map window does.
+const windowed = new URLSearchParams(location.search).get('window')
+if (windowed) {
+  document.body.classList.add('windowed')
+  state.source = windowed
+}
 function save() {
+  if (windowed) return
   try {
     localStorage.setItem('workmap-preview', JSON.stringify({ ...state, pane: { w: pane.offsetWidth, h: pane.offsetHeight } }))
   } catch {}
@@ -373,8 +380,10 @@ $('source').addEventListener('change', () => {
 })
 
 // The pane's size is the person's own: dragging its corner lays the map out again, as a resize does in the terminal.
-pane.style.width = `${state.pane.w}px`
-pane.style.height = `${state.pane.h}px`
+if (!windowed) {
+  pane.style.width = `${state.pane.w}px`
+  pane.style.height = `${state.pane.h}px`
+}
 new ResizeObserver(() => {
   liveSeen = ''
   draw()

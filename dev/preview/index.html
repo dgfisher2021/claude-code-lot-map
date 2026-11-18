@@ -116,6 +116,21 @@
         display: none;
         z-index: 9;
       }
+      body.windowed {
+        padding: 0;
+        height: 100vh;
+        overflow: hidden;
+      }
+      body.windowed #side {
+        display: none;
+      }
+      body.windowed #pane {
+        width: 100vw;
+        height: 100vh;
+        border: 0;
+        border-radius: 0;
+        resize: none;
+      }
       #tip.rich {
         width: 300px;
         max-width: 300px;
