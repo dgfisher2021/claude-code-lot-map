@@ -108,6 +108,11 @@ function renderRows(feed) {
 
 function setMap(svg) {
   mapBox.innerHTML = svg
+  // The page draws its own tooltips: each <title> becomes data-title, so the browser's plain one never shows as well.
+  for (const title of mapBox.querySelectorAll('title')) {
+    title.parentElement?.setAttribute('data-title', title.textContent ?? '')
+    title.remove()
+  }
   placePins()
   showTip()
 }
@@ -170,8 +175,8 @@ let pointer
 /** The title of whatever is under the pointer, walking up to the nearest element that carries one. */
 function titleAt(x, y) {
   for (let el = document.elementFromPoint(x, y); el && el !== mapBox; el = el.parentElement) {
-    const title = [...el.children].find(c => c.tagName.toLowerCase() === 'title')
-    if (title) return title.textContent
+    const title = el.getAttribute?.('data-title')
+    if (title) return title
   }
   return undefined
 }
@@ -246,7 +251,7 @@ mapBox.addEventListener('mouseleave', () => {
 const KEYS = [
   [['m'], 'Map and list, the map alone, or the list alone'],
   [['?'], 'What the marks on the map mean'],
-  [['↑', '↓', 'PgUp', 'PgDn'], 'Scroll back through every call'],
+  [['↑', '↓'], 'Scroll back through every call'],
   [['e'], 'Only errors and refusals'],
   [['1', '–', '9'], "One station's calls", '0 shows all again'],
   [['a'], "One subagent's calls at a time"],
@@ -262,10 +267,17 @@ const COMMANDS = [
   ['/workmap changed', 'The files Claude changed'],
   ['/workmap all', 'Every session at a glance'],
 ]
+// The arrow keys drawn as icons: a character arrow is too small to read in a key cap.
+const ARROWS = { '↑': 'M12 19V5M5 12l7-7 7 7', '↓': 'M12 5v14M19 12l-7 7-7-7' }
+const keyCap = k =>
+  k === '–'
+    ? '–'
+    : ARROWS[k]
+      ? `<kbd class="arrow" aria-label="${k === '↑' ? 'Up' : 'Down'}">${svgIcon(`<path d="${ARROWS[k]}"/>`, 16)}</kbd>`
+      : `<kbd>${esc(k)}</kbd>`
 function helpHtml() {
   const keys = KEYS.map(
-    ([keys, does, more]) =>
-      `<span>${keys.map(k => (k === '–' ? '–' : `<kbd>${esc(k)}</kbd>`)).join(' ')}</span><span>${esc(does)}${more ? `<br><small>${esc(more)}</small>` : ''}</span>`,
+    ([keys, does, more]) => `<span>${keys.map(keyCap).join(' ')}</span><span>${esc(does)}${more ? `<br><small>${esc(more)}</small>` : ''}</span>`,
   ).join('')
   const commands = COMMANDS.map(([command, does]) => `<span><kbd>${esc(command)}</kbd></span><span>${esc(does)}</span>`).join('')
   return (
@@ -311,7 +323,7 @@ function pinOf(n, title) {
   const pin = document.createElement('span')
   pin.className = 'pin'
   pin.textContent = String(n)
-  pin.title = title
+  pin.dataset.title = title
   return pin
 }
 function placePins() {
