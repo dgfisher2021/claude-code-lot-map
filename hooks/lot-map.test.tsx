@@ -2105,7 +2105,7 @@ test("/workmap help and /lot-map help answer the legend in the session's languag
   expect(answer.split('\n')).toEqual(stringsFor('ru').legend)
   expect(answer).toContain('Память')
   expect((await $.command.run({ command: 'lot-map', args: 'help' } as never)).text).toBe(answer)
-  for (const language of ['en', 'ru', 'es', 'fr', 'de', 'it', 'pt']) expect(stringsFor(language).legend.length).toBe(21)
+  for (const language of ['en', 'ru', 'es', 'fr', 'de', 'it', 'pt']) expect(stringsFor(language).legend.length).toBe(22)
 })
 
 test("the count keeps the session's errors and shows what this turn added", async ($, on) => {
