@@ -1,7 +1,7 @@
 // The preview page: draws the window (map and rows) from the made-up session or a live one, with tooltips and notes.
 
 import { feedLines, freshList } from '/window/lines.mjs'
-import { HELP_ICON, drawLines, showHelp, showTip as showTipAt, tipAt, untitle } from '/window/ui.js'
+import { drawLines, setCorner, showTip as showTipAt, tipAt, untitle, wireCorner } from '/window/ui.js'
 import { LOOP_S, boardAt } from './scene.js'
 
 const $ = id => document.getElementById(id)
@@ -9,6 +9,7 @@ const pane = $('pane')
 const mapBox = $('map')
 const rowsBox = $('rows')
 const tip = $('tip')
+const corner = { keys: $('keys'), commands: $('commands') }
 const LINE_H = 17
 
 const DEFAULTS = {
@@ -84,11 +85,11 @@ function mapRoom() {
   return { w: pane.clientWidth, h: Math.min(room, Math.round((pane.clientWidth * (lib?.H ?? 430)) / (lib?.W ?? 460))) }
 }
 
-/** The lines under the map as the window draws them (renderer/window), cut to windowRows; the ? shows the feed's keys. */
+/** The lines under the map as the window draws them (renderer/window), cut to windowRows; the corner shows the feed's keys. */
 let keyHelp
 function renderRows(feed) {
   keyHelp = feed.keyHelp
-  $('help').hidden = keyHelp === undefined
+  setCorner(corner, keyHelp)
   const rows = Math.max(3, Number(state.options.windowRows) || 10)
   drawLines(rowsBox, feedLines(feed, freshList(), rows, false).lines.slice(0, rows))
 }
@@ -156,20 +157,10 @@ function draw() {
 // ---- tooltips ---------------------------------------------------------------------------------
 
 let pointer
-let keysShown = false
-const showTip = () => keysShown || showTipAt(tip, mapBox, pointer)
+const showTip = () => showTipAt(tip, mapBox, pointer)
 
-// The ? in the corner: the window's keys and the chat's commands, as the map window shows them.
-const help = $('help')
-help.innerHTML = HELP_ICON
-const showKeys = isShown => {
-  keysShown = isShown
-  showHelp(tip, help, isShown ? keyHelp : undefined)
-}
-help.addEventListener('mouseenter', () => showKeys(true))
-help.addEventListener('focus', () => showKeys(true))
-help.addEventListener('mouseleave', () => showKeys(false))
-help.addEventListener('blur', () => showKeys(false))
+// The corner: the window's keys and the chat's commands, as the map window shows them.
+wireCorner(tip, corner, () => keyHelp)
 mapBox.addEventListener('mousemove', e => {
   pointer = { x: e.clientX, y: e.clientY }
   showTip()

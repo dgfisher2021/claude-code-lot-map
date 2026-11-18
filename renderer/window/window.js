@@ -2,12 +2,12 @@
 // are the terminal window's: m, ?, the arrows and PgUp/PgDn, e, 1-9 and 0, a, / and q.
 
 import { feedLines, freshList, listKey, nextAgent } from './lines.mjs'
-import { HELP_ICON, drawLines, showHelp, showTip, untitle } from './ui.js'
+import { drawLines, setCorner, showTip, untitle, wireCorner } from './ui.js'
 
 const $ = id => document.getElementById(id)
 const mapBox = $('map')
 const linesBox = $('lines')
-const help = $('help')
+const corner = { keys: $('keys'), commands: $('commands') }
 const tip = $('tip')
 const live = new URLSearchParams(location.search).get('live') ?? ''
 const LINE_H = 17
@@ -85,9 +85,8 @@ async function fetchFeed() {
   if (next === undefined) return
   const isResized = next.windowRows !== feed.windowRows
   feed = next
-  // The ? button shows once the session sends its keys and commands.
-  help.hidden = feed.keyHelp === undefined
-  if (feed.keyHelp) help.setAttribute('aria-label', feed.keyHelp.title)
+  // The corner's buttons show once the session sends its keys and commands.
+  setCorner(corner, feed.keyHelp)
   if (isResized) drawMap()
   drawRows()
 }
@@ -144,10 +143,4 @@ mapBox.addEventListener('mouseleave', () => {
   pointer = undefined
   showTip(tip, mapBox, pointer)
 })
-help.innerHTML = HELP_ICON
-const showKeys = () => showHelp(tip, help, feed.keyHelp)
-const hideKeys = () => showHelp(tip, help, undefined)
-help.addEventListener('mouseenter', showKeys)
-help.addEventListener('focus', showKeys)
-help.addEventListener('mouseleave', hideKeys)
-help.addEventListener('blur', hideKeys)
+wireCorner(tip, corner, () => feed.keyHelp)

@@ -141,12 +141,16 @@
   color: var(--accent);
 }
 
-/* The ? button in the upper right corner, and the keys and commands it shows. */
-#help {
+/* The corner's buttons, upper right: the window's keys and the chat's commands, each explained on hover. */
+#corner {
   position: absolute;
   top: 8px;
   right: 8px;
   z-index: 5;
+  display: flex;
+  gap: 4px;
+}
+#corner button {
   padding: 2px;
   border: 0;
   background: none;
@@ -154,14 +158,14 @@
   cursor: help;
   line-height: 0;
 }
-#help:hover,
-#help:focus-visible {
+#corner button:hover,
+#corner button:focus-visible {
   color: var(--accent);
   outline: none;
 }
 #tip.help {
-  width: 420px;
-  max-width: 420px;
+  width: 380px;
+  max-width: 380px;
   padding: 10px 12px 11px;
 }
 #tip.help .tip-head svg {

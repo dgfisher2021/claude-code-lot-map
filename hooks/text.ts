@@ -70,9 +70,8 @@ export type Strings = {
   /** A station's tooltip: what lands there (commands in backticks), and the label of each figure. */
   stationAbout: Record<StationId, string>
   tip: { calls: string; turn: string; running: string; time: string; errors: string; session: string; refused: string; pushed: string; tokens: string; mostUsed: string; read: string }
-  /** The map window's `?` button: its keys, then the chat's commands, each with what it does. */
+  /** The map window's corner buttons: its keys, and the chat's commands, each with what it does. */
   keyHelp: {
-    title: string
     window: string
     chat: string
     keys: { keys: string[]; label: string; note?: string }[]
@@ -238,9 +237,8 @@ const en: Strings = {
     read: 'read',
   },
   keyHelp: {
-    title: 'Keys and commands',
-    window: 'In this window',
-    chat: 'In the chat',
+    window: 'Keys in this window',
+    chat: 'Commands in the chat',
     keys: [
       { keys: ['m'], label: 'Map and list, the map alone, or the list alone' },
       { keys: ['?'], label: 'What the marks on the map mean' },
