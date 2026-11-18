@@ -793,7 +793,7 @@ export type UsageRow = { color: string; label: string; value: string; note?: str
  * The core's tooltip. `billed` is set once usage is billed at API rates: a plan limit reached (the dollars since then), or
  * no plan limits at all, as on an API key (the session's dollars).
  */
-export type UsageTip = { kind: 'usage'; name: string; about: string; rows: UsageRow[]; billed?: string }
+export type UsageTip = { kind: 'usage'; name: string; about: string; rows: UsageRow[]; billed?: string; apiLabel?: string; why?: string }
 
 export function usageTip(board: Board, now: number, setup: Setup, c: Palette): UsageTip {
   const { t } = setup
@@ -828,7 +828,18 @@ export function usageTip(board: Board, now: number, setup: Setup, c: Palette): U
       ...limit('seven_day', c.red),
       ...cost,
     ],
-    ...(billed === undefined ? {} : { billed }),
+    ...(billed === undefined
+      ? {}
+      : {
+          billed,
+          apiLabel: t.usage.apiCost,
+          // Why usage is billed: the weekly limit before the five-hour, which ends sooner; or an API key, with no plan limits.
+          why: isApiKey
+            ? t.usage.apiKey
+            : board.limits?.some(l => l.kind === 'seven_day' && l.percent >= 100) === true
+              ? t.usage.weekReached
+              : t.usage.fiveReached,
+        }),
   }
 }
 
@@ -949,13 +960,15 @@ export function drawMap(board: Board, now: number, setup: Setup, isFilling = fal
   const plain = [usage.name, ...usage.rows.map(r => `${r.label} ${r.value}`)].join(' · ')
   const tip = `data-tip="${escapeXml(JSON.stringify(usage))}"`
   body += `<g ${tip}><title>${escapeXml(plain)}</title>${ringed}</g>`
-  // Usage billed at API rates: a warning and its dollars in the map's upper left corner, the core's tooltip on hover.
+  // Usage billed at API rates: a warning, its cost and why, in the map's upper left corner, the core's tooltip on hover.
+  // A window draws its own in the window's corner and hides this one (`data-api`).
   if (usage.billed !== undefined) {
     body +=
-      `<g ${tip}><title>${escapeXml(plain)}</title>` +
-      `<circle cx="22" cy="22" r="10" fill="${c.raised}" stroke="${c.red}" stroke-width="1.2"/>` +
-      `<path transform="translate(16 15.7) scale(.5)" d="${WARNING}" fill="none" stroke="${c.red}" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>` +
-      `<text x="37" y="26" ${FONT} font-size="12" font-weight="700" fill="${c.red}">${escapeXml(usage.billed)}</text></g>`
+      `<g data-api="1" ${tip}><title>${escapeXml(plain)}</title>` +
+      `<circle cx="22" cy="24" r="10" fill="${c.raised}" stroke="${c.red}" stroke-width="1.2"/>` +
+      `<path transform="translate(16 17.7) scale(.5)" d="${WARNING}" fill="none" stroke="${c.red}" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>` +
+      `<text x="38" y="23" ${FONT} font-size="11.5" font-weight="700" fill="${c.red}">${escapeXml(`${usage.apiLabel}: ${usage.billed}`)}</text>` +
+      `<text x="38" y="34" ${FONT} font-size="8.5" fill="${c.dim}">${escapeXml(usage.why ?? '')}</text></g>`
   }
 
   // A changed model rings at the core and at its station for a few seconds.

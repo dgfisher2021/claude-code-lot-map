@@ -1,7 +1,7 @@
 // The preview page: draws the window (map and rows) from the made-up session or a live one, with tooltips and notes.
 
 import { feedLines, freshList } from '/window/lines.mjs'
-import { drawLines, drawLocal, setHelp, showTip as showTipAt, tipAt, untitle, watchLocal, wireHelp, wireSplit } from '/window/ui.js'
+import { drawApi, drawLines, drawLocal, setHelp, showTip as showTipAt, tipAt, untitle, watchLocal, wireApi, wireHelp, wireSplit } from '/window/ui.js'
 import { LOOP_S, boardAt } from './scene.js'
 
 const $ = id => document.getElementById(id)
@@ -102,6 +102,7 @@ function renderRows(feed) {
 function setMap(svg) {
   mapBox.innerHTML = svg
   untitle(mapBox)
+  drawApi($('api'), mapBox)
   placePins()
   showTip()
 }
@@ -167,6 +168,7 @@ const showTip = () => showTipAt(tip, mapBox, pointer)
 
 // The ? in the corner: the window's keys, as the map window shows them.
 wireHelp(tip, help, () => keyHelp)
+wireApi(tip, $('api'))
 wireSplit(
   $('split'),
   px => {

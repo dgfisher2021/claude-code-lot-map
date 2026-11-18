@@ -264,3 +264,38 @@ export function watchLocal(box) {
   setInterval(ask, 5000)
   return ask
 }
+
+// ---- billed usage --------------------------------------------------------------------------------
+
+const WARNING_ICON = '<path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h16.9a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0zM12 9v4M12 17h.01"/>'
+
+/**
+ * The window's own chip for usage billed at API rates, in its upper left corner: the cost and why, from the map's chip
+ * (`g[data-api]`), which it hides, since the map's corner is not the window's.
+ */
+export function drawApi(chip, mapBox) {
+  const g = mapBox.querySelector('g[data-api]')
+  if (g) g.style.display = 'none'
+  const tip = g ? JSON.parse(g.dataset.tip ?? '{}') : undefined
+  chip.hidden = tip?.billed === undefined
+  if (chip.hidden) return
+  chip.dataset.tip = JSON.stringify(tip)
+  chip.innerHTML = `${svgIcon(WARNING_ICON, 22)}<div><strong>${esc(tip.apiLabel)}: ${esc(tip.billed)}</strong><small>${esc(tip.why ?? '')}</small></div>`
+}
+
+/** Hovering the chip shows the core's usage tooltip under it, its left edge on the chip's. */
+export function wireApi(tipEl, chip) {
+  chip.addEventListener('mouseenter', () => {
+    if (!chip.dataset.tip) return
+    tipEl.classList.add('rich', 'help')
+    tipEl.innerHTML = usageHtml(JSON.parse(chip.dataset.tip))
+    tipEl.style.display = 'block'
+    const at = chip.getBoundingClientRect()
+    tipEl.style.left = `${Math.max(8, at.left)}px`
+    tipEl.style.top = `${at.bottom + 6}px`
+  })
+  chip.addEventListener('mouseleave', () => {
+    tipEl.style.display = 'none'
+    tipEl.classList.remove('help')
+  })
+}

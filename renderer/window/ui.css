@@ -300,3 +300,33 @@ kbd.arrow svg {
 .fig.usage small {
   display: block;
 }
+
+/* Usage billed at API rates: the cost and why, pinned to the window's upper left corner. */
+#api {
+  position: absolute;
+  top: 8px;
+  left: 10px;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--bad);
+  font:
+    13px/1.25 system-ui,
+    sans-serif;
+  cursor: help;
+}
+#api[hidden] {
+  display: none;
+}
+#api svg {
+  flex: none;
+}
+#api strong {
+  font-weight: 700;
+}
+#api small {
+  display: block;
+  color: var(--dim);
+  font-size: 11.5px;
+}

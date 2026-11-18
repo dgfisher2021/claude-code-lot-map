@@ -73,7 +73,20 @@ export type Strings = {
   /** The map window's line of local servers: its label. */
   localTitle: string
   /** The core's tooltip: what it shows, the session's context, the cost and that it is an estimate. */
-  usage: { about: string; session: string; estimate: string; reached: string; atApi: string; covered: string; extra: string; billed: string }
+  usage: {
+    about: string
+    session: string
+    estimate: string
+    reached: string
+    atApi: string
+    covered: string
+    extra: string
+    billed: string
+    apiCost: string
+    weekReached: string
+    fiveReached: string
+    apiKey: string
+  }
   /** A word under a station for what it is doing now. */
   doing: Record<Exclude<StationId, 'agents' | 'you' | 'model'> | 'reading' | 'editing' | 'searching' | 'thinking' | 'compacting' | 'needsYou' | 'permission', string>
   /** The map window's ? button: its keys, each with what it does. */
@@ -249,6 +262,10 @@ const en: Strings = {
     covered: 'your plan covers it',
     extra: 'Extra usage',
     billed: 'billed at API rates',
+    apiCost: 'API cost',
+    weekReached: 'Weekly limit reached',
+    fiveReached: '5-hour limit reached',
+    apiKey: 'Billed through an API key',
   },
   doing: {
     memory: 'recalling',
