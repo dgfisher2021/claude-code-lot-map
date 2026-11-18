@@ -505,7 +505,6 @@ type Scene = {
   c: Palette
   names: Strings['stations']
   t: Strings
-  warned: ReadonlySet<StationId>
   isStill: boolean
 }
 
@@ -619,13 +618,13 @@ export function doingOf(
   return { word: id === 'files' && last.act !== undefined ? t.doing[last.act] : t.doing[id] }
 }
 
-/** A station's name sits below the outermost ring it can wear (the warning ring at NODE + 12), never on one. */
+/** A station's name sits below the rings it can wear (its glow reaches NODE + 10, its clock NODE + 9), never on one. */
 const NAME_DROP = NODE + 24
 
 function station(
   s: (typeof STATIONS)[number],
   i: number,
-  { entries, board, now, c, names, t, warned, isStill, spent }: Scene,
+  { entries, board, now, c, names, t, isStill, spent }: Scene,
 ): { under: string; over: string } {
   const p = place(i)
   const x = n1(p.x)
@@ -635,8 +634,6 @@ function station(
   const color = isAlarm ? c.red : main
 
   let under = ''
-  // A station that looks stuck wears a dashed ring in the accent colour.
-  if (warned.has(s.id)) under += `<circle cx="${x}" cy="${y}" r="${NODE + 12}" fill="none" stroke="${c.accent}" stroke-width="1.4" stroke-dasharray="4 4"/>`
   if (isLit || isAlarm) {
     under +=
       running.length > 0 && !isAlarm
@@ -922,7 +919,6 @@ export function drawMap(board: Board, now: number, setup: Setup, isFilling = fal
     c,
     names: setup.t.stations,
     t: setup.t,
-    warned: new Set(warningsOf(board, now, setup.t).flatMap(w => (w.station === undefined ? [] : [w.station]))),
     isStill,
   }
   const drawn = STATIONS.map((s, i) => station(s, i, scene))
@@ -1451,7 +1447,7 @@ export function stateOf(board: Board): SessionState {
 }
 
 /** A sign that the session looks stuck, and the station it sits at, when it has one. */
-type Warning = { station?: StationId; line: string }
+type Warning = { line: string }
 
 const QUIET_MS = 180_000
 
