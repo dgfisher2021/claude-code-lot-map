@@ -714,8 +714,8 @@ function station(
     // Top right, on Browser, where a count goes: the local servers Claude's calls used; its tooltip lists them.
     const servers = board.local?.length ?? 0
     over +=
-      `<circle cx="${n1(p.x + corner)}" cy="${n1(p.y - corner)}" r="8" fill="${c.raised}" stroke="${c.ash}" stroke-width="1.1" data-local="${servers}"/>` +
-      `<text x="${n1(p.x + corner)}" y="${n1(p.y - corner + 3.1)}" text-anchor="middle" ${FONT} font-size="9" font-weight="700" fill="${c.bone}">${servers}</text>`
+      `<circle cx="${n1(p.x + corner)}" cy="${n1(p.y - corner)}" r="8" fill="${c.raised}" stroke="${color}" stroke-width="1" data-local="${servers}"/>` +
+      `<text x="${n1(p.x + corner)}" y="${n1(p.y - corner + 3)}" text-anchor="middle" ${FONT} font-size="8.5" fill="${hot}">×${servers}</text>`
   } else if (running.length > 1) {
     over +=
       `<circle cx="${n1(p.x + corner)}" cy="${n1(p.y - corner)}" r="8" fill="${c.raised}" stroke="${color}" stroke-width="1"/>` +
@@ -787,7 +787,10 @@ export function agentList(board: Board): { id: string; name: string }[] {
 }
 
 
-/** From this fill the session's context is called nearly full, with a word on clearing or compacting it. */
+/** The longest model name the core shows whole: longer ones are cut with an ellipsis. */
+const NAME_MAX = 13
+
+/** From this fill the session's context, or a plan limit, is called nearly full. */
 const CONTEXT_FULL = 90
 
 /** A warning triangle on a 24-unit grid: usage billed at API rates, or a context nearly full. */
@@ -816,6 +819,10 @@ export type UsageTip = {
   why?: string
   /** The session's context once it is nearly full (90% or more), with what to do about it. */
   full?: { label: string; value: string; hint: string }
+  /** A plan limit nearly reached (90% to 99%), with when it resets; at 100% the API cost takes its place. */
+  near?: { label: string; value: string; hint: string }[]
+  /** Something nearly full or billed: the core turns red. */
+  isAlert?: true
 }
 
 export function usageTip(board: Board, now: number, setup: Setup, c: Palette): UsageTip {
@@ -833,6 +840,12 @@ export function usageTip(board: Board, now: number, setup: Setup, c: Palette): U
   const isApiKey = (board.limits?.length ?? 0) === 0 && board.cost !== undefined
   const billed = isApiKey ? costText(board.cost) : isReached ? costText(Math.max(0, (board.cost ?? 0) - (board.paidFrom ?? 0))) ?? '$0.00' : undefined
   const atApi = costText(board.cost)
+  const near = (['five_hour', 'seven_day'] as const).flatMap(kind => {
+    const found = board.limits?.find(l => l.kind === kind)
+    if (found === undefined || found.percent < CONTEXT_FULL || found.percent >= 100) return []
+    const until = untilText(found.resetsAt, now, t)
+    return [{ label: kind === 'five_hour' ? t.usage.fiveLimit : t.usage.weekLimit, value: `${pct(found.percent)}%`, hint: until === undefined ? '' : t.resetsIn(until) }]
+  })
   const cost: UsageRow[] =
     billed !== undefined
       ? [{ color: '', label: t.usage.extra, value: billed, note: `${t.usage.billed} · ${t.usage.estimate}`, isReached: true }]
@@ -854,6 +867,8 @@ export function usageTip(board: Board, now: number, setup: Setup, c: Palette): U
     ...(board.context !== undefined && board.context >= CONTEXT_FULL
       ? { full: { label: t.usage.context, value: `${pct(board.context)}%`, hint: t.usage.contextHint } }
       : {}),
+    ...(near.length > 0 ? { near } : {}),
+    ...(billed !== undefined || near.length > 0 || (board.context ?? 0) >= CONTEXT_FULL ? { isAlert: true as const } : {}),
     ...(billed === undefined
       ? {}
       : {
@@ -947,9 +962,9 @@ export function drawMap(board: Board, now: number, setup: Setup, isFilling = fal
       : `<g><animateTransform attributeName="transform" type="rotate" from="0 ${spin}" to="360 ${spin}" begin="${clock(-((now + (k * lap) / crew.length) % lap))}" dur="${clock(lap)}" repeatCount="indefinite"/>${mark}</g>`
   })
 
-  // While usage is billed at API rates the core and its glow are red.
+  // While something is nearly full (90% or more) or billed at API rates, the core and its glow are red.
   const usage = usageTip(board, now, setup, c)
-  const glow = usage.billed === undefined ? c.accent : c.red
+  const glow = usage.isAlert === true ? c.red : c.accent
   // The core breathes at rest and quickens while something runs.
   const period = anyRunning ? 1600 : 4800
   const breath = `begin="${clock(-(now % period))}" dur="${clock(period)}" repeatCount="indefinite"`
@@ -961,8 +976,8 @@ export function drawMap(board: Board, now: number, setup: Setup, isFilling = fal
       `<animate attributeName="opacity" values=".05;${anyRunning ? '.24' : '.12'};.05" ${breath}/></circle>`
 
   // The core and its usage rings are one thing to hover: the model, then what is used.
-  const rim = usage.billed !== undefined ? c.red : anyRunning ? c.accent : c.line
-  let ringed = `<circle cx="${CX}" cy="${CY}" r="${CORE}" fill="${c.raised}" stroke="${rim}" stroke-width="${usage.billed === undefined ? 1.3 : 1.8}"/>`
+  const rim = usage.isAlert === true ? c.red : anyRunning ? c.accent : c.line
+  let ringed = `<circle cx="${CX}" cy="${CY}" r="${CORE}" fill="${c.raised}" stroke="${rim}" stroke-width="${usage.isAlert === true ? 1.8 : 1.3}"/>`
   // One ring per measure, innermost first, each its own colour on a muted track, filling clockwise from the top.
   usage.rows.forEach((row, k) => {
     if (row.ring === undefined) return
@@ -978,18 +993,23 @@ export function drawMap(board: Board, now: number, setup: Setup, isFilling = fal
   const isSwitching = switchAge >= 0 && switchAge < SWITCH_MS
   // The model in the middle: it is always Claude, so the model is what tells one session from another.
   const name = usage.name
-  const nameSize = Math.min(15, 62 / (0.62 * Math.max(4, [...name].length)))
-  if (board.context !== undefined) {
-    ringed += `<text x="${CX}" y="${CY - 13}" text-anchor="middle" ${FONT} font-size="9" fill="${c.dim}">${Math.round(Math.max(0, Math.min(100, board.context)))}%</text>`
+  // A monospace letter is about 0.6 of its size wide, 0.66 with the spacing: the name fills at most 62 of the core's 80.
+  const shown = [...name].length > NAME_MAX ? `${[...name].slice(0, NAME_MAX - 1).join('')}…` : name
+  const nameSize = Math.max(7, Math.min(14, 62 / (0.66 * [...shown].length)))
+  const hasContext = board.context !== undefined
+  ringed += `<text x="${CX}" y="${CY + (hasContext ? 2 : 5)}" text-anchor="middle" ${FONT} font-size="${n1(nameSize)}" letter-spacing="${n1(nameSize * 0.06)}" fill="${isSwitching ? c.hot : c.bone}">${escapeXml(shown)}</text>`
+  if (hasContext) {
+    ringed += `<text x="${CX}" y="${CY + 17}" text-anchor="middle" ${FONT} font-size="9" fill="${usage.full === undefined ? c.dim : c.red}">${Math.round(Math.max(0, Math.min(100, board.context ?? 0)))}%</text>`
   }
-  ringed += `<text x="${CX}" y="${CY + 5}" text-anchor="middle" ${FONT} font-size="${n1(nameSize)}" letter-spacing="${n1(nameSize * 0.06)}" fill="${isSwitching ? c.hot : c.bone}">${escapeXml(name)}</text>`
   const plain = [usage.name, ...usage.rows.map(r => `${r.label} ${r.value}`)].join(' · ')
   const tip = `data-tip="${escapeXml(JSON.stringify(usage))}"`
   body += `<g ${tip}><title>${escapeXml(plain)}</title>${ringed}</g>`
-  // In the map's upper left corner, each with the core's tooltip: usage billed at API rates (its cost and why), and a context
-  // nearly full (what to do). A window draws its own in its header and hides these (`data-corner`).
+  // In the map's upper left corner, each with the core's tooltip: usage billed at API rates (its cost and why), a plan limit
+  // nearly reached (when it resets), a context nearly full (what to do). A window draws its own in its header and hides
+  // these (`data-corner`).
   const chips = [
     ...(usage.billed === undefined ? [] : [{ color: c.red, line: `${usage.apiLabel}: ${usage.billed}`, under: usage.why ?? '' }]),
+    ...(usage.near ?? []).map(n => ({ color: c.accent, line: `${n.label}: ${n.value}`, under: n.hint })),
     ...(usage.full === undefined ? [] : [{ color: c.accent, line: `${usage.full.label}: ${usage.full.value}`, under: usage.full.hint }]),
   ]
   if (chips.length > 0) {

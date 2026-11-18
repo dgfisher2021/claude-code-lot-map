@@ -254,8 +254,9 @@ export function watchLocal(after) {
 const WARNING_ICON = '<path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h16.9a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0zM12 9v4M12 17h.01"/>'
 
 /**
- * The window's own chips, in its header's left: usage billed at API rates (cost and why) and a context nearly full (what to
- * do), from the core's usage in the map, whose own chips (`g[data-corner]`) it hides, as the map's corner is not the window's.
+ * The window's own chips, in its header's left: usage billed at API rates (cost and why), a plan limit nearly reached (when
+ * it resets), a context nearly full (what to do), from the core's usage in the map, whose own chips (`g[data-corner]`) it
+ * hides, as the map's corner is not the window's.
  */
 export function drawStatus(box, mapBox) {
   const corner = mapBox.querySelector('g[data-corner]')
@@ -264,6 +265,7 @@ export function drawStatus(box, mapBox) {
   const tip = core ? JSON.parse(core.dataset.tip) : undefined
   const chips = [
     ...(tip?.billed ? [{ tone: 'bad', line: `${tip.apiLabel}: ${tip.billed}`, under: tip.why ?? '' }] : []),
+    ...(tip?.near ?? []).map(n => ({ tone: 'warn', line: `${n.label}: ${n.value}`, under: n.hint })),
     ...(tip?.full ? [{ tone: 'warn', line: `${tip.full.label}: ${tip.full.value}`, under: tip.full.hint }] : []),
   ]
   box.dataset.tip = tip ? JSON.stringify(tip) : ''
@@ -308,7 +310,7 @@ export function drawTitle(box, place) {
 
 /**
  * In a window, Browser says which local servers answer now, as Shell says it is running: the first under its name (`+1` for
- * more), a click on it opens it; its badge counts them in the amber of the map's other counts; its tooltip lists them; and
+ * more), a click on it opens it; its badge counts them as ×N, as the map's other counts do; its tooltip lists them; and
  * its circle, icon and spoke wear a steady amber. With none answering, Browser is as it was. The map draws the servers
  * Claude used, which only the window can tell apart.
  */
@@ -318,11 +320,7 @@ export function markLocal(mapBox) {
   const badge = mapBox.querySelector('circle[data-local]')
   const label = mapBox.querySelector('text[data-local-label]')
   for (const el of [badge, badge?.nextElementSibling, label]) if (el) el.style.display = shown
-  if (badge) {
-    badge.style.stroke = 'var(--accent)'
-    badge.nextElementSibling.textContent = String(live.length)
-    badge.nextElementSibling.style.fill = 'var(--accent)'
-  }
+  if (badge) badge.nextElementSibling.textContent = `×${live.length}`
   if (label) {
     label.textContent = live.length > 1 ? `${live[0]} +${live.length - 1}` : (live[0] ?? '')
     label.style.cursor = 'pointer'

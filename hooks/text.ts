@@ -88,6 +88,8 @@ export type Strings = {
     apiKey: string
     context: string
     contextHint: string
+    fiveLimit: string
+    weekLimit: string
   }
   /** A word under a station for what it is doing now. */
   doing: Record<Exclude<StationId, 'agents' | 'you' | 'model'> | 'reading' | 'editing' | 'searching' | 'thinking' | 'compacting' | 'needsYou' | 'permission', string>
@@ -270,6 +272,8 @@ const en: Strings = {
     apiKey: 'Billed through an API key',
     context: 'Session Context',
     contextHint: '/clear or /compact',
+    fiveLimit: '5-Hour Limit',
+    weekLimit: 'Weekly Limit',
   },
   doing: {
     memory: 'recalling',

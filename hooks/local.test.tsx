@@ -1,7 +1,7 @@
 import { expect, mock, test } from 'claude-code/testing'
 
 import type { Board } from '../types'
-import { localHostsIn, stationTip, withLocal } from './map'
+import { classify, localHostsIn, setupFrom, shortModel, stationTip, withLocal } from './map'
 import { stringsFor } from './text'
 
 const NOW = 1_000_000
@@ -62,4 +62,21 @@ test('a call that names a localhost address puts it in the window’s feed', asy
   // Only the address: nothing else of the command reaches the feed's local line.
   expect(JSON.stringify(feed.local)).not.toContain('api/sessions')
   await $.session.end({ reason: 'other' } as never)
+})
+
+test('a call that reaches only localhost lands on Browser; one that reaches anywhere else stays on Network', () => {
+  const setup = setupFrom({})
+  expect(classify('Bash', { command: 'curl -s http://localhost:5173/api' }, setup).station).toBe('browser')
+  expect(classify('WebFetch', { url: 'http://127.0.0.1:4747/' }, setup).station).toBe('browser')
+  expect(classify('Bash', { command: 'curl http://localhost:4747 && curl https://example.com' }, setup).station).toBe('web')
+  expect(classify('Bash', { command: 'curl http://localhost.evil.com/x' }, setup).station).toBe('web')
+  expect(classify('WebFetch', { url: 'https://example.com/' }, setup).station).toBe('web')
+})
+
+test('shortModel reads every shape of model id, never a date as a version', () => {
+  expect(shortModel('claude-opus-5-5')).toBe('opus 5.5')
+  expect(shortModel('claude-opus-4-20250514')).toBe('opus 4')
+  expect(shortModel('claude-sonnet-4-5-20250929')).toBe('sonnet 4.5')
+  expect(shortModel('claude-3-5-sonnet-20241022')).toBe('sonnet 3.5')
+  expect(shortModel('claude-3-opus-20240229')).toBe('opus 3')
 })

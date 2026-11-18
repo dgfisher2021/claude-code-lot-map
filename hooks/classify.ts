@@ -30,6 +30,10 @@ export function localHostsIn(input: Record<string, unknown>): string[] {
   return [...new Set([...text.matchAll(LOOPBACK)].map(m => (m[1] === undefined ? 'localhost' : `localhost:${m[1]}`)))]
 }
 
+/** Text that reaches only this computer's own servers: a localhost address in it, and no other address. */
+const isOnlyLocal = (text: string): boolean =>
+  localHostsIn({ command: text }).length > 0 && !/\bhttps?:\/\/(?!(?:localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\])(?![\w.-]))/i.test(text)
+
 function hostOf(url: string): string {
   const [, scheme = '', rest = ''] = /^(?:([a-z][a-z0-9+.-]*):\/\/)?(.*)$/is.exec(url) ?? []
   const end = rest.search(/[/?#]/)
@@ -585,7 +589,8 @@ function classifyShell(command: string, description: string, setup: Setup, power
       .flatMap(words => commands(words, true))
       .some(isNet)
   )
-    return { station: 'web', label }
+    // A command that reaches only this computer's own servers, `curl localhost:5173`, is Browser's, where they show.
+    return { station: isOnlyLocal(read) ? 'browser' : 'web', label }
   const isNeutral = (head: string): boolean => NEUTRAL_WORDS.has(head) || (powershell && PS_NEUTRAL_WORDS.has(head))
   const isFile = (head: string): boolean => FILE_WORDS.has(head) || (powershell && PS_FILE_WORDS.has(head))
   const real = run.filter(words => !isNeutral(name(words[0])))
@@ -615,7 +620,7 @@ export function classify(tool: string, input: Record<string, unknown>, setup: Se
     case 'PowerShell':
       return classifyShell(str(input.command), str(input.description), setup, true)
     case 'WebFetch':
-      return { station: 'web', label: hostOf(str(input.url)) }
+      return { station: isOnlyLocal(str(input.url)) ? 'browser' : 'web', label: hostOf(str(input.url)) }
     case 'WebSearch':
       return { station: 'web', label: t.webSearch }
     case 'Artifact':
@@ -733,8 +738,12 @@ export function classify(tool: string, input: Record<string, unknown>, setup: Se
 
 /** `claude-opus-5-5` reads as `opus 5.5`. */
 export function shortModel(model: string): string {
-  const m = /claude-([a-z]+)-(\d+)(?:-(\d+))?/.exec(model)
-  return m === null ? model : `${m[1]} ${m[2]}${m[3] !== undefined ? `.${m[3]}` : ''}`
+  // `claude-opus-4-5`, `claude-opus-4-20250514`: a minor version is one or two digits, never a date.
+  const m = /claude-([a-z]+)-(\d+)(?:-(\d{1,2}))?(?!\d)/.exec(model)
+  if (m !== null) return `${m[1]} ${m[2]}${m[3] !== undefined ? `.${m[3]}` : ''}`
+  // The older order, `claude-3-5-sonnet-20241022`.
+  const old = /claude-(\d+)(?:-(\d{1,2}))?-([a-z]+)/.exec(model)
+  return old === null ? model : `${old[3]} ${old[1]}${old[2] !== undefined ? `.${old[2]}` : ''}`
 }
 
 export function formatMs(ms: number, t: Strings): string {
