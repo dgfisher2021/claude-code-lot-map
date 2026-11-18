@@ -76,6 +76,13 @@ export type Strings = {
   /** The top line while Claude waits on the person, and after an answer: what it waits for or since when, and how long. */
   waitingFor: (label: string, since: string) => string
   yourTurn: (since: string) => string
+  /** /workmap recap: turns and time, calls by station, files changed, faults, cost and peak context; nothing yet. */
+  recapTurns: (turns: number, time?: string) => string
+  recapCalls: (list: string) => string
+  recapFiles: (n: number, names: string) => string
+  recapErrors: (errors: number, refused: number) => string
+  recapCost: (cost?: string, peak?: number) => string
+  recapNothing: string
   /** With `notify` on: a wait, and a finished turn. */
   notifyWaiting: (label: string) => string
   notifyDone: string
@@ -193,6 +200,12 @@ const en: Strings = {
   permissionFor: what => `permission for ${what}`,
   waitingFor: (label, since) => `Needs you: ${label} · ${since}`,
   yourTurn: since => `Done ${since} ago · your turn`,
+  recapTurns: (turns, time) => [`${turns} ${turns === 1 ? 'turn' : 'turns'}`, ...(time === undefined ? [] : [time])].join(' · '),
+  recapCalls: list => `Calls: ${list}`,
+  recapFiles: (n, names) => `Files changed: ${n} · ${names}`,
+  recapErrors: (errors, refused) => [...(errors > 0 ? [`${errors} ${errors === 1 ? 'error' : 'errors'}`] : []), ...(refused > 0 ? [`${refused} refused`] : [])].join(' · '),
+  recapCost: (cost, peak) => [...(cost === undefined ? [] : [`Cost: ${cost}`]), ...(peak === undefined ? [] : [`peak context ${Math.round(peak)}%`])].join(' · '),
+  recapNothing: 'Nothing to recap yet.',
   notifyWaiting: label => `Needs you: ${label}`,
   notifyDone: 'Done: your turn',
   fileForYou: 'file for you',
@@ -301,6 +314,12 @@ const ru: Strings = {
   permissionFor: what => `разрешение на ${what}`,
   waitingFor: (label, since) => `Ждёт тебя: ${label} · ${since}`,
   yourTurn: since => `Готово ${since} назад · твой ход`,
+  recapTurns: (turns, time) => [`ходов: ${turns}`, ...(time === undefined ? [] : [time])].join(' · '),
+  recapCalls: list => `Вызовы: ${list}`,
+  recapFiles: (n, names) => `Изменено файлов: ${n} · ${names}`,
+  recapErrors: (errors, refused) => [...(errors > 0 ? [`ошибок: ${errors}`] : []), ...(refused > 0 ? [`отклонено: ${refused}`] : [])].join(' · '),
+  recapCost: (cost, peak) => [...(cost === undefined ? [] : [`Стоимость: ${cost}`]), ...(peak === undefined ? [] : [`пик контекста ${Math.round(peak)}%`])].join(' · '),
+  recapNothing: 'Подводить итоги пока нечего.',
   notifyWaiting: label => `Ждёт тебя: ${label}`,
   notifyDone: 'Готово: твой ход',
   fileForYou: 'файл тебе',
@@ -412,6 +431,12 @@ const es: Strings = {
   permissionFor: what => `permiso para ${what}`,
   waitingFor: (label, since) => `Te espera: ${label} · ${since}`,
   yourTurn: since => `Listo hace ${since} · te toca`,
+  recapTurns: (turns, time) => [`${turns} ${turns === 1 ? 'turno' : 'turnos'}`, ...(time === undefined ? [] : [time])].join(' · '),
+  recapCalls: list => `Llamadas: ${list}`,
+  recapFiles: (n, names) => `Archivos cambiados: ${n} · ${names}`,
+  recapErrors: (errors, refused) => [...(errors > 0 ? [`${errors} ${errors === 1 ? 'error' : 'errores'}`] : []), ...(refused > 0 ? [`${refused} rechazadas`] : [])].join(' · '),
+  recapCost: (cost, peak) => [...(cost === undefined ? [] : [`Coste: ${cost}`]), ...(peak === undefined ? [] : [`pico de contexto ${Math.round(peak)}%`])].join(' · '),
+  recapNothing: 'Aún no hay nada que resumir.',
   notifyWaiting: label => `Te espera: ${label}`,
   notifyDone: 'Listo: te toca',
   fileForYou: 'archivo para ti',
@@ -523,6 +548,12 @@ const fr: Strings = {
   permissionFor: what => `autorisation pour ${what}`,
   waitingFor: (label, since) => `Vous attend : ${label} · ${since}`,
   yourTurn: since => `Terminé il y a ${since} · à vous`,
+  recapTurns: (turns, time) => [`${turns} ${turns === 1 ? 'tour' : 'tours'}`, ...(time === undefined ? [] : [time])].join(' · '),
+  recapCalls: list => `Appels : ${list}`,
+  recapFiles: (n, names) => `Fichiers modifiés : ${n} · ${names}`,
+  recapErrors: (errors, refused) => [...(errors > 0 ? [`${errors} ${errors === 1 ? 'erreur' : 'erreurs'}`] : []), ...(refused > 0 ? [`${refused} refusés`] : [])].join(' · '),
+  recapCost: (cost, peak) => [...(cost === undefined ? [] : [`Coût : ${cost}`]), ...(peak === undefined ? [] : [`pic de contexte ${Math.round(peak)} %`])].join(' · '),
+  recapNothing: 'Rien à résumer pour le moment.',
   notifyWaiting: label => `Vous attend : ${label}`,
   notifyDone: 'Terminé : à vous',
   fileForYou: 'fichier pour vous',
@@ -632,6 +663,12 @@ const de: Strings = {
   permissionFor: what => `Freigabe für ${what}`,
   waitingFor: (label, since) => `Braucht dich: ${label} · ${since}`,
   yourTurn: since => `Fertig vor ${since} · du bist dran`,
+  recapTurns: (turns, time) => [`${turns} ${turns === 1 ? 'Zug' : 'Züge'}`, ...(time === undefined ? [] : [time])].join(' · '),
+  recapCalls: list => `Aufrufe: ${list}`,
+  recapFiles: (n, names) => `Geänderte Dateien: ${n} · ${names}`,
+  recapErrors: (errors, refused) => [...(errors > 0 ? [`${errors} ${errors === 1 ? 'Fehler' : 'Fehler'}`] : []), ...(refused > 0 ? [`${refused} abgelehnt`] : [])].join(' · '),
+  recapCost: (cost, peak) => [...(cost === undefined ? [] : [`Kosten: ${cost}`]), ...(peak === undefined ? [] : [`Kontext-Spitze ${Math.round(peak)} %`])].join(' · '),
+  recapNothing: 'Noch nichts zusammenzufassen.',
   notifyWaiting: label => `Braucht dich: ${label}`,
   notifyDone: 'Fertig: du bist dran',
   fileForYou: 'Datei für dich',
@@ -743,6 +780,12 @@ const it: Strings = {
   permissionFor: what => `permesso per ${what}`,
   waitingFor: (label, since) => `Ti aspetta: ${label} · ${since}`,
   yourTurn: since => `Fatto ${since} fa · tocca a te`,
+  recapTurns: (turns, time) => [`${turns} ${turns === 1 ? 'turno' : 'turni'}`, ...(time === undefined ? [] : [time])].join(' · '),
+  recapCalls: list => `Chiamate: ${list}`,
+  recapFiles: (n, names) => `File modificati: ${n} · ${names}`,
+  recapErrors: (errors, refused) => [...(errors > 0 ? [`${errors} ${errors === 1 ? 'errore' : 'errori'}`] : []), ...(refused > 0 ? [`${refused} rifiutate`] : [])].join(' · '),
+  recapCost: (cost, peak) => [...(cost === undefined ? [] : [`Costo: ${cost}`]), ...(peak === undefined ? [] : [`picco del contesto ${Math.round(peak)}%`])].join(' · '),
+  recapNothing: 'Ancora niente da riassumere.',
   notifyWaiting: label => `Ti aspetta: ${label}`,
   notifyDone: 'Fatto: tocca a te',
   fileForYou: 'file per te',
@@ -855,6 +898,12 @@ const pt: Strings = {
   permissionFor: what => `permissão para ${what}`,
   waitingFor: (label, since) => `Espera por ti: ${label} · ${since}`,
   yourTurn: since => `Pronto há ${since} · é a tua vez`,
+  recapTurns: (turns, time) => [`${turns} ${turns === 1 ? 'turno' : 'turnos'}`, ...(time === undefined ? [] : [time])].join(' · '),
+  recapCalls: list => `Chamadas: ${list}`,
+  recapFiles: (n, names) => `Ficheiros alterados: ${n} · ${names}`,
+  recapErrors: (errors, refused) => [...(errors > 0 ? [`${errors} ${errors === 1 ? 'erro' : 'erros'}`] : []), ...(refused > 0 ? [`${refused} recusadas`] : [])].join(' · '),
+  recapCost: (cost, peak) => [...(cost === undefined ? [] : [`Custo: ${cost}`]), ...(peak === undefined ? [] : [`pico de contexto ${Math.round(peak)}%`])].join(' · '),
+  recapNothing: 'Ainda nada para resumir.',
   notifyWaiting: label => `Espera por ti: ${label}`,
   notifyDone: 'Pronto: é a tua vez',
   fileForYou: 'ficheiro para ti',

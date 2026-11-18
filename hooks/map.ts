@@ -1006,6 +1006,44 @@ export function changedLine(changed: Readonly<Record<string, number>> | undefine
   return { line: `${head}${Array.from(items[0] ?? '').slice(0, room).join('')}…${more(items.length - 1)}`, tone: 'plain' }
 }
 
+/** The sum of a per-station tally. */
+const sumOf = (tally: Readonly<Partial<Record<StationId, number>>> | undefined): number => Object.values(tally ?? {}).reduce((a, b) => a + b, 0)
+
+/**
+ * `/workmap recap`: the session in up to five lines: turns and wall time, calls by station (most first, each with its
+ * share of the time when `shares` has it), the files changed, the errors and refusals, the cost and the peak context.
+ * A line with nothing to say is left out. Station names and file names only.
+ */
+export function recapLines(
+  board: Board,
+  startedAt: number | undefined,
+  now: number,
+  t: Strings,
+  shares?: Readonly<Partial<Record<StationId, number>>>,
+): string[] {
+  const lines: string[] = []
+  const turns = board.turns?.at(-1)?.n ?? 0
+  const time = startedAt === undefined || now - startedAt < 1000 ? undefined : formatClock(now - startedAt, t)
+  if (turns > 0) lines.push(t.recapTurns(turns, time))
+  const order = Object.keys(t.stations) as StationId[]
+  const calls = order
+    .filter(id => (board.counts[id] ?? 0) > 0)
+    .sort((a, b) => (board.counts[b] ?? 0) - (board.counts[a] ?? 0))
+    .map(id => {
+      const share = shares?.[id]
+      return `${t.stations[id]} ${board.counts[id]}${share === undefined ? '' : ` (${Math.round(share * 100)}%)`}`
+    })
+  if (calls.length > 0) lines.push(t.recapCalls(calls.join(', ')))
+  const files = changedItems(board.changed)
+  if (files.length > 0) lines.push(t.recapFiles(files.length, files.slice(0, 3).join(', ')))
+  const errors = sumOf(board.faultTotals)
+  const refused = sumOf(board.blocks)
+  if (errors + refused > 0) lines.push(t.recapErrors(errors, refused))
+  const cost = costText(board.cost)
+  if (cost !== undefined || board.peakContext !== undefined) lines.push(t.recapCost(cost, board.peakContext))
+  return lines
+}
+
 /** A row of the feed as written: at work, finished, gone wrong, refused, a change of model, or plain words. */
 export type FeedLine = { line: string; tone: 'run' | 'ok' | 'bad' | 'block' | 'switch' | 'plain'; isBold?: true }
 

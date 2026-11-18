@@ -19,6 +19,7 @@ import {
   pinnedLines,
   planAfter,
   planLines,
+  recapLines,
   setupFrom,
   stillChangeIn,
   shortModel,
@@ -170,6 +171,7 @@ async function finish($: EngineInterface, id: string | undefined, status: Status
       return {
         ...b,
         ...patch,
+        ...peaked(b, patch?.context),
         entries: b.entries.map(e => {
           if (e !== open) return e
           return { ...bare(e), status: closed, endedAt: now, ...(exit === undefined || refusal ? {} : { exit }), ...(reason === undefined || refusal ? {} : { reason }) }
@@ -289,6 +291,10 @@ async function charge($: EngineInterface, calls: readonly string[], before: numb
     }),
   )
 }
+
+/** Raises the board's peak context to a fill when it is higher. */
+const peaked = (b: Board, percent: number | undefined): Pick<Board, 'peakContext'> =>
+  typeof percent === 'number' && percent > (b.peakContext ?? 0) ? { peakContext: percent } : {}
 
 /**
  * The terminal's map between drawings. A terminal draws no picture that moves by itself, so a timer paints each next
@@ -610,10 +616,20 @@ async function usageLines($: EngineInterface, setup: Setup): Promise<string> {
   return lines.length === 0 ? t.usageNothing : lines.join('\n')
 }
 
+/** `/workmap recap`: the session in a few lines, or a line saying there is nothing yet. */
+async function recapText($: EngineInterface, setup: Setup): Promise<string> {
+  const state = await read($, board)
+  const now = await $.clock.now()
+  const startedAt = await quietly(async () => (await $.session.usage()).startedAt)
+  const lines = recapLines(state, startedAt, now, setup.t)
+  return lines.length === 0 ? setup.t.recapNothing : lines.join('\n')
+}
+
 /** `/lot-map` and `/workmap`: the pane, or in Windows Terminal the window; `window` asks for the window anywhere. */
 async function runCommand($: EngineInterface, args: string, setup: Setup, opening: Opening): Promise<{ text: string }> {
   if (args.trim() === 'changed') return { text: await changedFiles($, setup) }
   if (args.trim() === 'usage') return { text: await usageLines($, setup) }
+  if (args.trim() === 'recap') return { text: await recapText($, setup) }
   if (args.trim() === 'help') return { text: setup.t.legend.join('\n') }
   if (args.trim() === 'window') return { text: (await openWindow($, setup)).text }
   if (args.trim() === 'all') return { text: await showOverview($, setup) }
@@ -813,8 +829,8 @@ export const register: Register = (on, options) => {
 
   on('session.start', async ($, e, next) => {
     // Two names for one command: lot-map, as the plugin is called, and workmap.
-    await quietly(() => $.command.register({ name: 'lot-map', description: t.command, argumentHint: '[window | help | changed | usage | all]' }))
-    await quietly(() => $.command.register({ name: 'workmap', description: t.command, argumentHint: '[window | help | changed | usage | all]' }))
+    await quietly(() => $.command.register({ name: 'lot-map', description: t.command, argumentHint: '[window | help | changed | usage | recap | all]' }))
+    await quietly(() => $.command.register({ name: 'workmap', description: t.command, argumentHint: '[window | help | changed | usage | recap | all]' }))
     picture.canShow = setup.terminalMap && setup.terminalPicture === 'auto' && (await quietly(() => showsPictures($))) === true
     windowed.isAsked = false
     // A -p run or the SDK draws nowhere (surface null): no window.
@@ -1193,7 +1209,7 @@ export const register: Register = (on, options) => {
       for (const { kind, percentUsed, resetsAt } of e.rateLimits) {
         if (kind === 'five_hour' || kind === 'seven_day') limits.push({ kind, percent: percentUsed, ...(resetsAt === undefined ? {} : { resetsAt }) })
       }
-      await update($, board, b => ({ ...b, limits: limits.length > 0 ? limits : undefined, cost: e.cost?.usd }))
+      await update($, board, b => ({ ...b, limits: limits.length > 0 ? limits : undefined, cost: e.cost?.usd, ...peaked(b, e.context.percent) }))
     })
     await quietly(async () => {
       const { percent, window } = e.context
