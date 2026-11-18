@@ -64,6 +64,13 @@
   cursor: row-resize;
   touch-action: none;
   position: relative;
+  z-index: 1;
+}
+/* A grab zone over the map's edge and the lines' top: the split window presses only at cell centres, a cell apart. */
+#split::before {
+  content: '';
+  position: absolute;
+  inset: -12px 0;
 }
 #split::after {
   content: '';

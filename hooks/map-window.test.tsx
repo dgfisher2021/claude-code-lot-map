@@ -8,6 +8,7 @@ test('the map window server answers its own page and a live folder named as the 
   expect(route('/')).toEqual({ kind: 'file', file: 'index.html', type: 'text/html' })
   expect(route('/ui.css')).toEqual({ kind: 'file', file: 'ui.css', type: 'text/css' })
   expect(route('/health')).toEqual({ kind: 'health' })
+  expect(route('/split')).toEqual({ kind: 'split' })
   expect(route('/live/u5s931je/map.svg')).toEqual({ kind: 'live', name: 'u5s931je', file: 'map.svg' })
   expect(route('/live/u5s931je/feed.json')).toEqual({ kind: 'live', name: 'u5s931je', file: 'feed.json' })
   expect(route('/live/u5s931je/events')).toEqual({ kind: 'events', name: 'u5s931je', file: 'events' })

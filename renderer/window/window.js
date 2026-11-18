@@ -37,25 +37,25 @@ function aspect() {
   return box ? Number(box[2]) / Number(box[1]) : 454 / 460
 }
 
-/** The map as large as the width allows while the list keeps the session's windowRows, never under twelve rows. */
-/** How tall you dragged the lines to be, kept for the next window; until then, the session's windowRows. */
-let listPx = Number(load('workmap-list-px')) || 0
-function load(key) {
-  try {
-    return localStorage.getItem(key)
-  } catch {
-    return null
-  }
-}
+/** How tall you dragged the lines to be, kept by the server for every window, Edge's and the split's; 0 until then. */
+let listPx =
+  (await fetch('split')
+    .then(r => (r.ok ? r.text() : '0'))
+    .then(Number)
+    .catch(() => 0)) || 0
 
+/**
+ * The map as large as the width allows. The lines under it keep the height you dragged them to; until then the
+ * session's windowRows, while the map keeps half the room. Never under twelve rows.
+ */
 function mapSize() {
   if (view === 'list') return { w: 0, h: 0 }
   // The line of local servers, when it shows, takes its room from the map's.
   const room = innerHeight - $('top').offsetHeight
-  const listRows = Math.max(3, Number(feed.windowRows) || 30)
-  const list = listPx > 0 ? listPx : listRows * LINE_H + 8
-  const tall = view === 'map' ? room : Math.max(MAP_MIN_ROWS * 17, room - list - splitBox.offsetHeight)
-  return { w: innerWidth, h: Math.max(0, Math.min(tall, Math.round(innerWidth * aspect()))) }
+  const rest = room - splitBox.offsetHeight
+  const rows = Math.max(3, Number(feed.windowRows) || 30) * LINE_H + 8
+  const tall = view === 'map' ? room : Math.max(MAP_MIN_ROWS * 17, listPx > 0 ? rest - listPx : Math.max(room / 2, rest - rows))
+  return { w: innerWidth, h: Math.max(0, Math.round(Math.min(tall, innerWidth * aspect()))) }
 }
 
 /** Draws the map again only when it or its size changed: a fresh drawing starts its animations over. */
@@ -191,10 +191,6 @@ wireSplit(
     drawMap()
     drawRows()
   },
-  () => {
-    try {
-      localStorage.setItem('workmap-list-px', String(listPx))
-    } catch {}
-  },
+  () => void fetch('split', { method: 'PUT', body: String(listPx) }).catch(() => {}),
 )
 watchLocal(() => markLocal(mapBox))

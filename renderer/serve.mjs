@@ -9,10 +9,10 @@
 
 import { spawn, spawnSync } from 'node:child_process'
 import { existsSync, readFileSync, readdirSync, watch } from 'node:fs'
-import { readFile, readdir, stat, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:http'
 import { homedir, tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
 import { isLiveName, route } from './window/route.mjs'
@@ -31,6 +31,21 @@ const liveOf = name => (isLiveName(name) ? join(tmpdir(), `workmap-live-${name}`
 
 /** The folder where sessions keep their status files, as the mod writes them. */
 const statusDir = () => (process.env.XDG_RUNTIME_DIR ? join(process.env.XDG_RUNTIME_DIR, 'workmap-sessions') : join(homedir(), '.cache/workmap/sessions'))
+
+/** The height you last dragged the lines under the map to, in px, kept for every window: Edge's and the split's. */
+const SPLIT_FILE = join(homedir(), '.cache/workmap/split')
+
+/** Keeps a dragged height sent with PUT, a whole number of px up to 4096; else answers the one kept, 0 when none. */
+async function split(req) {
+  if (req.method !== 'PUT') return readFile(SPLIT_FILE, 'utf8').catch(() => '0')
+  let body = ''
+  for await (const chunk of req) if ((body += chunk).length > 8) break
+  const px = Number(body)
+  if (!Number.isInteger(px) || px < 1 || px > 4096) return undefined
+  await mkdir(dirname(SPLIT_FILE), { recursive: true })
+  await writeFile(SPLIT_FILE, String(px))
+  return String(px)
+}
 
 /** The name of the session's folder, from its status file, for the window's title. */
 async function nameOf(dir) {
@@ -59,6 +74,10 @@ function serve() {
     try {
       if (to.kind === 'health') return send(200, 'text/plain', 'workmap')
       if (to.kind === 'empty') return send(204, 'text/plain', '')
+      if (to.kind === 'split') {
+        const px = await split(req)
+        return px === undefined ? send(400, 'text/plain', 'not a height') : send(200, 'text/plain', px)
+      }
       if (to.kind === 'file') return send(200, to.type, await readFile(join(HERE, 'window', to.file)))
       if (to.kind === 'missing') return send(404, 'text/plain', 'not found')
       const dir = liveOf(to.name)

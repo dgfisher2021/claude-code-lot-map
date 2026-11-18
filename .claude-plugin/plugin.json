@@ -1,6 +1,6 @@
 {
   "name": "workmap",
-  "version": "1.2.4",
+  "version": "1.2.5",
   "description": "A live map beside the chat: memory, files, shell, web, model, agents, skills and hooks light up as they are used. Began as lot-map by Aleksei Volodin.",
   "author": {
     "name": "Dustin Fisher",
@@ -186,7 +186,7 @@
       "type": "number",
       "title": "Rows under the map in its window",
       "default": 30,
-      "description": "The rows the map window keeps for the list under the map (the action now, Claude's plan, background work, the calls), from 3 to 30. The map takes the rest, as large as the window's width allows, and never fewer than 12 rows."
+      "description": "The rows the map window keeps for the list under the map (the action now, Claude's plan, background work, the calls), from 3 to 30. The map takes the rest, as large as the window's width allows, at least half the window's height, and never fewer than 12 rows."
     },
     "layout": {
       "type": "string",
