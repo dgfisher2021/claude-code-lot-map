@@ -195,7 +195,7 @@ const ICONS = {
   turn: '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>',
   running: '<path d="M21 12a9 9 0 1 1-6.22-8.56"/>',
   time: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
-  errors: '<rect x="5" y="5" width="14" height="14" fill="currentColor" stroke="none"/>',
+  errors: '<circle cx="12" cy="12" r="8" fill="currentColor" stroke="none"/>',
   session: '<path d="M18 6 6 18M6 6l12 12"/>',
   refused: '<circle cx="12" cy="12" r="8"/><path d="M6.5 6.5l11 11"/>',
   pushed: '<path d="M12 5v14M19 12l-7 7-7-7"/>',

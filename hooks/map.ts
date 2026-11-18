@@ -602,27 +602,17 @@ function station(
   const glyphColor = isAlarm ? c.red : isLit ? hot : s.id === 'memory' && count > 0 ? main : c.ash
   // The words stand on a rim of the ground's own color, so a line that passes behind them never strikes them through.
   const rim = `paint-order="stroke" stroke="${c.ground}" stroke-width="3.5" stroke-linejoin="round"`
+  // With `contextCost`, the name carries what its calls added to the context; every other figure is in the tooltip.
+  const tokens = spent?.[s.id] ?? 0
+  const added = tokens > 0 ? `<tspan font-size="9.5" fill="${c.dim}"> ~${tokensShort(tokens)}</tspan>` : ''
   let over =
     `<circle cx="${x}" cy="${y}" r="${NODE}" fill="${c.raised}" stroke="${c.line}" stroke-width="1.2"/>${cooling}` +
     `<path transform="translate(${x} ${y})" d="${s.icon}" fill="none" stroke="${glyphColor}" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round"/>` +
-    `<text x="${x}" y="${n1(p.y + NODE + 15)}" text-anchor="middle" ${FONT} font-size="11.5" ${rim} fill="${isLit || isAlarm ? c.bone : c.ash}">${names[s.id]}</text>`
+    `<text x="${x}" y="${n1(p.y + NODE + 15)}" text-anchor="middle" ${FONT} font-size="11.5" ${rim} fill="${isLit || isAlarm ? c.bone : c.ash}">${names[s.id]}${added}</text>`
 
   const turn = board.turnCounts?.[s.id] ?? 0
   const share = timeShareOf(board, s.id)
   const total = board.faultTotals?.[s.id] ?? 0
-  if (count > 0) {
-    // Memory keeps two counts: what was asked for, and what a hook brought down unasked.
-    const pushed = s.id === 'memory' ? Math.min(count, board.pushed ?? 0) : 0
-    const asked = count - pushed
-    const figures =
-      pushed === 0 ? String(count) : `${asked > 0 ? `${asked} ` : ''}<tspan fill="${main}">↓${pushed}</tspan>`
-    // After the count: what this turn added, then the session's errors in red.
-    const extra = (turn > 0 && turn < count ? `<tspan fill-opacity="0.55"> +${turn}</tspan>` : '') + (total > 0 ? `<tspan fill="${c.red}"> · ${total}✕</tspan>` : '')
-    // With `contextCost`, last: about how much the station's calls added to the context, in the count's own colour.
-    const tokens = spent?.[s.id] ?? 0
-    const cost = tokens > 0 ? ` · ${tokensShort(tokens)}` : ''
-    over += `<text x="${x}" y="${n1(p.y + NODE + 28)}" text-anchor="middle" ${FONT} font-size="9.5" ${rim} fill="${c.dim}">${figures}${extra}${cost}</text>`
-  }
 
   // Top right: how many run at once. Top left: what went wrong since the last message, until the next one.
   const corner = NODE * 0.74
@@ -634,7 +624,7 @@ function station(
   const faults = board.faults?.[s.id] ?? 0
   if (faults > 0) {
     over +=
-      `<rect x="${n1(p.x - corner - 6.5)}" y="${n1(p.y - corner - 6.5)}" width="13" height="13" fill="${c.red}"/>` +
+      `<circle cx="${n1(p.x - corner)}" cy="${n1(p.y - corner)}" r="7.5" fill="${c.red}"/>` +
       `<text x="${n1(p.x - corner)}" y="${n1(p.y - corner + 3.1)}" text-anchor="middle" ${FONT} font-size="9" font-weight="700" fill="${c.ground}">${faults > 99 ? '99+' : faults}</text>`
   }
   // Bottom left, in outline: calls refused there, a rule working rather than something broken.
