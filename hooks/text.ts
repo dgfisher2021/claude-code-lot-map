@@ -39,6 +39,12 @@ export type Strings = {
   checkBefore: (tool: string) => string
   running: string
   nothingYet: string
+  /** `/workmap log` and the window's list: the last line, when the board has dropped older calls (kept of all). */
+  logGone: (kept: number, all: number) => string
+  /** The word for the errors-only filter in the window. */
+  logErrors: string
+  /** The window's hint line: the keys. */
+  windowKeys: string
   noCounts: string
   /** In a terminal pane too narrow for the map: how wide it would need to be. */
   tooNarrow: (columns: number) => string
@@ -152,6 +158,9 @@ const en: Strings = {
   checkBefore: tool => `check before ${tool}`,
   running: 'running',
   nothingYet: 'Nothing yet.',
+  logGone: (kept, all) => `Older calls are gone: the board keeps the last ${kept} of ${all}.`,
+  logErrors: 'errors',
+  windowKeys: 'q closes · ? legend · m map/list · ↑↓ PgUp PgDn scroll · e errors · 1-9 station · 0 all · / find',
   noCounts: 'No counts yet.',
   tooNarrow: columns => `Widen the pane to ${columns} columns to see the map.`,
   windowOpened: 'Map window opened beside this one.',
@@ -269,6 +278,9 @@ const ru: Strings = {
   checkBefore: tool => `проверка перед ${tool}`,
   running: 'идёт',
   nothingYet: 'Пока ничего не было.',
+  logGone: (kept, all) => `Старые вызовы ушли: на карте последние ${kept} из ${all}.`,
+  logErrors: 'ошибки',
+  windowKeys: 'q закрыть · ? легенда · m карта/список · ↑↓ PgUp PgDn прокрутка · e ошибки · 1-9 станция · 0 все · / поиск',
   noCounts: 'Счётчики пусты.',
   tooNarrow: columns => `Расширьте панель до ${columns} столбцов, чтобы увидеть карту.`,
   windowOpened: 'Окно с картой открыто рядом.',
@@ -385,6 +397,9 @@ const es: Strings = {
   checkBefore: tool => `comprobación antes de ${tool}`,
   running: 'en curso',
   nothingYet: 'Todavía nada.',
+  logGone: (kept, all) => `Las llamadas más antiguas ya no están: se guardan las últimas ${kept} de ${all}.`,
+  logErrors: 'errores',
+  windowKeys: 'q cierra · ? leyenda · m mapa/lista · ↑↓ PgUp PgDn desplazar · e errores · 1-9 estación · 0 todas · / buscar',
   noCounts: 'Aún no hay recuentos.',
   tooNarrow: columns => `Ensancha el panel a ${columns} columnas para ver el mapa.`,
   windowOpened: 'Ventana del mapa abierta al lado.',
@@ -504,6 +519,9 @@ const fr: Strings = {
   checkBefore: tool => `vérification avant ${tool}`,
   running: 'en cours',
   nothingYet: 'Rien pour le moment.',
+  logGone: (kept, all) => `Les appels plus anciens ont disparu : les ${kept} derniers sur ${all} sont gardés.`,
+  logErrors: 'erreurs',
+  windowKeys: 'q ferme · ? légende · m carte/liste · ↑↓ PgUp PgDn défiler · e erreurs · 1-9 station · 0 toutes · / chercher',
   noCounts: 'Aucun compteur pour le moment.',
   tooNarrow: columns => `Élargissez le panneau à ${columns} colonnes pour voir la carte.`,
   windowOpened: 'Fenêtre de la carte ouverte à côté.',
@@ -623,6 +641,9 @@ const de: Strings = {
   checkBefore: tool => `Prüfung vor ${tool}`,
   running: 'läuft',
   nothingYet: 'Noch nichts.',
+  logGone: (kept, all) => `Ältere Aufrufe sind weg: behalten werden die letzten ${kept} von ${all}.`,
+  logErrors: 'Fehler',
+  windowKeys: 'q schließt · ? Legende · m Karte/Liste · ↑↓ PgUp PgDn blättern · e Fehler · 1-9 Station · 0 alle · / suchen',
   noCounts: 'Noch keine Zählerstände.',
   tooNarrow: columns => `Verbreitern Sie das Feld auf ${columns} Spalten, um die Karte zu sehen.`,
   windowOpened: 'Kartenfenster daneben geöffnet.',
@@ -740,6 +761,9 @@ const it: Strings = {
   checkBefore: tool => `controllo prima di ${tool}`,
   running: 'in corso',
   nothingYet: 'Ancora niente.',
+  logGone: (kept, all) => `Le chiamate più vecchie sono sparite: si tengono le ultime ${kept} su ${all}.`,
+  logErrors: 'errori',
+  windowKeys: 'q chiude · ? legenda · m mappa/elenco · ↑↓ PgUp PgDn scorri · e errori · 1-9 stazione · 0 tutte · / cerca',
   noCounts: 'Ancora nessun conteggio.',
   tooNarrow: columns => `Allarga il pannello a ${columns} colonne per vedere la mappa.`,
   windowOpened: 'Finestra della mappa aperta accanto.',
@@ -860,6 +884,9 @@ const pt: Strings = {
   checkBefore: tool => `verificação antes de ${tool}`,
   running: 'em curso',
   nothingYet: 'Ainda nada.',
+  logGone: (kept, all) => `As chamadas mais antigas sumiram: ficam as últimas ${kept} de ${all}.`,
+  logErrors: 'erros',
+  windowKeys: 'q fecha · ? legenda · m mapa/lista · ↑↓ PgUp PgDn rolar · e erros · 1-9 estação · 0 todas · / buscar',
   noCounts: 'Ainda sem contagens.',
   tooNarrow: columns => `Alargue o painel para ${columns} colunas para ver o mapa.`,
   windowOpened: 'Janela do mapa aberta ao lado.',
