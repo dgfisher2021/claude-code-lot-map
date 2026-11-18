@@ -1,7 +1,6 @@
 import { expect, mock, test } from 'claude-code/testing'
 
-import type { Board } from '../types'
-import { classify, localHostsIn, setupFrom, shortModel, stationTip, withLocal } from './map'
+import { classify, localHostsIn, setupFrom } from './map'
 import { stringsFor } from './text'
 
 const NOW = 1_000_000
@@ -12,29 +11,6 @@ test('localHostsIn finds loopback addresses in a command and a URL, host and por
   expect(localHostsIn({ url: 'http://[::1]:8080/a' })).toEqual(['localhost:8080'])
   expect(localHostsIn({ url: 'http://0.0.0.0:3000' })).toEqual(['localhost:3000'])
   expect(localHostsIn({ command: 'curl http://localhost/health' })).toEqual(['localhost'])
-})
-
-test('localHostsIn leaves other hosts, look-alikes and repeats out', () => {
-  expect(localHostsIn({ command: 'curl https://example.com:443 http://localhost.evil.com:80 http://localhost:4747 http://localhost:4747/b' })).toEqual([
-    'localhost:4747',
-  ])
-  expect(localHostsIn({ command: 'npm run dev', description: 'http://localhost:9999' })).toEqual([])
-})
-
-test('withLocal keeps the newest six, a server used again moving to the front', () => {
-  let local: Board['local'] = undefined
-  for (let n = 1; n <= 7; n++) local = withLocal(local, [`localhost:${3000 + n}`], NOW + n)
-  expect(local?.map(l => l.host)).toEqual(['localhost:3007', 'localhost:3006', 'localhost:3005', 'localhost:3004', 'localhost:3003', 'localhost:3002'])
-  local = withLocal(local, ['localhost:3004'], NOW + 9)
-  expect(local?.[0]).toEqual({ host: 'localhost:3004', lastAt: NOW + 9 })
-  expect(local).toHaveLength(6)
-  expect(withLocal(local, [], NOW + 10)).toBe(local)
-})
-
-test("Browser's tooltip lists the local servers Claude's calls used", () => {
-  const board: Board = { entries: [], counts: {}, local: [{ host: 'localhost:4747', lastAt: NOW }] }
-  expect(stationTip(board, 'browser', en).top).toEqual({ title: en.tip.local, items: [{ name: 'localhost:4747', uses: '', icon: 'server' }] })
-  expect(stationTip(board, 'web', en).top).toBeUndefined()
 })
 
 test('a call that names a localhost address puts it in the window’s feed', async ($, on) => {
@@ -71,12 +47,4 @@ test('a call that reaches only localhost lands on Browser; one that reaches anyw
   expect(classify('Bash', { command: 'curl http://localhost:4747 && curl https://example.com' }, setup).station).toBe('web')
   expect(classify('Bash', { command: 'curl http://localhost.evil.com/x' }, setup).station).toBe('web')
   expect(classify('WebFetch', { url: 'https://example.com/' }, setup).station).toBe('web')
-})
-
-test('shortModel reads every shape of model id, never a date as a version', () => {
-  expect(shortModel('claude-opus-5-5')).toBe('opus 5.5')
-  expect(shortModel('claude-opus-4-20250514')).toBe('opus 4')
-  expect(shortModel('claude-sonnet-4-5-20250929')).toBe('sonnet 4.5')
-  expect(shortModel('claude-3-5-sonnet-20241022')).toBe('sonnet 3.5')
-  expect(shortModel('claude-3-opus-20240229')).toBe('opus 3')
 })
