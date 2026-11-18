@@ -1,12 +1,12 @@
 # lot-map
 
-***L**ive **O**verview of **T**ools*
+**\*L**ive **O**verview of **T**ools\*
 
 A mod for Claude Code: a live map of the work, in a pane beside the chat. Every tool call, model step, hook and skill sends a pulse from the centre to its station, so you see memory, files, shell, web and agents at work instead of reading a list of commands.
 
 ![The map during a work session](docs/demo.gif)
 
-*A made-up session replayed through the mod's own drawing code. [Video (MP4)](docs/demo.mp4).*
+_A made-up session replayed through the mod's own drawing code. [Video (MP4)](docs/demo.mp4)._
 
 ## Install
 
@@ -41,18 +41,18 @@ What each version changed is in [CHANGELOG.md](CHANGELOG.md).
 
 ## What lights up
 
-| Station | When |
-| --- | --- |
-| You | your messages, questions and files sent to you, the task list, the plan, and what you are asked to approve |
-| Model | each model request, context compaction |
-| Memory | Claude Code's memory folder, plus whatever you name in the options |
-| Files | Read, Write, Edit, Grep, Glob, a language server's code intelligence, and shell commands that work on files and nothing else: they read, search, move, delete or edit in place (`cat`, `grep`, `mv`, `rm`, `sed`, `tee`, `find … -delete`) |
-| Shell | every other shell command |
+| Station | When                                                                                                                                                                                                                                             |
+| ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| You     | your messages, questions and files sent to you, the task list, the plan, and what you are asked to approve                                                                                                                                       |
+| Model   | each model request, context compaction                                                                                                                                                                                                           |
+| Memory  | Claude Code's memory folder, plus whatever you name in the options                                                                                                                                                                               |
+| Files   | Read, Write, Edit, Grep, Glob, a language server's code intelligence, and shell commands that work on files and nothing else: they read, search, move, delete or edit in place (`cat`, `grep`, `mv`, `rm`, `sed`, `tee`, `find … -delete`)       |
+| Shell   | every other shell command                                                                                                                                                                                                                        |
 | Network | web fetch and search, MCP servers, work kept on claude.ai (artifacts, projects, designs), and shell commands known to reach the network: `curl`, `gh`, `ssh`, `rsync`, `git push`, `npm install`, `docker pull` and the like, also inside `$(…)` |
-| Browser | browser tools |
-| Agents | subagents, workflows, schedules, and waiting on background work; their own calls start from this station |
-| Skills | skills, tool search, and the skill, plugin and connector catalogue |
-| Hooks | settings hooks that refuse a call, ask for permission, add context or take a moment |
+| Browser | browser tools                                                                                                                                                                                                                                    |
+| Agents  | subagents, workflows, schedules, and waiting on background work; their own calls start from this station                                                                                                                                         |
+| Skills  | skills, tool search, and the skill, plugin and connector catalogue                                                                                                                                                                               |
+| Hooks   | settings hooks that refuse a call, ask for permission, add context or take a moment                                                                                                                                                              |
 
 On Windows the PowerShell tool is read the same way as Bash, with PowerShell's own names: `Get-Content` and `Select-String` light Files, `Invoke-WebRequest` lights Network. A program run by its full path is read by its name, also from a quoted path with a space, and `CURL.EXE` is `curl`.
 
@@ -62,10 +62,10 @@ A pulse flies out when something starts and returns when it ends. Refusals and e
 
 ## Reading the map
 
-`/workmap help` (or `/lot-map help`) says what each mark means; `/workmap usage` answers the figures of the session's usage. In the window, `?` puts that legend where the rows are. In the app, hovering a station names its figures.
+`/workmap help` (or `/lot-map help`) says what each mark means; `/workmap usage` answers the figures of the session's usage; `/workmap recap` answers the session in a few lines and `/workmap log` lists the calls the board keeps (see [The recap](#the-recap) and [A window of its own](#a-window-of-its-own)). In the window, `?` puts that legend where the rows are. In the app, hovering a station names its figures.
 
 - **The route.** A thin line joins the last few stations the main loop went through, in order, and its newest leg draws itself. A leg stays for 40 seconds and then fades over 20, so a minute after the work stops only the spokes are left; their thickness keeps where the work went. Model steps are left out, or every leg would pass through Model.
-- **Worn spokes.** A spoke grows thicker and brighter the more its station is used, so at the end of a session the map shows where the work went.
+- **Worn spokes.** A spoke grows thicker and brighter the more its station is used, so at the end of a session the map shows where the work went. With `spokes` set to `time` it wears by the station's share of the time spent on calls instead, and a station's hover title also gives that share ("38% of the time").
 - **How long.** Two clock hands grow around a station while a call runs: the inner one goes round in a minute, the outer one in ten.
 - **Claude's plan.** When Claude keeps a task list (TaskCreate and TaskUpdate, or TodoWrite), it shows under the top line as a checklist:
   - progress, such as `Plan 3/7 ████░░░░░░`
@@ -82,20 +82,33 @@ A pulse flies out when something starts and returns when it ends. Refusals and e
 - **The context window.** The ring around the centre fills as the session goes, with the percentage above the name. It turns amber at 70% and red at 90%.
 - **The rate limits and the cost.** Two thin arcs outside that ring show how much of the five-hour limit (the inner arc) and of the weekly limit is used, in the same colours; the app's hover names the window and when it resets. They appear only on an account whose engine reports the limits. The session's estimated cost stands under the word below the centre as `$1.23`, and nothing shows under a cent. `/workmap usage` lists the context's fill, each category of the window as a share of it, the windows with their resets and the cost, leaving out any figure the engine does not have.
 - **A change of model.** The centre and the Model station ring for a few seconds, and the feed gets a row such as `opus 5.5 → fable 5.2`. This also happens when a session starts on a different model from the last session in the same folder.
-- **Subagents.** Each one still at work circles the Agents station as a small dot, and its calls start from there. Its rows carry its name, the short description it was started with, as in `↳ explore auth · Run the tests`. Its dot turns red when one of its calls fails or is refused; the count lands on the station of the call, as any other.
+- **Subagents.** Each one still at work circles the Agents station as a small dot, and its calls start from there. Its rows carry its name, the short description it was started with, as in `↳ explore auth · Run the tests`. Its dot turns red when one of its calls fails or is refused; the count lands on the station of the call, as any other. Beside the Agents station each subagent at work is listed by its short name with a clock arc (a lap a minute); under `motion: reduced` the arc stands still and steps as the hands do. A Workflow's agents are one dot with `done/started`, such as `4/9`. In the window, `a` shows one subagent's calls at a time, then all again. Only names are shown: the Agent call's short description, cleaned and cut.
+- **Satellites.** A station can carry up to five small labelled dots on an arc outside it. At Files they are the files you touched most, by their last two path parts: filled once edited, outlined if only read. At a server's station they are each MCP server whose tools were called; Memory has none, as it shows its records. The board keeps twelve per station and draws the five most used. Names are cut to twelve characters, and hovering a dot says how often it was used. A dot lights up for a moment when used; under `motion: reduced` it is lit and then goes out, with no fade. The cell map shows only the count, as `·N` after the station's name, when it fits.
 - **The answer.** One wide ring leaves the centre when the answer is ready.
 
 Below the map is the current action with the context percentage. While Claude waits on you, with a question, a plan for your approval or a permission prompt, that line reads `Needs you:` and what for, counting the time in the warning colour. A permission prompt shows once it has stood a second, so a mode that settles it at once (accept edits, bypass permissions, auto mode's classifier) never flashes it. Once the answer is ready it reads `Done … ago · your turn`. Claude Code tells a mod when it asks and when the call is allowed, not when you answer, so the wait ends when the call runs; a prompt you refuse reads as `⊘` refused, not as a failure. Under it are the last 16 rows: `●` running, `·` done, `✕` failed, `⊘` refused, `◆` a change of model. A failed shell command shows its exit code, such as `exit 1`: a `grep` that finds nothing, a `diff` that finds differences and a failed test run all count as failures. Under the top line, `✎ 3 files changed: map.ts ×7, text.ts ×2, README.md` names the files Claude wrote or edited this session, the most edited first, and `/workmap changed` lists the 40 most recently changed with their edit counts. A refused or failed call does not count, and shell commands that change files are not listed, since their file names would mean reading the command's arguments. Warnings in the warning colour stand under the top line, and the station concerned wears a dashed amber ring: the same command failing three or more times in a row in one loop (the main one, or one subagent's), a call running past 60 seconds and five times its station's usual time (the median of at least three finished calls there, each timed from when it was allowed to run, so a long permission prompt does not count), and a thinking or running turn with nothing at work, no call and no model step, for three minutes. Background work, such as a dev server, and a wait on you never warn. Finished calls that follow one another at one station fold into one row, marked `+2` for the two it stands for besides the one named. A call still running is never pushed out of the list by what came after it: it stays as the last row until it ends. Such rows take half the list at most; with more still running than that, the last one is marked `+22` for the rest.
 
 The rows are grouped by your messages. The newest turn opens with a bold header, `Turn 3 · 12.4 s · 7 calls · 1 error` (its time, the calls that counted at stations other than Model and You, and the ones that failed), and keeps its rows under it. The four turns before it shrink to their headers, dim. The list never holds more than 16 lines, so the open turn's rows give way to the headers. A background task's notification starts a turn of Claude's, not yours: it opens no header, and its calls count on the turn they fall in.
 
-| At work | Subagents | A hook refuses |
-| --- | --- | --- |
+| At work                          | Subagents                         | A hook refuses                          |
+| -------------------------------- | --------------------------------- | --------------------------------------- |
 | ![At work](docs/map-working.png) | ![Subagents](docs/map-agents.png) | ![A hook refuses](docs/map-blocked.png) |
 
-| A change of model | After the answer | Light colours |
-| --- | --- | --- |
+| A change of model                         | After the answer                        | Light colours                        |
+| ----------------------------------------- | --------------------------------------- | ------------------------------------ |
 | ![A change of model](docs/map-switch.png) | ![After the answer](docs/map-after.png) | ![Light colours](docs/map-light.png) |
+
+### The recap
+
+`/workmap recap` answers the session in a few lines:
+
+- the turns and the wall time;
+- the calls by station, most first, each with its share of the time;
+- the files changed: how many, and the three most edited;
+- the errors this session, and the refusals since your last message;
+- the cost and the peak context.
+
+It answers only when asked, and as a command's answer it never enters the model's context. Nothing new is kept for it.
 
 ### What each call adds to the context
 
@@ -116,7 +129,7 @@ A terminal shows no drawing of the app's kind, so the map is painted into the pa
 
 <img src="docs/map-terminal.png" width="480" alt="The map painted in terminal cells, 60 columns by 28 rows">
 
-*A made-up session through the mod's own painting code, drawn as a terminal would show its cells.*
+_A made-up session through the mod's own painting code, drawn as a terminal would show its cells._
 
 Docked beside the conversation (the fullscreen layout) the map sits above the rows. Inline above the prompt (the main screen, and tmux by default) it sits at the left with the rows beside it.
 
@@ -151,6 +164,7 @@ In Windows Terminal from WSL the window is the map: the session opens no pane, a
 - The map takes the room first: as large as the pane's width allows while the list under it keeps `windowRows` rows (10 by default), and never fewer than 12 rows in a short pane.
 - `m` goes round the map with the list, the map alone, and the list alone.
 - `?` swaps the rows for the legend, and back.
+- The list can show more than the live rows. **Up and Down, or PgUp and PgDn,** scroll it through the log: every call the board keeps (the last 80, with background tasks), newest first and unfolded. **`e`** shows only errors and refusals. **`1` to `9`** show one station, in the map's order, and `0` clears. **`a`** shows one subagent's calls at a time, then all again. **`/`** starts a search over the rows: type, then `Enter` keeps it and `Esc` clears it. The log's last line says when older calls are gone; `/workmap log` prints the same log as text.
 - It closes when the session ends, or on `q` or ctrl+c. Closing it leaves the session as it was; `/lot-map window` opens it again. A session switched away from in its tab keeps its window there until it ends or `q`.
 - It needs Node 22 and a Chromium, as pictures do.
 
@@ -165,31 +179,32 @@ In Windows Terminal from WSL the window is the map: the session opens no pane, a
 
 The install offers them on a screen. Later, use `/config` in a terminal or `claude plugin configure`, then restart the session.
 
-| Option | Default | Meaning |
-| --- | --- | --- |
-| `language` | `en` | `en`, `ru`, `es`, `fr`, `de`, `it` or `pt` |
-| `coreName` | `CLAUDE` | what the circle in the middle says, up to ten characters |
-| `memoryServers` | `memory` | MCP servers whose tools light Memory |
-| `memoryCommands` | none | shell commands or scripts that light Memory; a name counts when it is the command itself or begins with it and `-`, `_` or `.`, so `recall` also names `recall-sync.py` |
-| `memorySubcommands` | none | words after a memory command that the map may show, such as `add` or `search`; without them the command goes by its own name |
-| `memoryPaths` | none | parts of a path that make a file a memory |
-| `memoryLabels` | none | short names for memory tools, each as `tool=name` |
-| `serverStations` | none | put an MCP server's tools on a station of your choice, each as `server=station`, with `files`, `shell`, `web`, `browser`, `agents`, `skills` or `you`; the row still reads `server: tool`. What you set wins over the mod's own routes for the servers it knows. Memory keeps `memoryServers`, which wins if a server is in both; an unknown station is ignored |
-| `hookRecords` | `false` | turn on if a hook of yours adds memory records numbered like `[#123]`; they appear on Memory by number only. Such a number in the text of any hook counts, not only a memory hook's |
-| `hookReasons` | `false` | show the first line of a hook's refusal, up to 72 characters; off, the map says only which tool was stopped |
-| `errorReasons` | `false` | show the first line of a failed call's error after its row, as ` — cannot open file`, cleaned and cut to 72 characters; off, a row says only that the call failed (a shell command still shows its exit code). A refused call never shows one. It shows on its row in the pane and the window (whose feed file holds the rows), never in the `/workmap all` status file nor a notification |
-| `contextCost` | `false` | each row says about how many tokens the context grew by with its call's answer, a station's count line adds its sum, and a pulse's width follows its call's tokens. An estimate, shown one step late; see [What each call adds to the context](#what-each-call-adds-to-the-context) |
-| `guardedHooks` | `true` | turn off on a Team or Enterprise login where the transcript gets notices like `lot-map: its classic.PreToolUse hook was skipped`. An organisation's guard keeps mods away from five events there, and with this off the mod adds no hook on them. The map then loses the Hooks station, the records a hook adds, the row of a typed slash command and the mark of a compaction (it marks a sharp fall of the context in its place); a call a hook refused still gets its `✕`, as a failed call and not as a blocked one |
-| `theme` | `auto` | the map's colours: `dark`, `light`, `contrast`, or `auto`, which is dark on a dark surface and light on a light one. `contrast` is the dark palette on black, every word at 7:1 or more against the ground and every mark at 4.5:1 or more; colours of your own still win |
-| `motion` | `full` | `full`, or `reduced`: nothing on any surface moves by itself. No pulses, rings, beams or blinking; a lit station stays lit, whole, until its time is up and then goes out, as does a leg of the route; the running station keeps its ring, and its clock hands step every five seconds; the cells repaint every five seconds at most, and a picture is painted again only when the map changes |
-| `background` | `solid` | the map's own background, or `transparent`, which lets the pane behind it show through. The rim around the labels keeps the background's colour, so on a surface of another shade it shows as a faint halo |
-| `colors` | none | colours of your own, each as `name=#rrggbb`; see [Colours of your own](#colours-of-your-own) |
-| `terminalMap` | `true` | in a terminal, paint the map in cells above the rows; `false` keeps the rows and one line of counts |
-| `terminalPicture` | `auto` | in a terminal that shows pictures, `auto` has headless Chromium paint the map as the app draws it; `off` keeps the cells. See [Pictures](#pictures) |
-| `terminalWindow` | `auto` | in Windows Terminal from WSL, `auto` makes the map [a window of its own](#a-window-of-its-own) in place of the pane; `off` keeps the pane |
-| `windowRows` | `10` | the rows [the map window](#a-window-of-its-own) keeps for the list under the map, 3 to 30; the map takes the rest |
-| `notify` | `false` | raise a notification when Claude asks you a question or puts a plan to you, when a permission prompt has waited on you for a second (naming the call as its row does: `Needs you: permission for Shell: Run the tests`), and when a turn ends: useful for sessions in the background |
-| `layout` | `you-top` | where you are on the map: `you-top`, or `you-bottom`, which turns the ring half a turn so that you are at the bottom and the network and the browser at the top |
+| Option              | Default   | Meaning                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| ------------------- | --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `language`          | `en`      | `en`, `ru`, `es`, `fr`, `de`, `it` or `pt`                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| `coreName`          | `CLAUDE`  | what the circle in the middle says, up to ten characters                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| `memoryServers`     | `memory`  | MCP servers whose tools light Memory                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `memoryCommands`    | none      | shell commands or scripts that light Memory; a name counts when it is the command itself or begins with it and `-`, `_` or `.`, so `recall` also names `recall-sync.py`                                                                                                                                                                                                                                                                                                                                                 |
+| `memorySubcommands` | none      | words after a memory command that the map may show, such as `add` or `search`; without them the command goes by its own name                                                                                                                                                                                                                                                                                                                                                                                            |
+| `memoryPaths`       | none      | parts of a path that make a file a memory                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `memoryLabels`      | none      | short names for memory tools, each as `tool=name`                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `serverStations`    | none      | put an MCP server's tools on a station of your choice, each as `server=station`, with `files`, `shell`, `web`, `browser`, `agents`, `skills` or `you`; the row still reads `server: tool`. What you set wins over the mod's own routes for the servers it knows. Memory keeps `memoryServers`, which wins if a server is in both; an unknown station is ignored                                                                                                                                                         |
+| `hookRecords`       | `false`   | turn on if a hook of yours adds memory records numbered like `[#123]`; they appear on Memory by number only. Such a number in the text of any hook counts, not only a memory hook's                                                                                                                                                                                                                                                                                                                                     |
+| `hookReasons`       | `false`   | show the first line of a hook's refusal, up to 72 characters; off, the map says only which tool was stopped                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `errorReasons`      | `false`   | show the first line of a failed call's error after its row, as ` — cannot open file`, cleaned and cut to 72 characters; off, a row says only that the call failed (a shell command still shows its exit code). A refused call never shows one. It shows on its row in the pane and the window (whose feed file holds the rows), never in the `/workmap all` status file nor a notification                                                                                                                              |
+| `contextCost`       | `false`   | each row says about how many tokens the context grew by with its call's answer, a station's count line adds its sum, and a pulse's width follows its call's tokens. An estimate, shown one step late; see [What each call adds to the context](#what-each-call-adds-to-the-context)                                                                                                                                                                                                                                     |
+| `guardedHooks`      | `true`    | turn off on a Team or Enterprise login where the transcript gets notices like `lot-map: its classic.PreToolUse hook was skipped`. An organisation's guard keeps mods away from five events there, and with this off the mod adds no hook on them. The map then loses the Hooks station, the records a hook adds, the row of a typed slash command and the mark of a compaction (it marks a sharp fall of the context in its place); a call a hook refused still gets its `✕`, as a failed call and not as a blocked one |
+| `theme`             | `auto`    | the map's colours: `dark`, `light`, `contrast`, or `auto`, which is dark on a dark surface and light on a light one. `contrast` is the dark palette on black, every word at 7:1 or more against the ground and every mark at 4.5:1 or more; colours of your own still win                                                                                                                                                                                                                                               |
+| `motion`            | `full`    | `full`, or `reduced`: nothing on any surface moves by itself. No pulses, rings, beams or blinking; a lit station stays lit, whole, until its time is up and then goes out, as does a leg of the route; the running station keeps its ring, and its clock hands step every five seconds; the cells repaint every five seconds at most, and a picture is painted again only when the map changes                                                                                                                          |
+| `background`        | `solid`   | the map's own background, or `transparent`, which lets the pane behind it show through. The rim around the labels keeps the background's colour, so on a surface of another shade it shows as a faint halo                                                                                                                                                                                                                                                                                                              |
+| `colors`            | none      | colours of your own, each as `name=#rrggbb`; see [Colours of your own](#colours-of-your-own)                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `terminalMap`       | `true`    | in a terminal, paint the map in cells above the rows; `false` keeps the rows and one line of counts                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `terminalPicture`   | `auto`    | in a terminal that shows pictures, `auto` has headless Chromium paint the map as the app draws it; `off` keeps the cells. See [Pictures](#pictures)                                                                                                                                                                                                                                                                                                                                                                     |
+| `terminalWindow`    | `auto`    | in Windows Terminal from WSL, `auto` makes the map [a window of its own](#a-window-of-its-own) in place of the pane; `off` keeps the pane                                                                                                                                                                                                                                                                                                                                                                               |
+| `windowRows`        | `10`      | the rows [the map window](#a-window-of-its-own) keeps for the list under the map, 3 to 30; the map takes the rest                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `notify`            | `false`   | raise a notification when Claude asks you a question or puts a plan to you, when a permission prompt has waited on you for a second (naming the call as its row does: `Needs you: permission for Shell: Run the tests`), and when a turn ends: useful for sessions in the background                                                                                                                                                                                                                                    |
+| `spokes`            | `calls`   | `calls` or `time`: spokes thicken with the calls a station took, or with its share of the time spent on calls. Time counts from when a call ran (after a permission prompt, from when you allowed it); the model and you are not counted                                                                                                                                                                                                                                                                                |
+| `layout`            | `you-top` | where you are on the map: `you-top`, or `you-bottom`, which turns the ring half a turn so that you are at the bottom and the network and the browser at the top                                                                                                                                                                                                                                                                                                                                                         |
 
 For example, Russian labels and your own memory server:
 
@@ -199,8 +214,8 @@ echo '{"language":"ru","memoryServers":"my-memory"}' | claude plugin configure l
 
 Lists are written with commas.
 
-| Russian labels | `layout` set to `you-bottom` |
-| --- | --- |
+| Russian labels                                                                 | `layout` set to `you-bottom`                                                                    |
+| ------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------- |
 | <img src="docs/map-russian.png" width="320" alt="The map with Russian labels"> | <img src="docs/map-turned.png" width="320" alt="The map turned, with the person at the bottom"> |
 
 ## Colours of your own
@@ -211,16 +226,16 @@ Lists are written with commas.
 echo '{"theme":"dark","colors":"accent=#7fb4ff,active=#b8d6ff,text=#e6edf7"}' | claude plugin configure lot-map@lot-map --values-stdin
 ```
 
-| Name | What it colours |
-| --- | --- |
-| `background` | the map's ground, and the rim around the labels |
-| `node` | the inside of a station and of the centre |
-| `line`, `spoke` | the dashed contours and the idle spokes |
+| Name                     | What it colours                                                     |
+| ------------------------ | ------------------------------------------------------------------- |
+| `background`             | the map's ground, and the rim around the labels                     |
+| `node`                   | the inside of a station and of the centre                           |
+| `line`, `spoke`          | the dashed contours and the idle spokes                             |
 | `text`, `label`, `faint` | the name in the centre and lit labels, the other labels, the counts |
-| `accent`, `active` | the main colour, and a station at work |
-| `error` | errors and refusals |
-| `memory`, `memoryActive` | the Memory station and its spoke |
-| `route` | the route between stations |
+| `accent`, `active`       | the main colour, and a station at work                              |
+| `error`                  | errors and refusals                                                 |
+| `memory`, `memoryActive` | the Memory station and its spoke                                    |
+| `route`                  | the route between stations                                          |
 
 <img src="docs/map-colors.png" width="640" alt="The map in two palettes of one's own: a cool blue one and a green one">
 

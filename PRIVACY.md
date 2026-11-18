@@ -2,7 +2,7 @@
 
 lot-map is a mod for Claude Code that draws a map of the work in a pane beside the chat. It runs inside Claude Code on your computer. There is no lot-map service, no account and no server: nothing the mod sees leaves your machine through it.
 
-This page describes version 0.11.0. It changes only together with the code, and the [changelog](CHANGELOG.md) says when it did.
+This page describes version 0.12.0. It changes only together with the code, and the [changelog](CHANGELOG.md) says when it did.
 
 ## What the mod is handed
 
@@ -14,7 +14,7 @@ The mod does not look for personal data and has no use for it. It takes a name f
 - a web address: the host alone, without a login, password, path or query;
 - a shell command: the short description Claude wrote for it, or the command's name, never the command line; a failed one also its exit code, never its output;
 - a memory call: the tool's name and a record number or short identifier, never the text or the query;
-- a subagent: the short description it was started with, also before its rows (cut to 24 characters);
+- a subagent: the short description it was started with, also before its rows (cut to 10 characters on the map, 24 in the rows), never its prompt or output; the board also keeps its id, its parent's id and its agent type's name, no content;
 - a task of Claude's plan: its subject as Claude wrote it, cut to 60 characters, never its description;
 - those descriptions and subjects are written by the model, and the mod shows them as written: it does not check what they say;
 - a background task's report: that it ended and whether it failed;
@@ -25,6 +25,7 @@ The mod does not look for personal data and has no use for it. It takes a name f
 ## What it keeps
 
 - **During a session:** the rows of the map, the counters under the stations and the last model step, in Claude Code's state for the session. With `contextCost` on, also a number of tokens on a row and a sum per station, and the labels of the three calls that added the most: how much the context grew, taken from the same figure as the ring's percentage. They are gone when the session ends.
+- **Satellites:** for the session, the last two parts of the path of each file you read or edit, the name of each MCP server you call, and for each a use count and the time of its last use, twelve per station. Never file contents or tool arguments. Nothing goes to disk beyond the files described below.
 - **Usage figures:** the context's fill and the categories of its window, the five-hour and weekly rate-limit windows with their reset times, and the session's estimated cost. The mod reads them and keeps the windows and the cost with the rows for the session. The map's drawing carries the cost and the windows' figures and reset times, as the pane shows them, so `map.svg` in picture mode and for the map window holds them too; the overview's status file holds the context's fill. It sends none of them anywhere.
 - **Between sessions:** one value per folder, the name of the model last used there, so that the map can show a change of model. It is stored under the folder's full path in Claude Code's own store for the plugin, on your computer. A folder's path usually contains your account name.
 - **Your options** (language, colours, memory servers and the rest) are kept by Claude Code in your settings, as for any plugin.
@@ -56,7 +57,7 @@ The mod reads six environment variables to tell whether the terminal shows pictu
 
 Only when you type `/lot-map window`, or in Windows Terminal from WSL (`WSL_DISTRO_NAME` set, and `WT_SESSION` or `WT_PROFILE_ID`) the first time you write in a session, unless `terminalWindow` is `off`:
 
-- The mod keeps the session's live map, the same drawing as above, in `map.svg` in a folder of its own, `lot-map-live-*` in your temporary directory (`TMPDIR`, else `/tmp`), readable by you alone, with the pane's rows (the action now and the last sixteen rows, the same labels) in `feed.json` and a heartbeat in `alive` every few seconds.
+- The mod keeps the session's live map, the same drawing as above, in `map.svg` in a folder of its own, `lot-map-live-*` in your temporary directory (`TMPDIR`, else `/tmp`), readable by you alone, with the pane's rows (the action now and the last sixteen rows, the same labels) in `feed.json`, which also holds the board's kept calls (names only) for the window's scrolling and each subagent's id and name, and a heartbeat in `alive` every few seconds.
 - It runs `sh -c 'command -v node'` and `sh -c 'command -v chromium || command -v google-chrome'` to find Node and Chromium. In WSL (`WSL_DISTRO_NAME` set) it runs `wt.exe -w 0 split-pane ... wsl.exe -d <distro> -- env LOT_MAP_CHROMIUM=<chromium> node renderer/view.mjs <folder>`, which opens a pane in your current Windows Terminal tab; elsewhere it only answers with that last command for you to run.
 - The window runs the renderer of picture mode on that map, at its own size, and writes Sixel to its own pane. It reads keys only to close on `q` or ctrl+c. While it runs it writes the time to `shown` in that folder every two seconds, and the mod reads that file's age so as not to open a second window.
 - When the session ends the mod removes the folder (`rm -rf` of that folder alone); a window still open closes when the heartbeat stops. A folder whose heartbeat stopped more than ten minutes ago is removed the next time a renderer starts.
