@@ -135,6 +135,11 @@ export function boardAt(s, base, figures) {
       answeredAt = ms(c.at + c.dur)
       if (open) open.endedAt = answeredAt
     }
+    // A call that worked clears the station's badges, as the session does.
+    if (status === 'ok') {
+      faults = { ...faults, [c.station]: 0 }
+      blocks = { ...blocks, [c.station]: 0 }
+    }
     if (status === 'err') {
       faults = bump(faults, c.station)
       faultTotals = bump(faultTotals, c.station)

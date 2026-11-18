@@ -240,12 +240,14 @@ export function drawLocal(box, local) {
   const hosts = local?.hosts ?? []
   box.hidden = hosts.length === 0
   if (box.hidden) return false
+  // Only servers that answer show; one not asked yet shows until it is.
   const links = hosts.map(host => {
     const state = answered.get(host)
-    return `<a href="http://${esc(host)}/" target="_blank" rel="noopener" data-host="${esc(host)}"><i class="dot${state === undefined ? '' : state ? ' up' : ' down'}"></i>${esc(host)}</a>`
+    return `<a href="http://${esc(host)}/" target="_blank" rel="noopener" data-host="${esc(host)}"${state === false ? ' hidden' : ''}><i class="dot${state === true ? ' up' : ''}"></i>${esc(host)}</a>`
   })
   box.innerHTML = `<span class="local-title">${esc(local.title)}</span>${links.join('')}`
-  return true
+  box.hidden = box.querySelector('a[data-host]:not([hidden])') === null
+  return !box.hidden
 }
 
 /**
@@ -261,7 +263,10 @@ export function watchLocal(box, after = () => {}) {
       answered.set(host, up)
       link.querySelector('.dot')?.classList.toggle('up', up)
       link.querySelector('.dot')?.classList.toggle('down', !up)
+      // A server that does not answer leaves the line until it does again.
+      link.hidden = !up
     }
+    box.hidden = box.querySelector('a[data-host]:not([hidden])') === null
     after()
   }
   void ask()
@@ -340,5 +345,14 @@ export function markLocal(mapBox, localBox) {
   if (label) {
     label.textContent = String(live)
     label.style.fill = 'var(--accent)'
+  }
+  // While one answers, Browser's circle, icon and spoke wear a steady amber: something there is up, nothing is called.
+  const node = badge.parentElement?.querySelector('circle[r="22"]')
+  const icon = badge.parentElement?.querySelector('path[transform]')
+  for (const el of [node, icon]) if (el) el.style.stroke = live > 0 ? 'var(--accent)' : ''
+  const spoke = mapBox.querySelector('line[data-spoke="browser"]')
+  if (spoke) {
+    spoke.style.stroke = live > 0 ? 'var(--accent)' : ''
+    spoke.style.opacity = live > 0 ? '0.6' : ''
   }
 }

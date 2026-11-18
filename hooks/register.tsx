@@ -175,8 +175,9 @@ function closeRuns(b: Board, pick: (e: Entry) => boolean, now: number): Pick<Boa
 const oneMore = (counts: Board['faults'], station: StationId): Board['faults'] => ({ ...counts, [station]: (counts?.[station] ?? 0) + 1 })
 
 /**
- * A call that ended badly counts on its station, an error with the faults and a refusal with the blocks. A subagent's own
- * failure shows on its Agent call's row; one bad call inside it does not mark it.
+ * A call that ended badly counts on its station, an error with the faults and a refusal with the blocks; one that worked
+ * clears them there, so a badge says what is wrong now, not what went wrong once. The session's totals keep everything. A
+ * subagent's own failure shows on its Agent call's row; one bad call inside it does not mark it.
  */
 function tally(
   b: Board,
@@ -185,6 +186,10 @@ function tally(
   agentId?: string,
   turn?: number,
 ): Pick<Board, 'faults' | 'faultTotals' | 'blocks' | 'blockTotals' | 'turns'> {
+  if (status === 'ok') {
+    const isClear = (b.faults?.[station] ?? 0) === 0 && (b.blocks?.[station] ?? 0) === 0
+    return isClear ? {} : { faults: { ...b.faults, [station]: 0 }, blocks: { ...b.blocks, [station]: 0 } }
+  }
   if (status !== 'err' && status !== 'block') return {}
   const bad =
     status === 'err'

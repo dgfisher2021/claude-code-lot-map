@@ -890,7 +890,7 @@ export function drawMap(board: Board, now: number, setup: Setup, isFilling = fal
     const a = edge(core, p, HUB)
     const b = edge(p, core, NODE)
     const worn = wearOf(board, s.id, setup)
-    const line = `<line x1="${n1(a.x)}" y1="${n1(a.y)}" x2="${n1(b.x)}" y2="${n1(b.y)}" stroke-width="${n1(1 + 2.6 * worn)}" stroke-linecap="round"`
+    const line = `<line data-spoke="${s.id}" x1="${n1(a.x)}" y1="${n1(a.y)}" x2="${n1(b.x)}" y2="${n1(b.y)}" stroke-width="${n1(1 + 2.6 * worn)}" stroke-linecap="round"`
     body += `${line} stroke="${c.spoke}"/>`
     if (worn > 0) body += `${line} stroke="${s.id === 'memory' ? c.mem : c.accent}" opacity="${n1(worn * 0.55)}"/>`
   })
