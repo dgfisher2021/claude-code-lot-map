@@ -647,8 +647,20 @@ async function openWindow($: EngineInterface, setup: Setup): Promise<{ isOpen: b
     await share($, setup)
     sharing.timer = $.clock.every(250, () => void share($, setup))
   }
+  // From WSL the map is an Edge window of its own; `pane` keeps the split of the terminal's tab, as does a failed Edge.
+  const isWsl = ((await $.env.get('WSL_DISTRO_NAME')) ?? '') !== ''
+  if (isWsl && setup.terminalWindow !== 'pane' && (await appWindow($, sharing.dir ?? ''))) return { isOpen: true, text: setup.t.windowOpened }
   const { isOpen, command } = await splitTab($, [sharing.dir ?? ''], true)
   return isOpen ? { isOpen: true, text: setup.t.windowOpened } : { isOpen: false, text: setup.t.windowByHand(command.join(' ')) }
+}
+
+/** Opens the live map in an Edge app window: renderer/serve.mjs starts the local server unless one runs, then Edge. */
+async function appWindow($: EngineInterface, dir: string): Promise<boolean> {
+  const live = /\/workmap-live-([a-z0-9]+)$/.exec(dir)?.[1]
+  if (live === undefined) return false
+  const node = (await quietly(() => $.process.run(['sh', '-c', 'command -v node'])))?.stdout.trim() || 'node'
+  const opened = await quietly(() => $.process.run([node, `${$.plugin.root}/renderer/serve.mjs`, '--open', live]))
+  return opened?.exitCode === 0
 }
 
 /** Whether the session runs from WSL in Windows Terminal. A session in the background has the profile's id though not the tab's. */
@@ -690,6 +702,7 @@ function logFeed(state: Board, setup: Setup) {
     log: logCalls(state, setup),
     stations: STATIONS.map(s => ({ id: s.id, name: t.stations[s.id] })),
     keys: t.windowKeys,
+    keyHelp: t.keyHelp,
     errorsWord: t.logErrors,
   }
 }

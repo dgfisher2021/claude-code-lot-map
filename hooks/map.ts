@@ -63,7 +63,7 @@ export type Setup = {
   /** In a terminal that shows pictures, whether the map is a picture a browser paints (`auto`) or stays in cells (`off`). */
   terminalPicture: 'auto' | 'off'
   /** In Windows Terminal from WSL, whether the map is a window of its own in place of the pane (`auto`) or the pane (`off`). */
-  terminalWindow: 'auto' | 'off'
+  terminalWindow: 'auto' | 'pane' | 'off'
   /** Whether a spoke wears by its station's calls or by its share of the busy time. */
   spokes: 'calls' | 'time'
   /** Whether a wait on the person and a finished turn raise a notification. */
@@ -111,7 +111,7 @@ export function setupFrom(options: Readonly<Record<string, unknown>> = {}): Setu
     motion: options.motion === 'reduced' ? 'reduced' : 'full',
     terminalMap: options.terminalMap !== false,
     terminalPicture: options.terminalPicture === 'off' ? 'off' : 'auto',
-    terminalWindow: options.terminalWindow === 'off' ? 'off' : 'auto',
+    terminalWindow: options.terminalWindow === 'off' || options.terminalWindow === 'pane' ? options.terminalWindow : 'auto',
     spokes: options.spokes === 'time' ? 'time' : 'calls',
     notify: options.notify === true,
     windowRows: Math.min(30, Math.max(3, Math.round(Number(options.windowRows ?? 10)) || 10)),

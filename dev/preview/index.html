@@ -4,6 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>workmap preview</title>
+    <link rel="stylesheet" href="/window/ui.css" />
     <style>
       :root {
         --page: #15171c;
@@ -59,13 +60,8 @@
       #rows {
         font: 13px/17px var(--mono);
         padding: 8px 10px 0;
-        white-space: pre;
         overflow: hidden;
         flex: 1;
-      }
-      #rows div {
-        overflow: hidden;
-        text-overflow: ellipsis;
       }
       #hint {
         font: 12px/17px var(--mono);
@@ -74,129 +70,6 @@
         padding: 0 10px 6px;
         white-space: nowrap;
         overflow: hidden;
-      }
-      .t-run,
-      .t-switch {
-        color: var(--accent);
-      }
-      .t-bad {
-        color: var(--bad);
-      }
-      .t-block {
-        color: var(--block);
-      }
-      .t-ok {
-        opacity: 0.55;
-      }
-      .b {
-        font-weight: 700;
-      }
-      .n-wait {
-        color: var(--accent);
-        font-weight: 700;
-      }
-      .n-done {
-        color: var(--done);
-        font-weight: 700;
-      }
-      .n-plain {
-        font-weight: 700;
-      }
-      #tip {
-        position: fixed;
-        pointer-events: none;
-        background: #262a33;
-        color: var(--text);
-        border: 1px solid #3a404c;
-        border-radius: 5px;
-        padding: 5px 8px;
-        font-size: 12px;
-        max-width: 300px;
-        box-shadow: 0 4px 14px #0008;
-        display: none;
-        z-index: 9;
-      }
-      body.windowed {
-        padding: 0;
-        height: 100vh;
-        overflow: hidden;
-      }
-      body.windowed #side {
-        display: none;
-      }
-      body.windowed #pane {
-        width: 100vw;
-        height: 100vh;
-        border: 0;
-        border-radius: 0;
-        resize: none;
-      }
-      #tip.rich {
-        width: 300px;
-        max-width: 300px;
-        padding: 10px 12px 11px;
-      }
-      .tip-head {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        font-size: 14px;
-        color: #f0f1f4;
-      }
-      .tip-head svg {
-        width: 18px;
-        height: 18px;
-        color: var(--accent);
-        flex: none;
-      }
-      .tip-about {
-        margin: 5px 0 9px;
-        color: var(--dim);
-        font-size: 12px;
-        line-height: 1.45;
-      }
-      .tip-about code {
-        font: 11px var(--mono);
-        color: var(--text);
-        background: #1b1e25;
-        border: 1px solid #343a45;
-        border-radius: 3px;
-        padding: 0 3px;
-        white-space: nowrap;
-      }
-      .tip-figures {
-        border-top: 1px solid #3a404c;
-        padding-top: 8px;
-        display: grid;
-        gap: 5px;
-      }
-      .fig {
-        display: grid;
-        grid-template-columns: 14px 1fr auto;
-        gap: 8px;
-        align-items: center;
-        font-size: 12px;
-      }
-      .fig svg {
-        width: 14px;
-        height: 14px;
-        color: var(--dim);
-      }
-      .fig b {
-        font-weight: 600;
-        font-variant-numeric: tabular-nums;
-      }
-      .fig.t-bad,
-      .fig.t-bad svg {
-        color: var(--bad);
-      }
-      .fig.t-block,
-      .fig.t-block svg {
-        color: var(--block);
-      }
-      .fig.t-run svg,
-      .fig.t-run b {
-        color: var(--accent);
       }
       .pin {
         position: absolute;
@@ -324,7 +197,7 @@
     <div id="pane">
       <div id="error"></div>
       <div id="map"></div>
-      <div id="rows"></div>
+      <div id="rows" class="lines"></div>
       <div id="hint">m map · ? legend · ↑↓ scroll · e errors · 1-9 station · a agent · / search · q close</div>
     </div>
 
