@@ -196,6 +196,16 @@
       ],
       "default": "you-top",
       "description": "Where you are on the map: at the top, or at the bottom with the network and the browser at the top."
+    },
+    "spokes": {
+      "type": "string",
+      "title": "Spokes wear by",
+      "options": [
+        "calls",
+        "time"
+      ],
+      "default": "calls",
+      "description": "What thickens a station's spoke: the calls it took (calls), or its share of the time Claude spent on calls (time), so one slow call weighs more than many quick ones."
     }
   }
 }

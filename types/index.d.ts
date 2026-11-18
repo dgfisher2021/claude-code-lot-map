@@ -69,6 +69,8 @@ export type Board = {
   faults?: Partial<Record<StationId, number>>
   /** Errors per station this session; no message of the person's clears it. */
   faultTotals?: Partial<Record<StationId, number>>
+  /** Milliseconds each station was busy this session: one number per station, whatever the length of the session. */
+  busyMs?: Partial<Record<StationId, number>>
   /** Calls per station since the person's last message. */
   turnCounts?: Partial<Record<StationId, number>>
   /** Calls refused per station (by a hook or a permission prompt) since the person's last message. */
