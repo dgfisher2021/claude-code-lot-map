@@ -2,6 +2,13 @@
 
 What changed in each version of workmap, newest first; up to 0.12.0 it was called lot-map. To get a new version, see [Updating](README.md#updating).
 
+## 1.2.4 (2026-11-18)
+
+- Up and Down, PgUp and PgDn move through the window's list again, in Edge and in the split: the window asked the list for more rows than fit, so the list held its scroll at the top and every key was undone. Past the end of the live rows the mouse wheel goes on into the log the same way.
+- The board keeps the last 300 calls, where it kept 80, so the log reaches further back.
+- The list under the map keeps 30 rows by default (`windowRows`), where it kept 10.
+- An update reaches the windows: opening one stops a server an older install started on the same port and starts this one's, so the page is the current version's.
+
 ## 1.2.3 (2026-11-18)
 
 - The window's title shows where Claude works now: the repository, branch and worktree of its latest edit, write, `cd` or `git -C`, changed the moment a call names a new one, else the session's folder. A read does not move it, since Claude reads other repositories too.

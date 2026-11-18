@@ -118,7 +118,7 @@ export function setupFrom(options: Readonly<Record<string, unknown>> = {}): Setu
     terminalWindow: options.terminalWindow === 'off' || options.terminalWindow === 'edge' ? options.terminalWindow : 'auto',
     spokes: options.spokes === 'time' ? 'time' : 'calls',
     notify: options.notify === true,
-    windowRows: Math.min(30, Math.max(3, Math.round(Number(options.windowRows ?? 10)) || 10)),
+    windowRows: Math.min(30, Math.max(3, Math.round(Number(options.windowRows ?? 30)) || 30)),
   }
 }
 

@@ -8,7 +8,7 @@
 //                                       workmap-live-<live>, and print the port; exit 1 when it cannot
 
 import { spawn, spawnSync } from 'node:child_process'
-import { existsSync, watch } from 'node:fs'
+import { existsSync, readFileSync, readdirSync, watch } from 'node:fs'
 import { readFile, readdir, stat, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:http'
 import { homedir, tmpdir } from 'node:os'
@@ -125,9 +125,53 @@ async function answers() {
   }
 }
 
-/** Starts the server unless one answers; whether one answers then. The Sixel window (view.mjs) starts it this way too. */
+/** An install's version, from the plugin.json beside the renderer folder its serve.mjs is in; 0.0.0 when unreadable. */
+function versionAt(script) {
+  try {
+    return JSON.parse(readFileSync(join(script, '../../.claude-plugin/plugin.json'), 'utf8')).version ?? '0.0.0'
+  } catch {
+    return '0.0.0'
+  }
+}
+
+/** Whether version `a` is older than `b`, part by part. */
+const isOlder = (a, b) => {
+  const [x, y] = [a, b].map(v => String(v).split('.').map(Number))
+  for (let i = 0; i < 3; i++) if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) < (y[i] || 0)
+  return false
+}
+
+/**
+ * The server an older workmap install of yours started on this port, by its process id from /proc: windows would get
+ * that version's page. Only your own processes can be read there, and on a system without /proc nothing is found.
+ */
+function olderServer() {
+  const own = fileURLToPath(import.meta.url)
+  for (const pid of existsSync('/proc') ? readdirSync('/proc').filter(n => /^\d+$/.test(n)) : []) {
+    try {
+      const argv = readFileSync(`/proc/${pid}/cmdline`, 'utf8').split('\0')
+      const script = argv.find(a => a.endsWith('/renderer/serve.mjs'))
+      if (script === undefined || script === own || argv.includes('--open') || !isOlder(versionAt(script), versionAt(own))) continue
+      const env = readFileSync(`/proc/${pid}/environ`, 'utf8').split('\0')
+      if ((Number(env.find(v => v.startsWith('WORKMAP_PORT='))?.slice(13)) || 47470) === PORT) return Number(pid)
+    } catch {}
+  }
+  return undefined
+}
+
+/**
+ * Starts the server unless one answers; whether one answers then. One an older install started is stopped first, so
+ * that an update reaches the windows: their pages reconnect to this one. The Sixel window (view.mjs) starts it too.
+ */
 export async function ensureServer() {
-  if (await answers()) return true
+  if (await answers()) {
+    const older = olderServer()
+    if (older === undefined) return true
+    try {
+      process.kill(older)
+    } catch {}
+    for (let i = 0; i < 20 && (await answers()); i++) await new Promise(r => setTimeout(r, 100))
+  }
   spawn(process.execPath, [fileURLToPath(import.meta.url)], { detached: true, stdio: 'ignore' }).unref()
   for (let i = 0; i < 40 && !(await answers()); i++) await new Promise(r => setTimeout(r, 100))
   return answers()

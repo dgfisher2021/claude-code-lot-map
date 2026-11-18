@@ -47,7 +47,7 @@ import { MAP_COLUMNS, MAP_MIN_COLUMNS, MAP_ROWS, PICTURE_CELL, mapSize, paceOf, 
 const PANE = 'workmap'
 /** The terminal map's Raster or Image, by the key a repaint names it with. */
 const MAP = 'map'
-const KEEP = 80
+const KEEP = 300
 /**
  * One step's growth of the context is shared evenly among its calls when there are at most this many. With more, an
  * even share says too little: a large read and a short command would each show the same. Their rows then get no figure.

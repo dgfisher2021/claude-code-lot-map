@@ -281,7 +281,7 @@ test('the drawing stays within what Svg accepts at its fullest', () => {
     model: 'claude-opus-5-5',
     step: 12,
     counts: { files: 12345 },
-    entries: Array.from({ length: 80 }, (_, i) => ({
+    entries: Array.from({ length: 300 }, (_, i) => ({
       id: String(i),
       station: stations[i % stations.length] as (typeof stations)[number],
       label: 'x'.repeat(70),
