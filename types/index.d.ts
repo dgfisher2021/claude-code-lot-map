@@ -28,6 +28,8 @@ export type Entry = {
   ranAt?: number
   /** A failed shell command's exit code: a number, nothing of its output. */
   exit?: number
+  /** What a Files call does: reads, edits or searches, for the word under the station while it runs. */
+  act?: 'reading' | 'editing' | 'searching'
   /** A failed call's first line of error, cleaned and cut. Only with `errorReasons` on. */
   reason?: string
   /** The person's message this call came under: the `n` of a `TurnSummary`. */
@@ -58,11 +60,8 @@ export type LimitKind = 'five_hour' | 'seven_day'
 /** A file or MCP server a station serves: its name, how often it was used, whether it was edited, and when last. */
 export type Satellite = { name: string; uses: number; isEdited?: true; lastAt: number }
 
-/** What a subagent's spawn told: who it came from, its type's name, when, and the Workflow call it ran under. */
-export type AgentInfo = { parent?: string; type?: string; at: number; run?: string }
-
-/** A stretch of time at a station, or a wait on the person; `until` is unset while it goes on, `bad` marks an error or a refusal. */
-export type TimelineMark = { at: number; until?: number; of?: string; kind: StationId | 'wait'; bad?: true }
+/** What a subagent's spawn told: who it came from, its type's name, and when. */
+export type AgentInfo = { parent?: string; type?: string; at: number }
 
 export type Board = {
   entries: Entry[]
@@ -89,8 +88,6 @@ export type Board = {
   agentNames?: Record<string, string>
   /** What each subagent's spawn told, by its id: the last 24. */
   agentInfo?: Record<string, AgentInfo>
-  /** Subagents a call of which failed or was refused. */
-  agentFaults?: string[]
   /** How full the context window is, 0 to 100. */
   context?: number
   /** The highest the context's fill has been this session. */
@@ -107,14 +104,16 @@ export type Board = {
   changed?: Record<string, number>
   /** The files and MCP servers a station serves most, by station: twelve kept, the five most used drawn. */
   satellites?: Partial<Record<StationId, Satellite[]>>
+  /** The localhost addresses Claude's calls used (a URL it fetched or opened, one in a command), newest first: host and port only. */
+  local?: { host: string; lastAt: number }[]
   /** The person's messages this session as turns, the last twelve; the newest is the open one. */
   turns?: TurnSummary[]
-  /** Where the time went, as marks: the last 240. */
-  timeline?: TimelineMark[]
   /** The rate-limit windows the engine last reported: how much of each is used, and when it resets (ISO 8601). */
   limits?: { kind: LimitKind; percent: number; resetsAt?: string }[]
   /** What the session has cost so far, in US dollars: an estimate. */
   cost?: number
+  /** The cost when a plan limit was first seen reached: what comes after is extra usage, billed at API rates. */
+  paidFrom?: number
   /** With `contextCost`: about how many tokens each station's calls added to the context this session. */
   spent?: Partial<Record<StationId, number>>
   /** With `contextCost`: the three calls that added the most to the context this session, by label, the heaviest first. */

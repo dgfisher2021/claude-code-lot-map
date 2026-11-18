@@ -1,0 +1,311 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>workmap preview</title>
+    <link rel="stylesheet" href="/window/ui.css" />
+    <style>
+      :root {
+        --page: #15171c;
+        --panel: #1c1f26;
+        --edge: #2c313b;
+        --text: #cfd3da;
+        --dim: #8a909c;
+        --accent: #e1ac6e;
+        --bad: #e8654f;
+        --block: #e69646;
+        --done: #8fbf7f;
+        --ground: #0a0c11;
+        --mono: 'Cascadia Mono', 'Cascadia Code', Consolas, ui-monospace, monospace;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: var(--page);
+        color: var(--text);
+        font:
+          13px/1.4 system-ui,
+          sans-serif;
+        display: flex;
+        gap: 16px;
+        padding: 16px;
+        min-height: 100vh;
+        align-items: flex-start;
+      }
+      #pane {
+        position: relative;
+        width: 560px;
+        height: 860px;
+        min-width: 240px;
+        min-height: 300px;
+        resize: both;
+        overflow: hidden;
+        background: var(--ground);
+        border: 1px solid var(--edge);
+        border-radius: 6px;
+        display: flex;
+        flex-direction: column;
+        flex: none;
+      }
+      #map {
+        position: relative;
+        flex: none;
+      }
+      #map svg {
+        display: block;
+      }
+      /* ?window=<session>: one session filling the window, as the map window shows it. */
+      body.windowed {
+        padding: 0;
+        height: 100vh;
+        overflow: hidden;
+      }
+      body.windowed #side {
+        display: none;
+      }
+      body.windowed #pane {
+        width: 100vw;
+        height: 100vh;
+        border: 0;
+        border-radius: 0;
+        resize: none;
+      }
+      #rows {
+        font: 13px/22px var(--mono);
+        padding: 4px 12px 8px;
+        overflow-y: auto;
+        flex: 1;
+      }
+      .pin {
+        position: absolute;
+        width: 18px;
+        height: 18px;
+        margin: -9px 0 0 -9px;
+        border-radius: 50%;
+        background: #5b8def;
+        color: #fff;
+        font: 700 10px/18px system-ui;
+        text-align: center;
+        box-shadow: 0 0 0 2px var(--ground);
+        cursor: help;
+      }
+      #error {
+        display: none;
+        position: absolute;
+        inset: 8px 8px auto;
+        background: #3a1c1a;
+        color: #ffb4a8;
+        border: 1px solid var(--bad);
+        border-radius: 5px;
+        padding: 8px;
+        font: 12px/1.4 var(--mono);
+        white-space: pre-wrap;
+        z-index: 5;
+      }
+      #side {
+        flex: 1;
+        max-width: 380px;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+      fieldset {
+        border: 1px solid var(--edge);
+        border-radius: 6px;
+        background: var(--panel);
+        margin: 0;
+        padding: 10px 12px 12px;
+        display: grid;
+        grid-template-columns: auto 1fr auto;
+        gap: 6px 10px;
+        align-items: center;
+      }
+      legend {
+        color: var(--dim);
+        font-weight: 600;
+        padding: 0 4px;
+      }
+      fieldset > .wide {
+        grid-column: 1 / -1;
+      }
+      label {
+        color: var(--dim);
+      }
+      input[type='range'] {
+        width: 100%;
+        accent-color: var(--accent);
+      }
+      select,
+      button,
+      input[type='number'] {
+        background: #262a33;
+        color: var(--text);
+        border: 1px solid #3a404c;
+        border-radius: 4px;
+        padding: 3px 6px;
+        font: inherit;
+      }
+      button {
+        cursor: pointer;
+      }
+      button:hover {
+        border-color: var(--accent);
+      }
+      .chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+      }
+      .checks {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px 14px;
+      }
+      .checks label {
+        color: var(--text);
+      }
+      output {
+        font-variant-numeric: tabular-nums;
+        min-width: 3.5em;
+        text-align: right;
+      }
+      #notes {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        max-height: 220px;
+        overflow: auto;
+      }
+      #notes li {
+        display: grid;
+        grid-template-columns: 18px 1fr;
+        gap: 8px;
+      }
+      #notes .pin {
+        position: static;
+        margin: 0;
+      }
+      #notes small {
+        color: var(--dim);
+        display: block;
+      }
+      .help {
+        color: var(--dim);
+        font-size: 12px;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="pane">
+      <div id="error"></div>
+      <header id="top">
+        <div id="status"></div>
+        <div id="title" hidden></div>
+        <button id="help" type="button" hidden></button>
+      </header>
+      <div id="map"></div>
+      <div id="split"></div>
+      <div id="rows" class="lines"></div>
+    </div>
+
+    <div id="side">
+      <fieldset>
+        <legend>Source</legend>
+        <select id="source" class="wide"></select>
+        <div class="wide help">
+          Made-up session: the drawing code in this worktree, live as it changes. A live session: your installed workmap's own map, read-only.
+        </div>
+      </fieldset>
+
+      <fieldset id="playback">
+        <legend>Playback</legend>
+        <button id="play" type="button">Pause</button>
+        <input id="scrub" type="range" min="0" max="80" step="0.1" />
+        <output id="clock"></output>
+        <div class="wide chips">
+          <button type="button" data-jump="6">Reading</button>
+          <button type="button" data-jump="20">Subagents</button>
+          <button type="button" data-jump="40">Needs you</button>
+          <button type="button" data-jump="58">Error</button>
+          <button type="button" data-jump="76">Done</button>
+        </div>
+      </fieldset>
+
+      <fieldset id="figures">
+        <legend>Rings and figures</legend>
+        <label for="context">Context</label><input id="context" type="range" min="0" max="100" data-figure /><output for="context"></output>
+        <label for="fiveHour">5-hour</label><input id="fiveHour" type="range" min="0" max="100" data-figure /><output for="fiveHour"></output>
+        <label for="weekly">Weekly</label><input id="weekly" type="range" min="0" max="100" data-figure /><output for="weekly"></output>
+        <label for="cost">Cost $</label><input id="cost" type="range" min="0" max="40" step="0.01" data-figure /><output for="cost"></output>
+        <div class="wide checks">
+          <label><input type="checkbox" id="plan" data-figure /> plan</label>
+          <label><input type="checkbox" id="agents" data-figure /> subagents</label>
+          <label><input type="checkbox" id="satellites" data-figure /> satellites</label>
+        </div>
+      </fieldset>
+
+      <fieldset id="options">
+        <legend>Options</legend>
+        <label for="theme">theme</label>
+        <select id="theme" data-option>
+          <option>dark</option>
+          <option>light</option>
+          <option>contrast</option>
+        </select>
+        <span></span>
+        <label for="motion">motion</label>
+        <select id="motion" data-option>
+          <option>full</option>
+          <option>reduced</option>
+        </select>
+        <span></span>
+        <label for="layout">layout</label>
+        <select id="layout" data-option>
+          <option>you-top</option>
+          <option>you-bottom</option>
+        </select>
+        <span></span>
+        <label for="spokes">spokes</label>
+        <select id="spokes" data-option>
+          <option>calls</option>
+          <option>time</option>
+        </select>
+        <span></span>
+        <label for="language">language</label>
+        <select id="language" data-option>
+          <option>en</option>
+          <option>ru</option>
+          <option>es</option>
+          <option>fr</option>
+          <option>de</option>
+          <option>it</option>
+          <option>pt</option>
+        </select>
+        <span></span>
+        <label for="windowRows">windowRows</label>
+        <input id="windowRows" type="number" min="3" max="30" data-option />
+        <span></span>
+        <div class="wide checks">
+          <label><input type="checkbox" id="contextCost" data-option /> contextCost</label>
+          <label><input type="checkbox" id="errorReasons" data-option /> errorReasons</label>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Notes</legend>
+        <div class="wide help">Shift+click the map to pin a note. Notes are saved for Claude in <code>claude/preview-notes.jsonl</code>.</div>
+        <ol id="notes" class="wide"></ol>
+        <button id="clearNotes" type="button" class="wide">Clear notes</button>
+      </fieldset>
+    </div>
+
+    <div id="tip"></div>
+    <script type="module" src="app.js"></script>
+  </body>
+</html>

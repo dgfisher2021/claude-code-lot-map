@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register, Timer } from 'claude-code'
 
-import type { AgentInfo, Board, Entry, StationId, Status, TimelineMark, TurnSummary } from '../types'
+import type { AgentInfo, Board, Entry, StationId, Status, TurnSummary } from '../types'
 import {
   STATIONS,
   agentList,
@@ -14,7 +14,9 @@ import {
   feedLines,
   firstLine,
   framedMap,
+  actOf,
   keepNewest,
+  localHostsIn,
   logLines,
   memoryIds,
   PLAN_TOOLS,
@@ -30,6 +32,7 @@ import {
   taskOf,
   untilText,
   warningsOf,
+  withLocal,
   withSatellite,
   costText,
 } from './map'
@@ -55,8 +58,6 @@ const REFUSALS_KEPT = 64
 const CREW = 12
 /** How many turns the board keeps. */
 const TURNS = 12
-/** How many timeline marks the board keeps. */
-const MARKS = 240
 /** How many changed files the board keeps. */
 const CHANGED = 40
 /** The calls that change a file. */
@@ -76,23 +77,21 @@ async function quietly<T>(work: () => Promise<T>): Promise<T | undefined> {
   }
 }
 
-/** What a spawn tells of its subagent, kept by id (the last 24): its parent, its type's name and, under a running Workflow call, that call's row. */
-const spawnInfo = (b: Board, id: string, e: { parentAgentId?: string; subagentType?: string }, now: number, workflow: string): Pick<Board, 'agentInfo'> => {
-  const run = b.entries.find(x => x.status === 'run' && x.agentId === undefined && x.station === 'agents' && x.label === workflow)
+/** What a spawn tells of its subagent, kept by id (the last 24): its parent and its type's name. */
+const spawnInfo = (b: Board, id: string, e: { parentAgentId?: string; subagentType?: string }, now: number): Pick<Board, 'agentInfo'> => {
   const info: AgentInfo = {
     at: now,
     ...(e.parentAgentId ? { parent: e.parentAgentId } : {}),
     ...(e.subagentType ? { type: Array.from(clean(e.subagentType)).slice(0, 24).join('') } : {}),
-    ...(run !== undefined ? { run: run.id } : {}),
   }
   return { agentInfo: Object.fromEntries([...Object.entries(b.agentInfo ?? {}), [id, info]].slice(-24)) }
 }
 
 /** Keeps what a spawn told of its subagent. */
-async function noteSpawn($: EngineInterface, id: string, e: { parentAgentId?: string; subagentType?: string }, workflow: string): Promise<void> {
+async function noteSpawn($: EngineInterface, id: string, e: { parentAgentId?: string; subagentType?: string }): Promise<void> {
   await quietly(async () => {
     const now = await $.clock.now()
-    await update($, board, b => ({ ...b, ...spawnInfo(b, id, e, now, workflow) }))
+    await update($, board, b => ({ ...b, ...spawnInfo(b, id, e, now) }))
   })
 }
 
@@ -104,6 +103,7 @@ type Start = {
   agentId?: string
   mark?: Entry['mark']
   waits?: true
+  act?: Entry['act']
   /** Adds nothing to the station's count: a second view of something already counted. */
   uncounted?: boolean
   /** Comes ahead of the turn it belongs to, as a settings hook's row at a message: no turn yet, nothing counted on one. */
@@ -135,46 +135,23 @@ function firstText(body: string): string | undefined {
   return undefined
 }
 
-/** The timeline with a mark opened for a call at its start, or its marks closed at its end. */
-function marked(b: Board, e: Entry, now: number, isStart = false): Pick<Board, 'timeline'> {
-  if (e.station === 'model' || e.mark !== undefined) return {}
-  const old = b.timeline ?? []
-  // An aborted turn lands on You as an error, and is no fault to mark.
-  const isBad = (e.status === 'err' || e.status === 'block') && e.station !== 'you' ? { bad: true as const } : {}
-  if (isStart) {
-    const mark: TimelineMark = {
-      at: e.startedAt,
-      of: e.id,
-      kind: e.waits === true ? 'wait' : e.station,
-      ...(e.status === 'run' ? {} : { until: e.endedAt ?? now, ...isBad }),
-    }
-    return { timeline: [...old, mark].slice(-MARKS) }
-  }
-  return { timeline: old.map(m => (m.until === undefined && m.of === e.id ? { ...m, until: now, ...(m.kind === e.station ? isBad : {}) } : m)) }
-}
-
-/** The timeline with the wait marks of one call closed: the person answered. */
-const unwaited = (b: Board, id: string, now: number): Pick<Board, 'timeline'> => ({
-  timeline: (b.timeline ?? []).map(m => (m.kind === 'wait' && m.until === undefined && m.of === id ? { ...m, until: now } : m)),
-})
-
-/** The picked running rows closed as ok at `now`, their time and marks folded in. */
-function closeRuns(b: Board, pick: (e: Entry) => boolean, now: number): Pick<Board, 'entries' | 'busyMs' | 'timeline'> {
+/** The picked running rows closed as ok at `now`, their time folded in. */
+function closeRuns(b: Board, pick: (e: Entry) => boolean, now: number): Pick<Board, 'entries' | 'busyMs'> {
   let acc: Board = b
   const entries = b.entries.map(e => {
     if (e.status !== 'run' || !pick(e)) return e
-    const done: Entry = { ...e, status: 'ok', endedAt: now }
-    acc = { ...acc, ...busier(acc, e, now), ...marked(acc, done, now) }
-    return done
+    acc = { ...acc, ...busier(acc, e, now) }
+    return { ...e, status: 'ok' as const, endedAt: now }
   })
-  return { entries, busyMs: acc.busyMs, timeline: acc.timeline }
+  return { entries, busyMs: acc.busyMs }
 }
 
 const oneMore = (counts: Board['faults'], station: StationId): Board['faults'] => ({ ...counts, [station]: (counts?.[station] ?? 0) + 1 })
 
 /**
- * A call that ended badly counts on its station, an error with the faults and a refusal with the blocks, and marks the
- * subagent that made it.
+ * A call that ended badly counts on its station, an error with the faults and a refusal with the blocks; one that worked
+ * clears them there, so a badge says what is wrong now, not what went wrong once. The session's totals keep everything. A
+ * subagent's own failure shows on its Agent call's row; one bad call inside it does not mark it.
  */
 function tally(
   b: Board,
@@ -182,16 +159,19 @@ function tally(
   status: Status,
   agentId?: string,
   turn?: number,
-): Pick<Board, 'faults' | 'faultTotals' | 'blocks' | 'blockTotals' | 'agentFaults' | 'turns'> {
+): Pick<Board, 'faults' | 'faultTotals' | 'blocks' | 'blockTotals' | 'turns'> {
+  if (status === 'ok') {
+    const isClear = (b.faults?.[station] ?? 0) === 0 && (b.blocks?.[station] ?? 0) === 0
+    return isClear ? {} : { faults: { ...b.faults, [station]: 0 }, blocks: { ...b.blocks, [station]: 0 } }
+  }
   if (status !== 'err' && status !== 'block') return {}
-  const agentFaults = agentId === undefined || (b.agentFaults ?? []).includes(agentId) ? {} : { agentFaults: [...(b.agentFaults ?? []), agentId].slice(-12) }
   const bad =
     status === 'err'
       ? { faults: oneMore(b.faults, station), faultTotals: oneMore(b.faultTotals, station) }
       : { blocks: oneMore(b.blocks, station), blockTotals: oneMore(b.blockTotals, station) }
   // An error counts on the turn of the call.
   const turns = status === 'err' && station !== 'model' && station !== 'you' ? inTurn(b, t => ({ ...t, errors: t.errors + 1 }), turn) : {}
-  return { ...bad, ...agentFaults, ...turns }
+  return { ...bad, ...turns }
 }
 
 /** The calls that read or change a file. */
@@ -225,6 +205,7 @@ async function begin($: EngineInterface, start: Start): Promise<string | undefin
       ...(start.agentId !== undefined ? { agentId: start.agentId } : {}),
       ...(start.mark !== undefined ? { mark: start.mark } : {}),
       ...(start.waits === true ? { waits: true as const } : {}),
+      ...(start.act === undefined ? {} : { act: start.act }),
     }
     await update($, board, b => {
       const open = start.loose ? undefined : b.turns?.[b.turns.length - 1]
@@ -241,7 +222,6 @@ async function begin($: EngineInterface, start: Start): Promise<string | undefin
         // An interrupted turn lands on the person's own station and is no fault of anything.
         ...bad,
         ...(counts ? inTurn({ ...b, ...bad }, t => ({ ...t, calls: t.calls + 1 })) : {}),
-        ...marked(b, entry, now, true),
         ...(entry.agentId !== undefined && !(b.agents ?? []).includes(entry.agentId) ? { agents: [...(b.agents ?? []), entry.agentId].slice(-CREW) } : {}),
       }
     })
@@ -268,7 +248,6 @@ async function finish($: EngineInterface, id: string | undefined, status: Status
         }),
         ...(open !== undefined ? tally(b, open.station, closed, open.agentId, open.turn) : {}),
         ...(open !== undefined ? busier(b, open, now) : {}),
-        ...(open !== undefined ? marked(b, { ...open, status: closed }, now) : {}),
       }
     })
   })
@@ -292,7 +271,6 @@ async function settle($: EngineInterface, task: string, status: Status): Promise
         entries: b.entries.map(e => (e === open ? { ...e, status, endedAt: now } : e)),
         ...tally(b, open.station, status, open.agentId, open.turn),
         ...busier(b, open, now),
-        ...marked(b, { ...open, status }, now),
       }
     })
   })
@@ -318,7 +296,6 @@ async function askOn($: EngineInterface, calls: Map<string, string>, call: strin
         if (isAsked) return e.waits === true ? e : { ...e, asks: true as const }
         return e.asks === true ? { ...bare(e), ranAt: now } : e
       }),
-      ...(!isAsked && b.entries.some(e => e.id === id && e.status === 'run' && e.asks === true) ? unwaited(b, id, now) : {}),
     }))
   })
 }
@@ -333,7 +310,7 @@ async function waitsOnYou($: EngineInterface, setup: Setup, calls: Map<string, s
     let row: Entry | undefined
     await update($, board, b => {
       row = b.entries.find(x => x.id === id && x.status === 'run' && x.asks === true && x.waits !== true)
-      return row === undefined ? b : { ...b, entries: b.entries.map(x => (x === row ? { ...x, waits: true as const } : x)), ...marked(b, { ...row, startedAt: now, waits: true }, now, true) }
+      return row === undefined ? b : { ...b, entries: b.entries.map(x => (x === row ? { ...x, waits: true as const } : x)) }
     })
     if (row === undefined) return
     const { t } = setup
@@ -551,6 +528,27 @@ function tickLine($: EngineInterface, next: number | undefined): void {
   lineTick.timer = next === undefined ? undefined : $.clock.after(Math.max(50, next), () => void quietly(async () => $.ui.invalidate('ui.render')))
 }
 
+/** Where the session works, for the window's title: the repository, its branch, and the worktree when it is one. */
+type Place = { repo: string; branch?: string; worktree?: string }
+const place: { at: number; value?: Place } = { at: 0 }
+
+/** The folder's repository by one `git rev-parse` (its common folder, its top, its branch); a folder outside git, by its name. */
+async function placeOf($: EngineInterface): Promise<Place | undefined> {
+  const cwd = overview.cwd
+  if (cwd === '') return undefined
+  const base = (path: string): string => path.split(/[\\/]/).filter(Boolean).at(-1) ?? path
+  const ran = await quietly(() => $.process.run(['git', '-C', cwd, 'rev-parse', '--path-format=absolute', '--git-common-dir', '--show-toplevel', '--abbrev-ref', 'HEAD']))
+  const [common = '', top = '', branch = ''] = ran?.exitCode === 0 ? ran.stdout.trim().split('\n') : []
+  if (common === '') return { repo: base(cwd) }
+  const root = common.replace(/[\\/]\.git[\\/]?$/, '')
+  return {
+    repo: base(root),
+    ...(branch !== '' && branch !== 'HEAD' ? { branch } : {}),
+    // A worktree's top is not the repository's own folder.
+    ...(top !== '' && top !== root ? { worktree: base(top) } : {}),
+  }
+}
+
 /** Writes the map when the board has changed, and the heartbeat every few seconds, so the window knows the session lives. */
 async function share($: EngineInterface, setup: Setup): Promise<void> {
   const dir = sharing.dir
@@ -567,6 +565,14 @@ async function share($: EngineInterface, setup: Setup): Promise<void> {
     // The picture is built only when the board or a ring moved, or, still, to see whether its drawing did.
     const svg = isMoved || setup.motion === 'reduced' ? framedMap(state, now, setup, 920, 860) : undefined
     const isChanged = isMoved || (svg !== undefined && svg !== sharing.still)
+    // The repository and branch, asked again every half minute while the window is wanted: a checkout changes the branch.
+    // Asked aside, never awaited here: a slow git must not hold the map; its answer goes in with the next write.
+    if (now - place.at >= 30_000) {
+      place.at = now
+      void quietly(async () => {
+        place.value = await placeOf($)
+      })
+    }
     if (isChanged && svg !== undefined) {
       sharing.written = seen
       sharing.rings = rings
@@ -593,6 +599,7 @@ async function share($: EngineInterface, setup: Setup): Promise<void> {
         empty: setup.t.nothingYet,
         legend: setup.t.legend,
         windowRows: setup.windowRows,
+        ...(place.value === undefined ? {} : { place: place.value }),
       }
       await $.fs.write(`${dir}/feed.json`, JSON.stringify(feed))
     }
@@ -647,8 +654,20 @@ async function openWindow($: EngineInterface, setup: Setup): Promise<{ isOpen: b
     await share($, setup)
     sharing.timer = $.clock.every(250, () => void share($, setup))
   }
+  // From WSL the map is an Edge window of its own; `pane` keeps the split of the terminal's tab, as does a failed Edge.
+  const isWsl = ((await $.env.get('WSL_DISTRO_NAME')) ?? '') !== ''
+  if (isWsl && setup.terminalWindow !== 'pane' && (await appWindow($, sharing.dir ?? ''))) return { isOpen: true, text: setup.t.windowOpened }
   const { isOpen, command } = await splitTab($, [sharing.dir ?? ''], true)
   return isOpen ? { isOpen: true, text: setup.t.windowOpened } : { isOpen: false, text: setup.t.windowByHand(command.join(' ')) }
+}
+
+/** Opens the live map in an Edge app window: renderer/serve.mjs starts the local server unless one runs, then Edge. */
+async function appWindow($: EngineInterface, dir: string): Promise<boolean> {
+  const live = /\/workmap-live-([a-z0-9]+)$/.exec(dir)?.[1]
+  if (live === undefined) return false
+  const node = (await quietly(() => $.process.run(['sh', '-c', 'command -v node'])))?.stdout.trim() || 'node'
+  const opened = await quietly(() => $.process.run([node, `${$.plugin.root}/renderer/serve.mjs`, '--open', live]))
+  return opened?.exitCode === 0
 }
 
 /** Whether the session runs from WSL in Windows Terminal. A session in the background has the profile's id though not the tab's. */
@@ -690,7 +709,9 @@ function logFeed(state: Board, setup: Setup) {
     log: logCalls(state, setup),
     stations: STATIONS.map(s => ({ id: s.id, name: t.stations[s.id] })),
     keys: t.windowKeys,
+    keyHelp: t.keyHelp,
     errorsWord: t.logErrors,
+    local: { title: t.localTitle, hosts: (state.local ?? []).map(l => l.host) },
   }
 }
 
@@ -756,7 +777,12 @@ async function runCommand($: EngineInterface, args: string, setup: Setup, openin
   if (args.trim() === 'log') return { text: await logText($, setup) }
   if (args.trim() === 'usage') return { text: await usageLines($, setup) }
   if (args.trim() === 'recap') return { text: await recapText($, setup) }
-  if (args.trim() === 'help') return { text: setup.t.legend.join('\n') }
+  if (args.trim() === 'help') {
+    // The legend, then the commands: the map window's ? shows only its keys.
+    const { title, commands } = setup.t.commandHelp
+    const wide = Math.max(...commands.map(c => c.command.length))
+    return { text: [...setup.t.legend, '', title, ...commands.map(c => `${c.command.padEnd(wide)}  ${c.label}`)].join('\n') }
+  }
   if (args.trim() === 'window') return { text: (await openWindow($, setup)).text }
   if (args.trim() === 'all') return { text: await showOverview($, setup) }
   if (windowed.isMap) return { text: await showWindow($, setup, opening) }
@@ -1022,7 +1048,7 @@ export const register: Register = (on, options) => {
         update($, board, b => ({ ...b, agentNames: Object.fromEntries([...Object.entries(b.agentNames ?? {}), [agentId, name]].slice(-12)) })),
       )
     }
-    if (agentId !== undefined) await noteSpawn($, agentId, e, t.workflow)
+    if (agentId !== undefined) await noteSpawn($, agentId, e)
     return spawned
   })
 
@@ -1150,6 +1176,7 @@ export const register: Register = (on, options) => {
         ...seen,
         ...(e.agentId === undefined ? { from: 'core' as const } : { from: 'agents' as const, agentId: e.agentId }),
         ...(waits ? { waits: true as const } : {}),
+        ...(seen.station === 'files' && actOf(String(e.tool)) !== undefined ? { act: actOf(String(e.tool)) } : {}),
       })
     })
     // A subagent's calls fill its own context, which the engine does not report: only the main loop's are counted.
@@ -1172,6 +1199,14 @@ export const register: Register = (on, options) => {
       const wasRefused = ran.deny !== undefined || (e.tool_use_id !== undefined && refused.delete(e.tool_use_id))
       // A file or a server of a call that went through becomes a satellite, an edit marking it edited.
       if (!wasRefused && ran.isError !== true) await quietly(() => keepSatellite($, String(e.tool), e as unknown as Record<string, unknown>, setup))
+      // A localhost address the call named joins the local servers, whether or not it answered: the window shows if it is up.
+      const hosts = wasRefused ? [] : localHostsIn(e as unknown as Record<string, unknown>)
+      if (hosts.length > 0) {
+        await quietly(async () => {
+          const now = await $.clock.now()
+          await update($, board, b => ({ ...b, local: withLocal(b.local, hosts, now) }))
+        })
+      }
       // Claude's own plan, as the main loop's task tools set it.
       if (e.agentId === undefined && !wasRefused && ran.isError !== true && PLAN_TOOLS.has(String(e.tool))) {
         await quietly(async () => {
@@ -1337,7 +1372,15 @@ export const register: Register = (on, options) => {
       for (const { kind, percentUsed, resetsAt } of e.rateLimits) {
         if (kind === 'five_hour' || kind === 'seven_day') limits.push({ kind, percent: percentUsed, ...(resetsAt === undefined ? {} : { resetsAt }) })
       }
-      await update($, board, b => ({ ...b, limits: limits.length > 0 ? limits : undefined, cost: e.cost?.usd, ...peaked(b, e.context.percent) }))
+      // The first time a plan limit reads reached, the cost so far is what the plan covered; the rest is billed.
+      const isReached = limits.some(l => l.percent >= 100)
+      await update($, board, b => ({
+        ...b,
+        limits: limits.length > 0 ? limits : undefined,
+        cost: e.cost?.usd,
+        ...(isReached && b.paidFrom === undefined ? { paidFrom: b.cost ?? 0 } : {}),
+        ...peaked(b, e.context.percent),
+      }))
     })
     await quietly(async () => {
       const { percent, window } = e.context

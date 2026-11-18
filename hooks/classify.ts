@@ -18,6 +18,22 @@ const HOST = /^(?:[\p{L}\p{N}.-]+|\[[0-9a-f:.]+\])(?::\d+)?$/iu
  * A password may hold `/`, `?` or `#` unencoded, so the first of them is not always where the host ends:
  * `user:pa/ss@host` reads as the host `host`, and an address that can be read both ways gives its scheme alone.
  */
+/** A loopback URL's host and port, as `localhost:5173`: 127.0.0.1, 0.0.0.0 and [::1] read as localhost. */
+const LOOPBACK = /\bhttps?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\])(?::(\d{1,5}))?(?![\w.:-])/gi
+
+/** The local servers a call names: in the URL it was given, or written in its command; the address only, nothing else of it. */
+export function localHostsIn(input: Record<string, unknown>): string[] {
+  const text = [input.url, input.command]
+    .filter((v): v is string => typeof v === 'string')
+    .join('\n')
+    .slice(0, 8000)
+  return [...new Set([...text.matchAll(LOOPBACK)].map(m => (m[1] === undefined ? 'localhost' : `localhost:${m[1]}`)))]
+}
+
+/** Text that reaches only this computer's own servers: a localhost address in it, and no other address. */
+const isOnlyLocal = (text: string): boolean =>
+  localHostsIn({ command: text }).length > 0 && !/\bhttps?:\/\/(?!(?:localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\])(?![\w.-]))/i.test(text)
+
 function hostOf(url: string): string {
   const [, scheme = '', rest = ''] = /^(?:([a-z][a-z0-9+.-]*):\/\/)?(.*)$/is.exec(url) ?? []
   const end = rest.search(/[/?#]/)
@@ -573,7 +589,8 @@ function classifyShell(command: string, description: string, setup: Setup, power
       .flatMap(words => commands(words, true))
       .some(isNet)
   )
-    return { station: 'web', label }
+    // A command that reaches only this computer's own servers, `curl localhost:5173`, is Browser's, where they show.
+    return { station: isOnlyLocal(read) ? 'browser' : 'web', label }
   const isNeutral = (head: string): boolean => NEUTRAL_WORDS.has(head) || (powershell && PS_NEUTRAL_WORDS.has(head))
   const isFile = (head: string): boolean => FILE_WORDS.has(head) || (powershell && PS_FILE_WORDS.has(head))
   const real = run.filter(words => !isNeutral(name(words[0])))
@@ -603,7 +620,7 @@ export function classify(tool: string, input: Record<string, unknown>, setup: Se
     case 'PowerShell':
       return classifyShell(str(input.command), str(input.description), setup, true)
     case 'WebFetch':
-      return { station: 'web', label: hostOf(str(input.url)) }
+      return { station: isOnlyLocal(str(input.url)) ? 'browser' : 'web', label: hostOf(str(input.url)) }
     case 'WebSearch':
       return { station: 'web', label: t.webSearch }
     case 'Artifact':
@@ -620,12 +637,12 @@ export function classify(tool: string, input: Record<string, unknown>, setup: Se
     case 'PublishPlugin':
       return { station: 'web', label: tool }
     // An MCP server's resources: Memory when the server is one of the person's memory servers, the station the person
-    // gave it in `serverStations`, else as any MCP call.
+    // gave it in `serverStations`, else Skills, as any MCP call.
     // The server's name decides the station; the label is the tool's name, never the resource's address.
     case 'ListMcpResourcesTool':
     case 'ReadMcpResourceTool':
     case 'ReadMcpResourceDirTool':
-      return { station: setup.memoryServers.has(str(input.server)) ? 'memory' : (setup.serverStations.get(str(input.server)) ?? 'web'), label: tool }
+      return { station: setup.memoryServers.has(str(input.server)) ? 'memory' : (setup.serverStations.get(str(input.server)) ?? 'skills'), label: tool }
     case 'Agent':
       return { station: 'agents', label: str(input.description) || t.subagent }
     case 'Monitor':
@@ -715,14 +732,18 @@ export function classify(tool: string, input: Record<string, unknown>, setup: Se
   }
   if (server === 'terminal') return { station: 'shell', label: name.replace(/_+/g, ' ') }
   if (server === 'visualize' || server.startsWith('ccd_')) return { station: 'you', label: name.replace(/_+/g, ' ') }
-  if (server === 'plugin-authoring') return { station: 'skills', label: name.replace(/_+/g, ' ') }
-  return { station: 'web', label: `${server}: ${name.replace(/_+/g, ' ')}` }
+  // Any other MCP server sits with the skills: both are what Claude is given to work with, beyond its own tools.
+  return { station: 'skills', label: `${server}: ${name.replace(/_+/g, ' ')}` }
 }
 
 /** `claude-opus-5-5` reads as `opus 5.5`. */
 export function shortModel(model: string): string {
-  const m = /claude-([a-z]+)-(\d+)(?:-(\d+))?/.exec(model)
-  return m === null ? model : `${m[1]} ${m[2]}${m[3] !== undefined ? `.${m[3]}` : ''}`
+  // `claude-opus-4-5`, `claude-opus-4-20250514`: a minor version is one or two digits, never a date.
+  const m = /claude-([a-z]+)-(\d+)(?:-(\d{1,2}))?(?!\d)/.exec(model)
+  if (m !== null) return `${m[1]} ${m[2]}${m[3] !== undefined ? `.${m[3]}` : ''}`
+  // The older order, `claude-3-5-sonnet-20241022`.
+  const old = /claude-(\d+)(?:-(\d{1,2}))?-([a-z]+)/.exec(model)
+  return old === null ? model : `${old[3]} ${old[1]}${old[2] !== undefined ? `.${old[2]}` : ''}`
 }
 
 export function formatMs(ms: number, t: Strings): string {

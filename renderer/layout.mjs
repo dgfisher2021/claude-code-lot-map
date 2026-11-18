@@ -3,7 +3,7 @@
 
 /** The map's own proportions. */
 export const MAP_W = 460
-export const MAP_H = 448
+export const MAP_H = 430
 /** Rows the map keeps however short the window: the list gives way first. */
 const MAP_MIN_ROWS = 12
 

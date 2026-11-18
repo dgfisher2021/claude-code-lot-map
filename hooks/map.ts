@@ -1,11 +1,11 @@
 // What the map knows: which station an action belongs to, what to call it, and how to draw the board.
 // Nothing here touches the engine.
-import type { Board, Entry, PlanItem, Satellite, StationId, Status, TimelineMark, TurnSummary } from '../types'
+import type { Board, Entry, LimitKind, PlanItem, Satellite, StationId, Status, TurnSummary } from '../types'
 import { clean, formatMs, shortModel } from './classify'
 import { stringsFor, tokensShort } from './text'
 import type { Strings } from './text'
 
-export { classify, clean, firstLine, formatMs, memoryIds, shortModel } from './classify'
+export { classify, clean, firstLine, formatMs, localHostsIn, memoryIds, shortModel } from './classify'
 
 // ---- stations ---------------------------------------------------------------------------------
 
@@ -63,7 +63,7 @@ export type Setup = {
   /** In a terminal that shows pictures, whether the map is a picture a browser paints (`auto`) or stays in cells (`off`). */
   terminalPicture: 'auto' | 'off'
   /** In Windows Terminal from WSL, whether the map is a window of its own in place of the pane (`auto`) or the pane (`off`). */
-  terminalWindow: 'auto' | 'off'
+  terminalWindow: 'auto' | 'pane' | 'off'
   /** Whether a spoke wears by its station's calls or by its share of the busy time. */
   spokes: 'calls' | 'time'
   /** Whether a wait on the person and a finished turn raise a notification. */
@@ -111,7 +111,7 @@ export function setupFrom(options: Readonly<Record<string, unknown>> = {}): Setu
     motion: options.motion === 'reduced' ? 'reduced' : 'full',
     terminalMap: options.terminalMap !== false,
     terminalPicture: options.terminalPicture === 'off' ? 'off' : 'auto',
-    terminalWindow: options.terminalWindow === 'off' ? 'off' : 'auto',
+    terminalWindow: options.terminalWindow === 'off' || options.terminalWindow === 'pane' ? options.terminalWindow : 'auto',
     spokes: options.spokes === 'time' ? 'time' : 'calls',
     notify: options.notify === true,
     windowRows: Math.min(30, Math.max(3, Math.round(Number(options.windowRows ?? 10)) || 10)),
@@ -138,7 +138,7 @@ export function wearOf(board: Board, id: StationId, setup: Setup): number {
 // ---- drawing ----------------------------------------------------------------------------------
 
 export const W = 460
-export const H = 448
+export const H = 430
 export const CX = 230
 export const CY = 212
 export const RX = 176
@@ -146,7 +146,7 @@ export const RY = 164
 export const NODE = 22
 export const CORE = 40
 /** Where spokes and pulses meet the core: outside the context ring. */
-export const HUB = CORE + 8
+export const HUB = CORE + 17
 
 export type Palette = {
   ground: string
@@ -163,6 +163,8 @@ export type Palette = {
   memHot: string
   /** The route between stations: as light as the words on a dark ground, a soft grey on a light one, where a thin dark line weighs much more. */
   trail: string
+  /** The five-hour limit's ring: yellow, between the session's grey and the week's red. */
+  yellow: string
 }
 
 const DARK: Palette = {
@@ -180,6 +182,7 @@ const DARK: Palette = {
   memHot: '#a5e6dc',
   // One step away from `bone`, so that the light rules can give the route a color of its own.
   trail: '#ebe6dd',
+  yellow: '#e5c07b',
 }
 
 const LIGHT: Palette = {
@@ -196,6 +199,7 @@ const LIGHT: Palette = {
   mem: '#1c8c81',
   memHot: '#136a62',
   trail: '#9c978b',
+  yellow: '#a67c00',
 }
 
 /** The dark palette at full contrast: text at 7:1 or more against the ground, every mark at 4.5:1 or more. */
@@ -213,6 +217,7 @@ const CONTRAST: Palette = {
   mem: '#4de3d1',
   memHot: '#b3fff5',
   trail: '#f0f0f0',
+  yellow: '#ffd866',
 }
 
 const PALETTES = { auto: DARK, dark: DARK, light: LIGHT, contrast: CONTRAST }
@@ -247,6 +252,7 @@ export const COLOR_NAMES: Record<string, keyof Palette> = {
   memory: 'mem',
   memoryActive: 'memHot',
   route: 'trail',
+  yellow: 'yellow',
 }
 
 /**
@@ -278,11 +284,6 @@ export function stillChangeIn(board: Board, now: number): number | undefined {
       const elapsed = now - Math.min(...running.map(e => e.startedAt))
       waits.push(STILL_STEP_MS - (elapsed % STILL_STEP_MS))
     } else if (isLit || isAlarm) waits.push(span - fade)
-    // A lit satellite goes out when its time is up.
-    for (const sat of drawnOf(board.satellites?.[s.id])) {
-      const left = satelliteLitFor(sat, now)
-      if (left !== undefined) waits.push(left)
-    }
   }
   for (const leg of legsOf(recent, now)) if (leg.age < TRAIL_HOLD_MS) waits.push(TRAIL_HOLD_MS - leg.age)
   return waits.length > 0 ? Math.max(1, Math.min(...waits)) : undefined
@@ -508,6 +509,119 @@ type Scene = {
   isStill: boolean
 }
 
+/** A figure in a station's tooltip: an icon each surface draws its own way, what it counts, and the number. */
+export type TipFigure = {
+  icon: 'calls' | 'turn' | 'running' | 'time' | 'errors' | 'session' | 'refused' | 'pushed' | 'tokens'
+  label: string
+  value: string
+  tone?: 'bad' | 'block' | 'run'
+}
+
+/** One of a station's most used: a file (edited, or only read) or an MCP server, with how often. */
+export type TipItem = { name: string; uses: string; icon: 'edited' | 'read' | 'server' | 'clock'; note?: string }
+
+/**
+ * A station's tooltip: its name, what lands there, and its figures (the calls and this turn always, the rest when they have
+ * something), then its most used files or servers when it has any.
+ */
+export type StationTip = { station: StationId; name: string; about: string; figures: TipFigure[]; top?: { title: string; items: TipItem[] } }
+
+export function stationTip(board: Board, id: StationId, t: Strings, running = 0, spent?: Board['spent'], now?: number): StationTip {
+  const count = board.counts[id] ?? 0
+  const pushed = id === 'memory' ? Math.min(count, board.pushed ?? 0) : 0
+  const share = timeShareOf(board, id)
+  const tokens = spent?.[id] ?? 0
+  const when = (n: number, figure: TipFigure): TipFigure[] => (n > 0 ? [figure] : [])
+  // Agents lists the subagents at work; Browser the local servers Claude's calls used; a file or server station, its most used.
+  const crew = id === 'agents' ? crewOf(board) : []
+  const local = id === 'browser' ? (board.local ?? []) : []
+  const listed = listedOf(board.satellites?.[id])
+  const items = listed.map(
+    (sat): TipItem =>
+      id === 'files'
+        ? { name: sat.name, uses: `×${sat.uses}`, icon: sat.isEdited === true ? 'edited' : 'read', note: sat.isEdited === true ? t.satelliteEdited : t.tip.read }
+        : { name: sat.name, uses: `×${sat.uses}`, icon: 'server' },
+  )
+  return {
+    station: id,
+    name: t.stations[id],
+    about: t.stationAbout[id],
+    figures: [
+      { icon: 'calls', label: t.tip.calls, value: String(count) },
+      { icon: 'turn', label: t.tip.turn, value: String(board.turnCounts?.[id] ?? 0) },
+      ...when(running, { icon: 'running', label: t.tip.running, value: String(running), tone: 'run' }),
+      ...when(share, { icon: 'time', label: t.tip.time, value: `${share}%` }),
+      ...when(pushed, { icon: 'pushed', label: t.tip.pushed, value: String(pushed) }),
+      ...when(board.faults?.[id] ?? 0, { icon: 'errors', label: t.tip.errors, value: String(board.faults?.[id] ?? 0), tone: 'bad' }),
+      ...when(board.faultTotals?.[id] ?? 0, { icon: 'session', label: t.tip.session, value: String(board.faultTotals?.[id] ?? 0), tone: 'bad' }),
+      ...when(board.blocks?.[id] ?? 0, { icon: 'refused', label: t.tip.refused, value: String(board.blocks?.[id] ?? 0), tone: 'block' }),
+      ...when(tokens, { icon: 'tokens', label: t.tip.tokens, value: `~${tokensShort(tokens)}` }),
+    ],
+    ...(items.length > 0 ? { top: { title: t.tip.mostUsed, items } } : {}),
+    ...(crew.length > 0
+      ? {
+          top: {
+            title: t.tip.working,
+            items: crew.map(
+              (m): TipItem => ({ name: m.name ?? t.subagent, uses: m.since === undefined || now === undefined ? '' : formatClock(now - m.since, t), icon: 'clock' }),
+            ),
+          },
+        }
+      : {}),
+    ...(local.length > 0 ? { top: { title: t.tip.local, items: local.map((l): TipItem => ({ name: l.host, uses: '', icon: 'server' })) } } : {}),
+  }
+}
+
+/** What a Files tool does, for the word under the station while it runs. */
+const ACTS: Record<string, Entry['act']> = {
+  Read: 'reading',
+  NotebookRead: 'reading',
+  LSP: 'reading',
+  Write: 'editing',
+  Edit: 'editing',
+  MultiEdit: 'editing',
+  NotebookEdit: 'editing',
+  Grep: 'searching',
+  Glob: 'searching',
+}
+export const actOf = (tool: string): Entry['act'] => ACTS[tool]
+
+/** The badges Model and User wear at their upper right, on a 24-unit grid: a cloud while the model thinks, a bell while Claude waits on you. */
+const BADGES = {
+  cloud: 'M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z',
+  bell: 'M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.94 1.94 0 0 0 3.4 0',
+}
+
+/**
+ * What a station is doing now, in a word under its name: Model thinking (with its cloud) or compacting, User when Claude
+ * waits on them (with the bell), and any other station at work by what it does. Agents has its subagents' names instead,
+ * and background work, which can run for hours, says nothing.
+ */
+export function doingOf(
+  id: StationId,
+  running: readonly Entry[],
+  board: Board,
+  t: Strings,
+): { word: string; badge?: keyof typeof BADGES; isWait?: true } | undefined {
+  if (id === 'agents') return undefined
+  if (id === 'you') {
+    const wait = board.entries.find(e => e.status === 'run' && e.waits === true)
+    if (wait === undefined) return undefined
+    return { word: wait.asks === true ? t.doing.permission : t.doing.needsYou, badge: 'bell', isWait: true }
+  }
+  if (id === 'model') {
+    if (board.phase === 'compacting') return { word: t.doing.compacting }
+    return running.length > 0 ? { word: t.doing.thinking, badge: 'cloud' } : undefined
+  }
+  const now = running.filter(e => e.task === undefined && e.waits !== true)
+  const last = now[now.length - 1]
+  if (last === undefined) return undefined
+  return { word: id === 'files' && last.act !== undefined ? t.doing[last.act] : t.doing[id] }
+}
+
+/** A station's name sits below the outermost ring it can wear (the warning ring at NODE + 12), never on one. */
+const NAME_DROP = NODE + 24
+
 function station(
   s: (typeof STATIONS)[number],
   i: number,
@@ -567,31 +681,42 @@ function station(
   const glyphColor = isAlarm ? c.red : isLit ? hot : s.id === 'memory' && count > 0 ? main : c.ash
   // The words stand on a rim of the ground's own color, so a line that passes behind them never strikes them through.
   const rim = `paint-order="stroke" stroke="${c.ground}" stroke-width="3.5" stroke-linejoin="round"`
+  // With `contextCost`, the name carries what its calls added to the context; every other figure is in the tooltip.
+  const tokens = spent?.[s.id] ?? 0
+  const added = tokens > 0 ? `<tspan font-size="9.5" fill="${c.dim}"> ~${tokensShort(tokens)}</tspan>` : ''
   let over =
     `<circle cx="${x}" cy="${y}" r="${NODE}" fill="${c.raised}" stroke="${c.line}" stroke-width="1.2"/>${cooling}` +
     `<path transform="translate(${x} ${y})" d="${s.icon}" fill="none" stroke="${glyphColor}" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round"/>` +
-    `<text x="${x}" y="${n1(p.y + NODE + 15)}" text-anchor="middle" ${FONT} font-size="11.5" ${rim} fill="${isLit || isAlarm ? c.bone : c.ash}">${names[s.id]}</text>`
+    `<text x="${x}" y="${n1(p.y + NAME_DROP)}" text-anchor="middle" ${FONT} font-size="11.5" ${rim} fill="${isLit || isAlarm ? c.bone : c.ash}">${names[s.id]}${added}</text>`
 
   const turn = board.turnCounts?.[s.id] ?? 0
   const share = timeShareOf(board, s.id)
   const total = board.faultTotals?.[s.id] ?? 0
-  if (count > 0) {
-    // Memory keeps two counts: what was asked for, and what a hook brought down unasked.
-    const pushed = s.id === 'memory' ? Math.min(count, board.pushed ?? 0) : 0
-    const asked = count - pushed
-    const figures =
-      pushed === 0 ? String(count) : `${asked > 0 ? `${asked} ` : ''}<tspan fill="${main}">↓${pushed}</tspan>`
-    // After the count: what this turn added, then the session's errors in red.
-    const extra = (turn > 0 && turn < count ? `<tspan fill-opacity="0.55"> +${turn}</tspan>` : '') + (total > 0 ? `<tspan fill="${c.red}"> · ${total}✕</tspan>` : '')
-    // With `contextCost`, last: about how much the station's calls added to the context, in the count's own colour.
-    const tokens = spent?.[s.id] ?? 0
-    const cost = tokens > 0 ? ` · ${tokensShort(tokens)}` : ''
-    over += `<text x="${x}" y="${n1(p.y + NODE + 28)}" text-anchor="middle" ${FONT} font-size="9.5" ${rim} fill="${c.dim}">${figures}${extra}${cost}</text>`
-  }
 
-  // Top right: how many run at once. Top left: what went wrong since the last message, until the next one.
+  // Top right: how many run at once, or for Model and User what they are doing. Top left: what went wrong since the last message.
   const corner = NODE * 0.74
-  if (running.length > 1) {
+  // What the station is doing now, under its name: Model thinking, User needed, Files reading and the like.
+  const doing = doingOf(s.id, running, board, t)
+  if (doing !== undefined) {
+    over += `<text x="${x}" y="${n1(p.y + NAME_DROP + 12)}" text-anchor="middle" ${FONT} font-size="9.5" ${rim} fill="${doing.isWait ? c.accent : hot}">${escapeXml(doing.word)}</text>`
+  } else if (s.id === 'browser' && (board.local?.length ?? 0) > 0) {
+    // Under Browser's name, as Shell says it runs: the newest local server Claude used. A window shows those answering.
+    const host = board.local?.[0]?.host ?? ''
+    over += `<text data-local-label="1" x="${x}" y="${n1(p.y + NAME_DROP + 12)}" text-anchor="middle" ${FONT} font-size="9.5" ${rim} fill="${c.accent}">${escapeXml(host)}</text>`
+  }
+  if (doing?.badge !== undefined) {
+    const bx = p.x + corner
+    const by = p.y - corner
+    over +=
+      `<circle cx="${n1(bx)}" cy="${n1(by)}" r="8.5" fill="${c.raised}" stroke="${c.accent}" stroke-width="1.1"/>` +
+      `<path transform="translate(${n1(bx - 5.4)} ${n1(by - 5.4)}) scale(.45)" d="${BADGES[doing.badge]}" fill="none" stroke="${c.accent}" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>`
+  } else if (s.id === 'browser' && running.length < 2 && (board.local?.length ?? 0) > 0) {
+    // Top right, on Browser, where a count goes: the local servers Claude's calls used; its tooltip lists them.
+    const servers = board.local?.length ?? 0
+    over +=
+      `<circle cx="${n1(p.x + corner)}" cy="${n1(p.y - corner)}" r="8" fill="${c.raised}" stroke="${color}" stroke-width="1" data-local="${servers}"/>` +
+      `<text x="${n1(p.x + corner)}" y="${n1(p.y - corner + 3)}" text-anchor="middle" ${FONT} font-size="8.5" fill="${hot}">×${servers}</text>`
+  } else if (running.length > 1) {
     over +=
       `<circle cx="${n1(p.x + corner)}" cy="${n1(p.y - corner)}" r="8" fill="${c.raised}" stroke="${color}" stroke-width="1"/>` +
       `<text x="${n1(p.x + corner)}" y="${n1(p.y - corner + 3)}" text-anchor="middle" ${FONT} font-size="8.5" fill="${hot}">×${running.length}</text>`
@@ -599,7 +724,7 @@ function station(
   const faults = board.faults?.[s.id] ?? 0
   if (faults > 0) {
     over +=
-      `<rect x="${n1(p.x - corner - 6.5)}" y="${n1(p.y - corner - 6.5)}" width="13" height="13" fill="${c.red}"/>` +
+      `<circle cx="${n1(p.x - corner)}" cy="${n1(p.y - corner)}" r="7.5" fill="${c.red}"/>` +
       `<text x="${n1(p.x - corner)}" y="${n1(p.y - corner + 3.1)}" text-anchor="middle" ${FONT} font-size="9" font-weight="700" fill="${c.ground}">${faults > 99 ? '99+' : faults}</text>`
   }
   // Bottom left, in outline: calls refused there, a rule working rather than something broken.
@@ -619,7 +744,9 @@ function station(
     total > 0 ? t.errorsInSession(total) : '',
   ]
   const title = `${names[s.id]}: ${figures.filter(f => f !== '').join(' · ')}`
-  return { under, over: `<g><title>${escapeXml(title)}</title>${over}</g>` }
+  // The title for a surface that shows only text; the tooltip's parts for one that draws its own.
+  const tip = escapeXml(JSON.stringify(stationTip(board, s.id, t, running.length, spent, now)))
+  return { under, over: `<g data-tip="${tip}"><title>${escapeXml(title)}</title>${over}</g>` }
 }
 
 
@@ -640,95 +767,17 @@ export function framedMap(board: Board, now: number, setup: Setup, width: number
 
 // ---- the crew at the agents station -----------------------------------------------------------
 
-/** A subagent still at work, or a Workflow's agents as one: its label and when it began. */
-type Crew = { label?: string; since?: number; isFaulty: boolean; isRun: boolean }
+/** A subagent still at work: its short name and when it began. */
+type Crew = { id: string; name?: string; since?: number }
 
-const CREW_LABELS = 6
-const CREW_ROW = 9
-
-/** The crew in `board.agents` order: each subagent, a Workflow's agents as one with `done/started`. */
+/** The subagents still at work, in `board.agents` order, each with when its first call started. */
 function crewOf(board: Board): Crew[] {
-  const live = board.agents ?? []
-  const info = board.agentInfo ?? {}
-  const faulty = board.agentFaults ?? []
-  const first = (id: string): number | undefined => {
+  return (board.agents ?? []).map(id => {
     const own = board.entries.filter(e => e.agentId === id).map(e => e.startedAt)
-    return own.length > 0 ? Math.min(...own) : info[id]?.at
-  }
-  const seen = new Set<string>()
-  const crew: Crew[] = []
-  for (const id of live) {
-    const run = info[id]?.run
-    if (run === undefined) {
-      const name = Array.from(board.agentNames?.[id] ?? '').slice(0, 10).join('')
-      const since = first(id)
-      crew.push({ ...(name === '' ? {} : { label: name }), ...(since === undefined ? {} : { since }), isFaulty: faulty.includes(id), isRun: false })
-    } else if (!seen.has(run)) {
-      seen.add(run)
-      const all = Object.keys(info).filter(x => info[x]?.run === run)
-      const starts = all.map(first).filter((x): x is number => x !== undefined)
-      crew.push({
-        label: `${all.filter(x => !live.includes(x)).length}/${all.length}`,
-        ...(starts.length > 0 ? { since: Math.min(...starts) } : {}),
-        isFaulty: all.some(x => faulty.includes(x)),
-        isRun: true,
-      })
-    }
-  }
-  return crew
-}
-
-/** Whether a stack of `rows` labels with its top edge at `top` beside `at` stands clear of the canvas edge and of every other station's name and count. */
-function isClear(at: Point, top: number, rows: number): boolean {
-  const bottom = top + CREW_ROW * (rows - 1) + 9
-  return (
-    top >= 2 &&
-    bottom <= H - 2 &&
-    STATIONS.every((s, i) => {
-      const p = place(i)
-      return s.id === 'agents' || at.x - 30 >= p.x + 33 || at.x + 26 <= p.x - 33 || bottom <= p.y - 30 || top >= p.y + 54
-    })
-  )
-}
-
-/** The crew's label rows: those shown, and the top edge of their stack, under the station's count or above it when that room is taken. */
-function crewRows(crew: readonly Crew[], at: Point): { shown: Crew[]; top: number } {
-  const shown = crew.filter(m => m.label !== undefined).slice(0, CREW_LABELS)
-  const height = CREW_ROW * (shown.length - 1) + 9
-  const below = at.y + NODE + 36
-  const above = at.y - NODE - 16 - height
-  return { shown, top: isClear(at, below, shown.length) || !isClear(at, above, shown.length) ? below : above }
-}
-
-/** The room each crew label takes, so the satellites keep clear of it. */
-function crewBoxes(crew: readonly Crew[], at: Point): Box[] {
-  const { shown, top } = crewRows(crew, at)
-  return shown.map((m, k) => ({ x0: at.x - 28, y0: top + k * CREW_ROW, x1: at.x - 15 + [...(m.label as string)].length * 4.3, y1: top + k * CREW_ROW + 9 }))
-}
-
-/** The label rows of the first six: a dot, its clock arc (a lap a minute) and its name, under the station's count, or above it when that room is taken. */
-function crewLabels(crew: readonly Crew[], at: Point, c: Palette, now: number, isStill: boolean): string {
-  const { shown, top } = crewRows(crew, at)
-  if (shown.length === 0) return ''
-  let out = ''
-  shown.forEach((m, k) => {
-    const y = top + 7 + k * CREW_ROW
-    const cx = at.x - 24
-    const cy = y - 2.5
-    const ring = `cx="${n1(cx)}" cy="${n1(cy)}" r="3.4" fill="none" stroke-width="1" pathLength="1"`
-    out += `<circle ${ring} stroke="${c.line}"/><circle cx="${n1(cx)}" cy="${n1(cy)}" r="1.6" fill="${m.isFaulty ? c.red : c.hot}"/>`
-    if (m.since !== undefined) {
-      const elapsed = Math.max(0, now - m.since)
-      const held = isStill ? elapsed - (elapsed % STILL_STEP_MS) : elapsed
-      const done = held % 60_000
-      const arc = `<circle ${ring} stroke="${m.isFaulty ? c.red : c.hot}" stroke-dasharray="1 1" transform="rotate(-90 ${n1(cx)} ${n1(cy)})"`
-      out += isStill
-        ? `${arc} stroke-dashoffset="${n1(1 - done / 60_000)}"/>`
-        : `${arc} stroke-dashoffset="1"><animate attributeName="stroke-dashoffset" values="1;0" begin="${clock(-done)}" dur="${clock(60_000)}" repeatCount="indefinite"/></circle>`
-    }
-    out += `<text x="${n1(at.x - 17)}" y="${n1(y)}" text-anchor="start" ${FONT} font-size="7" paint-order="stroke" stroke="${c.ground}" stroke-width="3" stroke-linejoin="round" fill="${c.ash}">${escapeXml(m.label as string)}</text>`
+    const since = own.length > 0 ? Math.min(...own) : board.agentInfo?.[id]?.at
+    const name = board.agentNames?.[id]
+    return { id, ...(name ? { name } : {}), ...(since === undefined ? {} : { since }) }
   })
-  return out
 }
 
 /** Every subagent the window can pick: those named, then those still at work, each with its id. */
@@ -737,42 +786,102 @@ export function agentList(board: Board): { id: string; name: string }[] {
   return ids.map(id => ({ id, name: board.agentNames?.[id] ?? id }))
 }
 
-/** The timeline strip's place under the map: its top, its height, and where it starts and ends across. */
-export const STRIP = { y: 432, h: 6, x0: 20, x1: 440 }
 
-/** A mark of the timeline as a part of the strip, 0 to 1 across. */
-export type StripMark = { from: number; to: number; kind: TimelineMark['kind']; bad: boolean }
+/** The longest model name the core shows whole: longer ones are cut with an ellipsis. */
+const NAME_MAX = 13
 
-/** The strip: the marks and the turns' starts as places across, from the first mark or turn to now; none while the board has neither. */
-export function stripOf(board: Board, now: number): { marks: StripMark[]; ticks: number[] } | undefined {
-  const marks = board.timeline ?? []
-  const turns = board.turns ?? []
-  const first = Math.min(marks[0]?.at ?? Infinity, turns[0]?.startedAt ?? Infinity)
-  if (!Number.isFinite(first)) return undefined
-  const span = Math.max(now - first, 1000)
-  const across = (t: number): number => Math.min(1, Math.max(0, (t - first) / span))
-  return {
-    marks: marks.map(m => ({ from: across(m.at), to: across(m.until ?? now), kind: m.kind, bad: m.bad === true })),
-    ticks: turns.map(t => across(t.startedAt)),
-  }
+/** From this fill the session's context, or a plan limit, is called nearly full. */
+const CONTEXT_FULL = 90
+
+/** A warning triangle on a 24-unit grid: usage billed at API rates, or a context nearly full. */
+const WARNING = 'M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h16.9a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0zM12 9v4M12 17h.01'
+
+/** The usage rings: the first's middle, each band's width, and the step from one band to the next. */
+const RING_FIRST = 3.5
+const RING_W = 3
+const RING_STEP = 4.6
+
+/** A row of the core's tooltip: a swatch of its ring's colour (none for the cost), what it measures, the figure, and a note. */
+export type UsageRow = { color: string; label: string; value: string; note?: string; ring?: number; isReached?: true }
+
+/** The core's tooltip: the model answering, then the session's context, the five-hour and weekly limits, and the cost. */
+/**
+ * The core's tooltip. `billed` is set once usage is billed at API rates: a plan limit reached (the dollars since then), or
+ * no plan limits at all, as on an API key (the session's dollars).
+ */
+export type UsageTip = {
+  kind: 'usage'
+  name: string
+  about: string
+  rows: UsageRow[]
+  billed?: string
+  apiLabel?: string
+  why?: string
+  /** The session's context once it is nearly full (90% or more), with what to do about it. */
+  full?: { label: string; value: string; hint: string }
+  /** A plan limit nearly reached (90% to 99%), with when it resets; at 100% the API cost takes its place. */
+  near?: { label: string; value: string; hint: string }[]
+  /** Something nearly full or billed: the core turns red. */
+  isAlert?: true
 }
 
-/** Where time went, in a thin strip under the ring: a mark for each call, a gap for none. */
-function timeline(board: Board, now: number, c: Palette): string {
-  const strip = stripOf(board, now)
-  if (strip === undefined) return ''
-  const { y, h, x0, x1 } = STRIP
-  const wide = x1 - x0
-  let out = `<rect x="${x0}" y="${y}" width="${wide}" height="${h}" rx="1.5" fill="${c.line}" opacity=".35"/>`
-  for (const { from, to, kind, bad } of strip.marks) {
-    const width = Math.min(wide, Math.max(1.5, (to - from) * wide))
-    const x = Math.min(x1 - width, x0 + from * wide)
-    const place = `class="tl" data-kind="${kind}" x="${n1(x)}" y="${y}" width="${n1(width)}" height="${h}"`
-    const color = bad ? c.red : kind === 'memory' ? c.mem : c.accent
-    out += kind === 'wait' ? `<rect ${place} fill="${c.accent}" fill-opacity=".3" stroke="${c.accent}" stroke-width="1" stroke-dasharray="2 1.5"/>` : `<rect ${place} fill="${color}"/>`
+export function usageTip(board: Board, now: number, setup: Setup, c: Palette): UsageTip {
+  const { t } = setup
+  const pct = (n: number): number => Math.max(0, Math.min(100, Math.round(n)))
+  const limit = (kind: LimitKind, color: string): UsageRow[] => {
+    const found = board.limits?.find(l => l.kind === kind)
+    if (found === undefined) return [{ color, label: t.limitNames[kind], value: '–' }]
+    const until = untilText(found.resetsAt, now, t)
+    const isReached = found.percent >= 100
+    const note = [...(isReached ? [t.usage.reached] : []), ...(until === undefined ? [] : [t.resetsIn(until)])].join(' · ')
+    return [{ color, label: t.limitNames[kind], value: `${pct(found.percent)}%`, ring: pct(found.percent), ...(note === '' ? {} : { note }), ...(isReached ? { isReached: true as const } : {}) }]
   }
-  for (const t of strip.ticks) out += `<rect class="tick" x="${n1(x0 + t * (x1 - x0))}" y="${y - 4}" width="1" height="3" fill="${c.bone}"/>`
-  return `<g class="timeline">${out}</g>`
+  const isReached = board.limits?.some(l => l.percent >= 100) === true
+  const isApiKey = (board.limits?.length ?? 0) === 0 && board.cost !== undefined
+  const billed = isApiKey ? costText(board.cost) : isReached ? costText(Math.max(0, (board.cost ?? 0) - (board.paidFrom ?? 0))) ?? '$0.00' : undefined
+  const atApi = costText(board.cost)
+  const near = (['five_hour', 'seven_day'] as const).flatMap(kind => {
+    const found = board.limits?.find(l => l.kind === kind)
+    if (found === undefined || found.percent < CONTEXT_FULL || found.percent >= 100) return []
+    const until = untilText(found.resetsAt, now, t)
+    return [{ label: kind === 'five_hour' ? t.usage.fiveLimit : t.usage.weekLimit, value: `${pct(found.percent)}%`, hint: until === undefined ? '' : t.resetsIn(until) }]
+  })
+  const cost: UsageRow[] =
+    billed !== undefined
+      ? [{ color: '', label: t.usage.extra, value: billed, note: `${t.usage.billed} · ${t.usage.estimate}`, isReached: true }]
+      : atApi !== undefined
+        ? [{ color: '', label: t.usage.atApi, value: atApi, note: t.usage.covered }]
+        : []
+  return {
+    kind: 'usage',
+    name: (board.model === undefined ? setup.core : shortModel(board.model)).toUpperCase(),
+    about: t.usage.about,
+    rows: [
+      board.context === undefined
+        ? { color: c.ash, label: t.usage.session, value: '–' }
+        : { color: c.ash, label: t.usage.session, value: `${pct(board.context)}%`, ring: pct(board.context) },
+      ...limit('five_hour', c.yellow),
+      ...limit('seven_day', c.red),
+      ...cost,
+    ],
+    ...(board.context !== undefined && board.context >= CONTEXT_FULL
+      ? { full: { label: t.usage.context, value: `${pct(board.context)}%`, hint: t.usage.contextHint } }
+      : {}),
+    ...(near.length > 0 ? { near } : {}),
+    ...(billed !== undefined || near.length > 0 || (board.context ?? 0) >= CONTEXT_FULL ? { isAlert: true as const } : {}),
+    ...(billed === undefined
+      ? {}
+      : {
+          billed,
+          apiLabel: t.usage.apiCost,
+          // Why usage is billed: the weekly limit before the five-hour, which ends sooner; or an API key, with no plan limits.
+          why: isApiKey
+            ? t.usage.apiKey
+            : board.limits?.some(l => l.kind === 'seven_day' && l.percent >= 100) === true
+              ? t.usage.weekReached
+              : t.usage.fiveReached,
+        }),
+  }
 }
 
 export function drawMap(board: Board, now: number, setup: Setup, isFilling = false): string {
@@ -800,7 +909,7 @@ export function drawMap(board: Board, now: number, setup: Setup, isFilling = fal
     const a = edge(core, p, HUB)
     const b = edge(p, core, NODE)
     const worn = wearOf(board, s.id, setup)
-    const line = `<line x1="${n1(a.x)}" y1="${n1(a.y)}" x2="${n1(b.x)}" y2="${n1(b.y)}" stroke-width="${n1(1 + 2.6 * worn)}" stroke-linecap="round"`
+    const line = `<line data-spoke="${s.id}" x1="${n1(a.x)}" y1="${n1(a.y)}" x2="${n1(b.x)}" y2="${n1(b.y)}" stroke-width="${n1(1 + 2.6 * worn)}" stroke-linecap="round"`
     body += `${line} stroke="${c.spoke}"/>`
     if (worn > 0) body += `${line} stroke="${s.id === 'memory' ? c.mem : c.accent}" opacity="${n1(worn * 0.55)}"/>`
   })
@@ -839,81 +948,81 @@ export function drawMap(board: Board, now: number, setup: Setup, isFilling = fal
     body += pulse(b, a, e.status === 'ok' ? c.ash : c.red, now - (e.endedAt as number), setup.contextCost ? pulseRadius(e.tokens, 2.6) : 2.6)
   }
 
-  body += drawn.map(d => d.over).join('') + satellites(board, now, setup, c, isStill, crewBoxes(crewOf(board), agentsAt))
+  body += drawn.map(d => d.over).join('')
 
-  // Each subagent still at work circles the agents station; a Workflow's agents are one dot between them.
+  // Each subagent still at work circles the agents station; its name and time are in the station's tooltip.
   const crew = crewOf(board)
-  crew.forEach((member, k) => {
+  crew.forEach((_, k) => {
     const lap = 7000
     const spin = `${n1(agentsAt.x)} ${n1(agentsAt.y)}`
-    // A subagent a call of which failed or was refused circles in red.
-    const dot = member.isFaulty ? c.red : c.hot
-    const mark = `<circle cx="${n1(agentsAt.x)}" cy="${n1(agentsAt.y - NODE - 6)}" r="${member.isRun ? 4 : 3}" fill="${dot}"/>`
+    const mark = `<circle cx="${n1(agentsAt.x)}" cy="${n1(agentsAt.y - NODE - 6)}" r="3" fill="${c.hot}"/>`
     // Standing still, each keeps its own place on the circle.
     body += isStill
       ? `<g transform="rotate(${n1((360 * k) / crew.length)} ${spin})">${mark}</g>`
       : `<g><animateTransform attributeName="transform" type="rotate" from="0 ${spin}" to="360 ${spin}" begin="${clock(-((now + (k * lap) / crew.length) % lap))}" dur="${clock(lap)}" repeatCount="indefinite"/>${mark}</g>`
   })
-  body += crewLabels(crew, agentsAt, c, now, isStill)
 
-  // A name longer than three letters shrinks to stay inside the circle.
-  const coreSize = Math.min(17, 62 / (0.75 * setup.core.length))
-
+  // While something is nearly full (90% or more) or billed at API rates, the core and its glow are red.
+  const usage = usageTip(board, now, setup, c)
+  const glow = usage.isAlert === true ? c.red : c.accent
   // The core breathes at rest and quickens while something runs.
   const period = anyRunning ? 1600 : 4800
   const breath = `begin="${clock(-(now % period))}" dur="${clock(period)}" repeatCount="indefinite"`
-  body +=
-    (isStill
-      ? `<circle cx="${CX}" cy="${CY}" r="${CORE + 8}" fill="${c.accent}" opacity="${anyRunning ? '.16' : '.08'}"/>`
-      : `<circle cx="${CX}" cy="${CY}" r="${CORE + 6}" fill="${c.accent}" opacity=".08">` +
-        `<animate attributeName="r" values="${CORE + 3};${CORE + 13};${CORE + 3}" ${breath}/>` +
-        `<animate attributeName="opacity" values=".05;${anyRunning ? '.24' : '.12'};.05" ${breath}/></circle>`) +
-    `<circle cx="${CX}" cy="${CY}" r="${CORE}" fill="${c.raised}" stroke="${anyRunning ? c.accent : c.line}" stroke-width="1.3"/>`
+  // It reaches a little past the outermost usage ring.
+  body += isStill
+    ? `<circle cx="${CX}" cy="${CY}" r="${CORE + 20}" fill="${glow}" opacity="${anyRunning ? '.16' : '.08'}"/>`
+    : `<circle cx="${CX}" cy="${CY}" r="${CORE + 12}" fill="${glow}" opacity=".08">` +
+      `<animate attributeName="r" values="${CORE + 8};${CORE + 22};${CORE + 8}" ${breath}/>` +
+      `<animate attributeName="opacity" values=".05;${anyRunning ? '.24' : '.12'};.05" ${breath}/></circle>`
 
-  // The context window as a ring around the core: it fills as the session goes and empties at a compaction.
-  if (board.context !== undefined) {
-    const full = Math.max(0, Math.min(100, Math.round(board.context)))
-    const ring = `cx="${CX}" cy="${CY}" r="${CORE + 5}" fill="none" stroke-width="2.2"`
-    body +=
-      `<circle ${ring} stroke="${c.line}" opacity=".7"/>` +
-      `<circle ${ring} stroke="${full >= 90 ? c.red : full >= 70 ? c.accent : c.ash}" pathLength="100" stroke-dasharray="${full} 100" transform="rotate(-90 ${CX} ${CY})"/>` +
-      `<text x="${CX}" y="${CY - 19}" text-anchor="middle" ${FONT} font-size="8" fill="${c.dim}">${full}%</text>`
-  }
-
-  // The rate-limit windows as thin arcs outside it, on the context ring's colours.
-  for (const { kind, percent, resetsAt } of board.limits ?? []) {
-    const used = Math.max(0, Math.min(100, Math.round(percent)))
-    const arc = `cx="${CX}" cy="${CY}" r="${CORE + (kind === 'five_hour' ? 9 : 12)}" fill="none" stroke-width="1.2"`
-    body +=
-      `<circle ${arc} stroke="${c.line}" opacity=".5"/>` +
-      `<circle ${arc} stroke="${used >= 90 ? c.red : used >= 70 ? c.accent : c.ash}" pathLength="100" stroke-dasharray="${used} 100" transform="rotate(-90 ${CX} ${CY})">` +
-      `<title>${escapeXml(setup.t.limitTitle(kind, used, untilText(resetsAt, now, setup.t)))}</title></circle>`
-  }
-
-  // Under reduced motion the strip's clock steps, so the picture holds still between steps.
-  body += timeline(board, isStill ? now - (now % STILL_STEP_MS) : now, c)
-
+  // The core and its usage rings are one thing to hover: the model, then what is used.
+  const rim = usage.isAlert === true ? c.red : anyRunning ? c.accent : c.line
+  let ringed = `<circle cx="${CX}" cy="${CY}" r="${CORE}" fill="${c.raised}" stroke="${rim}" stroke-width="${usage.isAlert === true ? 1.8 : 1.3}"/>`
+  // One ring per measure, innermost first, each its own colour on a muted track, filling clockwise from the top.
+  usage.rows.forEach((row, k) => {
+    if (row.ring === undefined) return
+    const r = CORE + RING_FIRST + k * RING_STEP
+    const ring = `cx="${CX}" cy="${CY}" r="${r}" fill="none" stroke-width="${RING_W}"`
+    ringed += `<circle ${ring} stroke="${c.line}" opacity=".55"/>`
+    // A round cap would show a dot at nothing used.
+    if (row.ring > 0) {
+      ringed += `<circle ${ring} stroke="${row.color}" stroke-linecap="round" pathLength="100" stroke-dasharray="${n1(Math.min(row.ring, 99.4))} 100" transform="rotate(-90 ${CX} ${CY})"/>`
+    }
+  })
   const switchAge = board.switchedAt === undefined ? Infinity : now - board.switchedAt
   const isSwitching = switchAge >= 0 && switchAge < SWITCH_MS
-  body += `<text x="${CX}" y="${CY + (board.model === undefined ? 6 : 1)}" text-anchor="middle" ${FONT} font-size="${n1(coreSize)}" letter-spacing="${n1(coreSize * 0.147)}" fill="${c.bone}">${escapeXml(setup.core)}</text>`
-  if (board.model !== undefined) {
-    body += `<text x="${CX}" y="${CY + 17}" text-anchor="middle" ${FONT} font-size="9" fill="${isSwitching ? c.hot : c.ash}">${escapeXml(shortModel(board.model))}</text>`
+  // The model in the middle: it is always Claude, so the model is what tells one session from another.
+  const name = usage.name
+  // A monospace letter is about 0.6 of its size wide, 0.66 with the spacing: the name fills at most 62 of the core's 80.
+  const shown = [...name].length > NAME_MAX ? `${[...name].slice(0, NAME_MAX - 1).join('')}…` : name
+  const nameSize = Math.max(7, Math.min(14, 62 / (0.66 * [...shown].length)))
+  const hasContext = board.context !== undefined
+  ringed += `<text x="${CX}" y="${CY + (hasContext ? 2 : 5)}" text-anchor="middle" ${FONT} font-size="${n1(nameSize)}" letter-spacing="${n1(nameSize * 0.06)}" fill="${isSwitching ? c.hot : c.bone}">${escapeXml(shown)}</text>`
+  if (hasContext) {
+    ringed += `<text x="${CX}" y="${CY + 17}" text-anchor="middle" ${FONT} font-size="9" fill="${usage.full === undefined ? c.dim : c.red}">${Math.round(Math.max(0, Math.min(100, board.context ?? 0)))}%</text>`
   }
-
-  // Under the core, one word for what the session is doing.
-  const state = stateOf(board)
-  const stateColor = { idle: c.dim, thinking: c.bone, running: c.hot, waiting: c.accent, compacting: c.mem, done: c.ash }[state]
-  const blink =
-    state === 'waiting' && !isStill
-      ? `<animate attributeName="opacity" values="1;.45;1" begin="${clock(-(now % 1200))}" dur="1.2s" repeatCount="indefinite"/>`
-      : ''
-  // A wait on you wears a dashed ring inside the core's edge, a sign that does not depend on the blink.
-  if (state === 'waiting') body += `<circle cx="${CX}" cy="${CY}" r="${CORE - 4}" fill="none" stroke="${c.accent}" stroke-width="1.4" stroke-dasharray="3 3"/>`
-  body += `<text x="${CX}" y="${CY + CORE + 17}" text-anchor="middle" ${FONT} font-size="9" paint-order="stroke" stroke="${c.ground}" stroke-width="3.5" stroke-linejoin="round" fill="${stateColor}">${blink}${escapeXml(setup.t.states[state])}</text>`
-  const spent = costText(board.cost)
-  // The cost is an estimate, and its title says so.
-  if (spent !== undefined) {
-    body += `<text x="${CX}" y="${CY + CORE + 28}" text-anchor="middle" ${FONT} font-size="8" fill="${c.dim}"><title>${escapeXml(setup.t.estimatedCost(spent))}</title>${spent}</text>`
+  const plain = [usage.name, ...usage.rows.map(r => `${r.label} ${r.value}`)].join(' · ')
+  const tip = `data-tip="${escapeXml(JSON.stringify(usage))}"`
+  body += `<g ${tip}><title>${escapeXml(plain)}</title>${ringed}</g>`
+  // In the map's upper left corner, each with the core's tooltip: usage billed at API rates (its cost and why), a plan limit
+  // nearly reached (when it resets), a context nearly full (what to do). A window draws its own in its header and hides
+  // these (`data-corner`).
+  const chips = [
+    ...(usage.billed === undefined ? [] : [{ color: c.red, line: `${usage.apiLabel}: ${usage.billed}`, under: usage.why ?? '' }]),
+    ...(usage.near ?? []).map(n => ({ color: c.accent, line: `${n.label}: ${n.value}`, under: n.hint })),
+    ...(usage.full === undefined ? [] : [{ color: c.accent, line: `${usage.full.label}: ${usage.full.value}`, under: usage.full.hint }]),
+  ]
+  if (chips.length > 0) {
+    body += `<g data-corner="1" ${tip}><title>${escapeXml(plain)}</title>`
+    chips.forEach((chip, k) => {
+      const y = 24 + k * 30
+      body +=
+        `<circle cx="22" cy="${y}" r="10" fill="${c.raised}" stroke="${chip.color}" stroke-width="1.2"/>` +
+        `<path transform="translate(16 ${n1(y - 6.3)}) scale(.5)" d="${WARNING}" fill="none" stroke="${chip.color}" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>` +
+        `<text x="38" y="${y - 1}" ${FONT} font-size="11.5" font-weight="700" fill="${chip.color}">${escapeXml(chip.line)}</text>` +
+        `<text x="38" y="${y + 10}" ${FONT} font-size="8.5" fill="${c.dim}">${escapeXml(chip.under)}</text>`
+    })
+    body += '</g>'
   }
 
   // A changed model rings at the core and at its station for a few seconds.
@@ -1213,7 +1322,14 @@ export function recapLines(
 }
 
 /** A row of the feed as written: at work, finished, gone wrong, refused, a change of model, or plain words. */
-export type FeedLine = { line: string; agentId?: string; tone: 'run' | 'ok' | 'bad' | 'block' | 'switch' | 'plain'; isBold?: true }
+/** A line under the map; a row of a call also carries its parts (mark, station, label, time), for a window that aligns them. */
+export type FeedLine = {
+  line: string
+  agentId?: string
+  tone: 'run' | 'ok' | 'bad' | 'block' | 'switch' | 'plain'
+  isBold?: true
+  cols?: [string, string, string, string]
+}
 
 /** The most lines the rows take, headers included. */
 const FEED_MAX = 16
@@ -1284,9 +1400,11 @@ function rowLines(rows: readonly Row[], t: Strings, agentNames: Readonly<Record<
     // A subagent's call carries its name, when it is known.
     const agent = entry.agentId === undefined ? undefined : agentNames[entry.agentId]
     const label = agent === undefined ? entry.label : `↳ ${agent} · ${entry.label}`
-    const line = `${mark} ${t.stations[entry.station].padEnd(column)} ${label}${times > 1 ? `  +${times - 1}` : ''}${exit}${entry.reason === undefined ? '' : ` — ${entry.reason}`}${took === '' ? '' : `  ${took}`}`
+    const what = `${label}${times > 1 ? `  +${times - 1}` : ''}${exit}${entry.reason === undefined ? '' : ` — ${entry.reason}`}`
+    const line = `${mark} ${t.stations[entry.station].padEnd(column)} ${what}${took === '' ? '' : `  ${took}`}`
     const tone = isSwitch ? 'switch' : entry.status === 'run' ? 'run' : entry.status === 'ok' ? 'ok' : entry.status === 'block' ? 'block' : 'bad'
-    return { line, ...(entry.agentId === undefined ? {} : { agentId: entry.agentId }), tone }
+    const cols: FeedLine['cols'] = [mark, t.stations[entry.station], what, took]
+    return { line, cols, ...(entry.agentId === undefined ? {} : { agentId: entry.agentId }), tone }
   })
 }
 
@@ -1335,53 +1453,14 @@ export function stateOf(board: Board): SessionState {
 /** A sign that the session looks stuck, and the station it sits at, when it has one. */
 type Warning = { station?: StationId; line: string }
 
-const LOOP_MIN = 3
-const LONG_MS = 60_000
-const LONG_TIMES = 5
 const QUIET_MS = 180_000
 
-/** Work meant to run long, or to wait on the person, is never stuck. */
-const isPatient = (e: Entry): boolean => e.task !== undefined || e.waits === true || e.asks === true
-
 /**
- * What looks stuck, at most three: a command failing again and again in one loop, a call running far past its station's
- * usual time, a running turn with nothing new for three minutes.
+ * What looks stuck: a running turn with nothing new for three minutes.
  */
 export function warningsOf(board: Board, now: number, t: Strings): Warning[] {
   const out: Warning[] = []
-  const own = board.entries.filter(e => e.station !== 'model' && e.station !== 'you')
-
-  // A loop: the main loop's and each subagent's finished calls, newest first, the same failure from the newest back.
-  const loops = new Map<string | undefined, Entry[]>()
-  for (const e of own) if (e.status !== 'run') loops.set(e.agentId, [e, ...(loops.get(e.agentId) ?? [])])
   const state = stateOf(board)
-  const isGoing = (id: string | undefined): boolean =>
-    id === undefined ? ['thinking', 'running', 'waiting'].includes(state) : (board.agents ?? []).includes(id)
-  for (const [id, list] of loops) {
-    if (!isGoing(id)) continue
-    const [last] = list
-    if (last === undefined || last.status !== 'err') continue
-    const n = list.findIndex(e => e.status !== 'err' || e.station !== last.station || e.label !== last.label)
-    const streak = n === -1 ? list.length : n
-    if (streak >= LOOP_MIN) out.push({ station: last.station, line: t.failedInARow(t.stations[last.station], last.label, streak) })
-  }
-
-  // A call far past its station's median, each timed from when it was allowed to run.
-  for (const e of own) {
-    // A foreground subagent is work meant to run long.
-    if (e.status !== 'run' || isPatient(e) || e.station === 'agents') continue
-    const took = own
-      .filter(x => x.station === e.station && x.endedAt !== undefined && (x.status === 'ok' || x.status === 'err') && x.task === undefined)
-      .map(x => (x.endedAt ?? x.startedAt) - (x.ranAt ?? x.startedAt))
-      .sort((a, b) => a - b)
-    if (took.length < 3) continue
-    const median = took[Math.floor(took.length / 2)] ?? 0
-    const elapsed = now - (e.ranAt ?? e.startedAt)
-    if (elapsed > LONG_MS && elapsed > LONG_TIMES * median) {
-      out.push({ station: e.station, line: t.runningLong(t.stations[e.station], e.label, formatClock(elapsed, t), formatMs(median, t)) })
-    }
-  }
-
   // A running turn with nothing running and nothing starting or ending.
   if ((state === 'thinking' || state === 'running') && board.entries.length > 0 && !board.entries.some(e => e.status === 'run')) {
     const newest = Math.max(...board.entries.map(e => Math.max(e.startedAt, e.endedAt ?? 0)))
@@ -1421,12 +1500,10 @@ export function describeNow(board: Board, t: Strings, now: number, withContext =
 
 // ---- satellites -------------------------------------------------------------------------------
 
-/** How many satellites a station keeps, how many it draws, and how long a name shows. */
+/** How many satellites a station keeps: its tooltip lists the most used. */
 const SAT_KEPT = 12
-const SAT_DRAWN = 5
-const SAT_NAME = 12
-/** The lowest a satellite's label may reach: the strip under the map starts below it. */
-const SAT_BOTTOM = 428
+/** How many of them a tooltip lists. */
+const SAT_LISTED = 5
 
 /** The satellites with one more use of `name` at `station`: twelve kept, the least used going first and never the newest. */
 export function withSatellite(sat: Board['satellites'], station: StationId, name: string, isEdited: boolean, now: number): Board['satellites'] {
@@ -1441,97 +1518,15 @@ export function withSatellite(sat: Board['satellites'], station: StationId, name
   return { ...sat, [station]: [...rest, next] }
 }
 
-/** The satellites a station draws: the most used, the latest first among equals. */
-const drawnOf = (list: readonly Satellite[] | undefined): Satellite[] => [...(list ?? [])].sort((a, b) => b.uses - a.uses || b.lastAt - a.lastAt).slice(0, SAT_DRAWN)
+/** How many local servers the board keeps. */
+const LOCAL_KEPT = 6
 
-/** How long a satellite stays lit after its use, or undefined when it is not lit. */
-const satelliteLitFor = (s: Satellite, now: number): number | undefined => (now - s.lastAt >= 0 && now - s.lastAt < GLOW_MS ? GLOW_MS - (now - s.lastAt) : undefined)
-
-type Box = { x0: number; y0: number; x1: number; y1: number }
-type Disc = { x: number; y: number; r: number }
-const overlap = (a: Box, b: Box): boolean => a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y0 < a.y1
-const touches = (b: Box, d: Disc): boolean => Math.hypot(Math.max(b.x0 - d.x, 0, d.x - b.x1), Math.max(b.y0 - d.y, 0, d.y - b.y1)) < d.r
-
-/** The plain text of a station's count line, as the map draws it, to size the room it takes. */
-function countText(board: Board, id: StationId, hasCost: boolean): string {
-  const count = board.counts[id] ?? 0
-  const pushed = id === 'memory' ? Math.min(count, board.pushed ?? 0) : 0
-  const turn = board.turnCounts?.[id] ?? 0
-  const total = board.faultTotals?.[id] ?? 0
-  const tokens = hasCost ? (board.spent?.[id] ?? 0) : 0
-  return (
-    (pushed === 0 ? String(count) : `${count - pushed > 0 ? `${count - pushed} ` : ''}↓${pushed}`) +
-    (turn > 0 && turn < count ? ` +${turn}` : '') +
-    (total > 0 ? ` · ${total}✕` : '') +
-    (tokens > 0 ? ` · ${tokensShort(tokens)}` : '')
-  )
+/** The local servers with `hosts` used now: the newest first, six kept. */
+export function withLocal(local: Board['local'], hosts: readonly string[], now: number): Board['local'] {
+  if (hosts.length === 0) return local
+  return [...hosts.map(host => ({ host, lastAt: now })), ...(local ?? []).filter(l => !hosts.includes(l.host))].slice(0, LOCAL_KEPT)
 }
 
-/**
- * The small labelled dots around the stations that serve files or servers: on an arc outside the station, away from the core,
- * moved along the arc (and out a ring) wherever a name, a count, another station or the edge is in the way.
- */
-function satellites(board: Board, now: number, setup: Setup, c: Palette, isStill: boolean, crewRoom: Box[]): string {
-  if (STATIONS.every(s => (board.satellites?.[s.id]?.length ?? 0) === 0)) return ''
-  const core: Point = { x: CX, y: CY }
-  const discs: Disc[] = [{ ...core, r: CORE + 16 }]
-  const boxes: Box[] = [...crewRoom]
-  STATIONS.forEach((s, i) => {
-    const p = place(i)
-    discs.push({ ...p, r: s.id === 'agents' ? NODE + 34 : NODE + 12 })
-    const half = ([...setup.t.stations[s.id]].length * 7.2) / 2 + 2
-    boxes.push({ x0: p.x - half, y0: p.y + NODE + 3, x1: p.x + half, y1: p.y + NODE + 19 })
-    if ((board.counts[s.id] ?? 0) > 0) {
-      const wide = ([...countText(board, s.id, setup.contextCost)].length * 5.7) / 2 + 2
-      boxes.push({ x0: p.x - wide, y0: p.y + NODE + 19, x1: p.x + wide, y1: p.y + NODE + 32 })
-    }
-  })
-  const rim = `paint-order="stroke" stroke="${c.ground}" stroke-width="3" stroke-linejoin="round"`
-  let out = ''
-  STATIONS.forEach((s, i) => {
-    if (s.id === 'agents') return
-    const p = place(i)
-    const away = Math.atan2(p.y - CY, p.x - CX)
-    for (const sat of drawnOf(board.satellites?.[s.id])) {
-      const label = clean(sat.name, SAT_NAME)
-      const width = [...label].length * 4.4 + 1
-      let spot: { x: number; y: number; isRight: boolean; box: Box; dot: Box } | undefined
-      for (const r of [NODE + 16, NODE + 30]) {
-        for (let k = 0; k < 19 && spot === undefined; k++) {
-          const a = away + ((k % 2 === 1 ? 1 : -1) * Math.ceil(k / 2) * 14) / r
-          const x = p.x + r * Math.cos(a)
-          const y = p.y + r * Math.sin(a)
-          // A satellite is nearer its own station than any other's centre, or it is not drawn.
-          if (STATIONS.some((_, j) => j !== i && Math.hypot(x - place(j).x, y - place(j).y) <= r)) continue
-          const dot: Box = { x0: x - 4, y0: y - 4, x1: x + 4, y1: y + 4 }
-          for (const isRight of Math.cos(a) >= 0 ? [true, false] : [false, true]) {
-            const box: Box = isRight ? { x0: x + 5, y0: y - 5, x1: x + 6 + width, y1: y + 5 } : { x0: x - 6 - width, y0: y - 5, x1: x - 5, y1: y + 5 }
-            const isIn = Math.min(dot.x0, box.x0) >= 2 && Math.max(dot.x1, box.x1) <= W - 2 && Math.min(dot.y0, box.y0) >= 2 && Math.max(dot.y1, box.y1) <= SAT_BOTTOM
-            if (isIn && ![dot, box].some(b => boxes.some(o => overlap(b, o)) || discs.some(d => touches(b, d)))) {
-              spot = { x, y, isRight, box, dot }
-              break
-            }
-          }
-        }
-        if (spot !== undefined) break
-      }
-      if (spot === undefined) continue
-      boxes.push(spot.dot, spot.box)
-      const cx = n1(spot.x)
-      const cy = n1(spot.y)
-      const fill = sat.isEdited === true ? `fill="${c.dim}"` : `fill="none" stroke="${c.dim}" stroke-width="1"`
-      const left = satelliteLitFor(sat, now)
-      const lit =
-        left === undefined
-          ? ''
-          : isStill
-            ? `<circle cx="${cx}" cy="${cy}" r="3" fill="${c.hot}" data-lit="1"/>`
-            : `<circle cx="${cx}" cy="${cy}" r="3" fill="${c.hot}" data-lit="1"><animate attributeName="opacity" values="1;0" begin="${clock(left - GLOW_MS)}" dur="${clock(GLOW_MS)}" fill="freeze"/></circle>`
-      const title = `${sat.name}: ${setup.t.callsHere(sat.uses)}${sat.isEdited === true ? ` · ${setup.t.satelliteEdited}` : ''}`
-      out +=
-        `<g><title>${escapeXml(title)}</title><circle cx="${cx}" cy="${cy}" r="3" ${fill} data-satellite="${sat.isEdited === true ? 'edited' : 'read'}"/>${lit}` +
-        `<text x="${n1(spot.x + (spot.isRight ? 6 : -6))}" y="${n1(spot.y + 2.5)}" text-anchor="${spot.isRight ? 'start' : 'end'}" ${FONT} font-size="7" ${rim} fill="${c.dim}">${escapeXml(label)}</text></g>`
-    }
-  })
-  return out
-}
+/** The satellites a tooltip lists: the most used, the latest first among equals. */
+const listedOf = (list: readonly Satellite[] | undefined): Satellite[] =>
+  [...(list ?? [])].sort((a, b) => b.uses - a.uses || b.lastAt - a.lastAt).slice(0, SAT_LISTED)

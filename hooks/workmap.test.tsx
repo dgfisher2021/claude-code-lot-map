@@ -2001,7 +2001,7 @@ function fakeHost(on: On): string[][] {
   return runs
 }
 
-test('/workmap window keeps the live map for a window of its own and opens it beside the session in Windows Terminal', async ($, on) => {
+test('/workmap window keeps the live map for a window of its own and opens it in Edge, from WSL', async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
   mock.env(on, { WSL_DISTRO_NAME: 'Ubuntu', TMPDIR: '/tmp' })
   on('tool.call', () => ({ result: {} }))
@@ -2015,27 +2015,13 @@ test('/workmap window keeps the live map for a window of its own and opens it be
   await $.tool.call({ tool: 'Read', file_path: '/a/b/content.py' })
   const answer = await $.command.run({ command: 'workmap', args: 'window' } as never)
   expect(answer.text).toBe('Map window opened beside this one.')
-  const wt = runs.find(argv => argv[0] === 'wt.exe') ?? []
-  const dir = wt.at(-1) ?? ''
-  expect(dir).toMatch(/^\/tmp\/workmap-live-[a-z0-9]+$/)
-  // The pane starts with a bare PATH: node and Chromium go in as found in the session.
-  expect(wt.slice(0, 14)).toEqual([
-    'wt.exe',
-    '-w',
-    '0',
-    'split-pane',
-    '--vertical',
-    '--size',
-    '0.45',
-    'wsl.exe',
-    '-d',
-    'Ubuntu',
-    '--',
-    'env',
-    'WORKMAP_CHROMIUM=/home/u/.local/bin/chromium',
-    '/usr/bin/node',
-  ])
-  expect(wt[14]).toMatch(/\/renderer\/view\.mjs$/)
+  // renderer/serve.mjs starts the local server unless one runs and opens Edge on the live folder, by its name.
+  const open = runs.find(argv => argv[1]?.endsWith('/renderer/serve.mjs')) ?? []
+  expect(open[0]).toBe('/usr/bin/node')
+  expect(open[2]).toBe('--open')
+  expect(open[3]).toMatch(/^[a-z0-9]+$/)
+  expect(runs.some(argv => argv[0] === 'wt.exe')).toBe(false)
+  const dir = `/tmp/workmap-live-${open[3]}`
   const maps = () => written.filter(w => w.path === `${dir}/map.svg`)
   expect(maps().length).toBe(1)
   expect(maps()[0]?.text).toMatch(/^<svg [^>]*width="920" height="860"/)
@@ -2059,6 +2045,36 @@ test('/workmap window keeps the live map for a window of its own and opens it be
   expect(runs.some(argv => argv[0] === 'rm')).toBe(false)
   await $.session.end({ reason: 'other' } as never)
   expect(runs.at(-1)).toEqual(['rm', '-rf', '--', dir])
+})
+
+test('with terminalWindow pane, /workmap window splits the Windows Terminal tab with node and Chromium as found', { options: { terminalWindow: 'pane' } }, async ($, on) => {
+  mock.clock(on, { now: NOW })
+  mock.env(on, { WSL_DISTRO_NAME: 'Ubuntu', TMPDIR: '/tmp' })
+  const runs = fakeHost(on)
+  on('fs.write', () => ({ value: undefined }))
+  expect((await $.command.run({ command: 'workmap', args: 'window' } as never)).text).toBe('Map window opened beside this one.')
+  expect(runs.some(argv => argv[1]?.endsWith('/renderer/serve.mjs'))).toBe(false)
+  const wt = runs.find(argv => argv[0] === 'wt.exe') ?? []
+  expect(wt.at(-1)).toMatch(/^\/tmp\/workmap-live-[a-z0-9]+$/)
+  // The pane starts with a bare PATH: node and Chromium go in as found in the session.
+  expect(wt.slice(0, 14)).toEqual([
+    'wt.exe',
+    '-w',
+    '0',
+    'split-pane',
+    '--vertical',
+    '--size',
+    '0.45',
+    'wsl.exe',
+    '-d',
+    'Ubuntu',
+    '--',
+    'env',
+    'WORKMAP_CHROMIUM=/home/u/.local/bin/chromium',
+    '/usr/bin/node',
+  ])
+  expect(wt[14]).toMatch(/\/renderer\/view\.mjs$/)
+  await $.session.end({ reason: 'other' } as never)
 })
 
 test('under reduced motion the window map is not rewritten between steps, and the pane is redrawn at each step', { options: { motion: 'reduced' } }, async ($, on) => {
@@ -2133,13 +2149,15 @@ test('/workmap is the one command, and opens the map', async ($, on) => {
   await $.session.end({ reason: 'other' } as never)
 })
 
-test("/workmap help answers the legend in the session's language", { options: { language: 'ru' } }, async ($, on) => {
+test("/workmap help answers the legend in the session's language, then the commands", { options: { language: 'ru' } }, async ($, on) => {
   on('command.register', (_, e) => ({ value: { command: e.name } }))
   on('session.start', (_, e) => ({ cwd: e.cwd }))
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
   const answer = String((await $.command.run({ command: 'workmap', args: 'help' } as never)).text)
-  expect(answer.split('\n')).toEqual(stringsFor('ru').legend)
+  const legend = stringsFor('ru').legend
+  expect(answer.split('\n').slice(0, legend.length)).toEqual(legend)
   expect(answer).toContain('Память')
+  for (const { command } of stringsFor('ru').commandHelp.commands) expect(answer).toContain(command)
   for (const language of ['en', 'ru', 'es', 'fr', 'de', 'it', 'pt']) expect(stringsFor(language).legend.length).toBe(22)
 })
 
@@ -2252,7 +2270,7 @@ test('in Windows Terminal the map is a window: no pane, and the window opens bes
   const clock = mock.clock(on, { now: NOW })
   mock.env(on, IN_WINDOWS_TERMINAL)
   const runs = fakeHost(on)
-  const splits = () => runs.filter(argv => argv[0] === 'wt.exe')
+  const opens = () => runs.filter(argv => argv[1]?.endsWith('/renderer/serve.mjs'))
   on('fs.write', () => ({ value: undefined }))
   // The window's own heartbeat, while it shows the map.
   let shownAt: number | undefined
@@ -2263,25 +2281,26 @@ test('in Windows Terminal the map is a window: no pane, and the window opens bes
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
   await clock.settle()
   expect(panes).toEqual([])
-  expect(splits()).toEqual([])
+  expect(opens()).toEqual([])
 
-  // The person writes: their tab is the one in front, and the window splits it, once.
+  // The person writes: their tab is the one in front, and the window opens, once.
   await $.turn.start({ text: 'hello', turnId: 't1' } as never)
   await clock.settle()
-  expect(splits().length).toBe(1)
+  expect(opens().length).toBe(1)
   await $.turn.start({ text: 'and again', turnId: 't2' } as never)
   await clock.settle()
-  expect(splits().length).toBe(1)
+  expect(opens().length).toBe(1)
 
   // /workmap opens the window, not the pane, and no second one while the first shows the map.
   shownAt = clock.now()
   expect((await $.command.run({ command: 'workmap', args: '' } as never)).text).toBe('The map window is already open beside this one.')
-  expect(splits().length).toBe(1)
+  expect(opens().length).toBe(1)
   // Closed with q, its heartbeat stops: /workmap opens it again.
   shownAt = clock.now() - 60_000
   expect((await $.command.run({ command: 'workmap', args: '' } as never)).text).toBe('Map window opened beside this one.')
-  expect(splits().length).toBe(2)
+  expect(opens().length).toBe(2)
   expect(panes).toEqual([])
+  expect(runs.some(argv => argv[0] === 'wt.exe')).toBe(false)
   await $.session.end({ reason: 'other' } as never)
 })
 
@@ -2295,7 +2314,7 @@ test('with terminalWindow off Windows Terminal keeps the pane', { options: { ter
   await $.turn.start({ text: 'hello', turnId: 't1' } as never)
   await clock.settle()
   expect(panes).toEqual(['workmap'])
-  expect(runs.some(argv => argv[0] === 'wt.exe')).toBe(false)
+  expect(runs.some(argv => argv[0] === 'wt.exe' || argv[1]?.endsWith('/renderer/serve.mjs'))).toBe(false)
   await $.session.end({ reason: 'other' } as never)
 })
 
@@ -2306,7 +2325,8 @@ test('when the window cannot open the pane opens instead', async ($, on) => {
   on('session.end', () => ({ sessionId: 'test' }))
   on('process.run', (_, e) => {
     runs.push([...e.argv])
-    return { value: { exitCode: e.argv[0] === 'wt.exe' ? 1 : 0, stdout: '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
+    const isWindow = e.argv[0] === 'wt.exe' || e.argv[1]?.endsWith('/renderer/serve.mjs') === true
+    return { value: { exitCode: isWindow ? 1 : 0, stdout: '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
   })
   on('fs.write', () => ({ value: undefined }))
   const panes = fakeSession(on)
@@ -2314,8 +2334,29 @@ test('when the window cannot open the pane opens instead', async ($, on) => {
   expect(panes).toEqual([])
   await $.turn.start({ text: 'hello', turnId: 't1' } as never)
   await clock.settle()
+  expect(runs.some(argv => argv[1]?.endsWith('/renderer/serve.mjs'))).toBe(true)
   expect(runs.some(argv => argv[0] === 'wt.exe')).toBe(true)
   expect(panes).toEqual(['workmap'])
+  await $.session.end({ reason: 'other' } as never)
+})
+
+test('when Edge cannot open, the window splits the Windows Terminal tab instead', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  mock.env(on, IN_WINDOWS_TERMINAL)
+  const runs: string[][] = []
+  on('session.end', () => ({ sessionId: 'test' }))
+  on('process.run', (_, e) => {
+    runs.push([...e.argv])
+    const exitCode = e.argv[1]?.endsWith('/renderer/serve.mjs') === true ? 1 : 0
+    return { value: { exitCode, stdout: '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
+  })
+  on('fs.write', () => ({ value: undefined }))
+  const panes = fakeSession(on)
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  await $.turn.start({ text: 'hello', turnId: 't1' } as never)
+  await clock.settle()
+  expect(runs.some(argv => argv[0] === 'wt.exe')).toBe(true)
+  expect(panes).toEqual([])
   await $.session.end({ reason: 'other' } as never)
 })
 
