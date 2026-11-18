@@ -2,6 +2,12 @@
 
 What changed in each version of workmap, newest first; up to 0.12.0 it was called lot-map. To get a new version, see [Updating](README.md#updating).
 
+## 1.2.5 (2026-11-18)
+
+- The handle between the map and the list drags again in the split: Windows Terminal says where the mouse is a cell at a time, so a press lands at a cell's centre, and the handle, thinner than a cell, could sit between two centres. It now takes presses a little above and below its line.
+- The map keeps at least half the window's height: with the list's 30 rows it had shrunk to its smallest. The list takes the rest and scrolls.
+- The height you drag the list to is kept by the local server, so every window after opens at it, in Edge and in the split; the split forgot it when it closed.
+
 ## 1.2.4 (2026-11-18)
 
 - Up and Down, PgUp and PgDn move through the window's list again, in Edge and in the split: the window asked the list for more rows than fit, so the list held its scroll at the top and every key was undone. Past the end of the live rows the mouse wheel goes on into the log the same way.
