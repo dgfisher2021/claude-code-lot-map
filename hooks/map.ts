@@ -706,6 +706,12 @@ function station(
     over +=
       `<circle cx="${n1(bx)}" cy="${n1(by)}" r="8.5" fill="${c.raised}" stroke="${c.accent}" stroke-width="1.1"/>` +
       `<path transform="translate(${n1(bx - 5.4)} ${n1(by - 5.4)}) scale(.45)" d="${BADGES[doing.badge]}" fill="none" stroke="${c.accent}" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>`
+  } else if (s.id === 'browser' && running.length < 2 && (board.local?.length ?? 0) > 0) {
+    // Top right, on Browser, where a count goes: the local servers Claude's calls used; its tooltip lists them.
+    const servers = board.local?.length ?? 0
+    over +=
+      `<circle cx="${n1(p.x + corner)}" cy="${n1(p.y - corner)}" r="8" fill="${c.raised}" stroke="${c.ash}" stroke-width="1.1" data-local="${servers}"/>` +
+      `<text x="${n1(p.x + corner)}" y="${n1(p.y - corner + 3.1)}" text-anchor="middle" ${FONT} font-size="9" font-weight="700" fill="${c.bone}">${servers}</text>`
   } else if (running.length > 1) {
     over +=
       `<circle cx="${n1(p.x + corner)}" cy="${n1(p.y - corner)}" r="8" fill="${c.raised}" stroke="${color}" stroke-width="1"/>` +
@@ -716,13 +722,6 @@ function station(
     over +=
       `<circle cx="${n1(p.x - corner)}" cy="${n1(p.y - corner)}" r="7.5" fill="${c.red}"/>` +
       `<text x="${n1(p.x - corner)}" y="${n1(p.y - corner + 3.1)}" text-anchor="middle" ${FONT} font-size="9" font-weight="700" fill="${c.ground}">${faults > 99 ? '99+' : faults}</text>`
-  }
-  // Bottom right, on Browser: how many local servers Claude's calls used; its tooltip lists them.
-  const servers = s.id === 'browser' ? (board.local?.length ?? 0) : 0
-  if (servers > 0) {
-    over +=
-      `<circle cx="${n1(p.x + corner)}" cy="${n1(p.y + corner)}" r="7.5" fill="${c.raised}" stroke="${c.ash}" stroke-width="1.1" data-local="${servers}"/>` +
-      `<text x="${n1(p.x + corner)}" y="${n1(p.y + corner + 3.1)}" text-anchor="middle" ${FONT} font-size="9" font-weight="700" fill="${c.bone}">${servers}</text>`
   }
   // Bottom left, in outline: calls refused there, a rule working rather than something broken.
   const blocks = board.blocks?.[s.id] ?? 0
