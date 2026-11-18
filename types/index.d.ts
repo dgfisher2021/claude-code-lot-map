@@ -63,9 +63,6 @@ export type Satellite = { name: string; uses: number; isEdited?: true; lastAt: n
 /** What a subagent's spawn told: who it came from, its type's name, and when. */
 export type AgentInfo = { parent?: string; type?: string; at: number }
 
-/** A stretch of time at a station, or a wait on the person; `until` is unset while it goes on, `bad` marks an error or a refusal. */
-export type TimelineMark = { at: number; until?: number; of?: string; kind: StationId | 'wait'; bad?: true }
-
 export type Board = {
   entries: Entry[]
   counts: Partial<Record<StationId, number>>
@@ -111,8 +108,6 @@ export type Board = {
   local?: { host: string; lastAt: number }[]
   /** The person's messages this session as turns, the last twelve; the newest is the open one. */
   turns?: TurnSummary[]
-  /** Where the time went, as marks: the last 240. */
-  timeline?: TimelineMark[]
   /** The rate-limit windows the engine last reported: how much of each is used, and when it resets (ISO 8601). */
   limits?: { kind: LimitKind; percent: number; resetsAt?: string }[]
   /** What the session has cost so far, in US dollars: an estimate. */

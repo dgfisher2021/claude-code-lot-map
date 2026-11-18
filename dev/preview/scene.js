@@ -80,7 +80,6 @@ export function boardAt(s, base, figures) {
   const turnOf = c => (c.at < 0 ? 1 : 2)
 
   const entries = []
-  const timeline = []
   let counts = {}
   let turnCounts = {}
   let faults = {}
@@ -160,15 +159,6 @@ export function boardAt(s, base, figures) {
     }
     if (c.local) local = [{ host: c.local, lastAt: ms(c.at) }, ...local.filter(l => l.host !== c.local)]
     if (c.server) servers.set(c.server, { name: c.server, uses: (servers.get(c.server)?.uses ?? 0) + 1, lastAt: ms(c.at) })
-    if (c.station !== 'model' && c.station !== 'you' && !c.task) {
-      timeline.push({
-        at: ms(c.at),
-        ...(done ? { until: ms(c.at + c.dur) } : {}),
-        kind: c.station,
-        ...(status === 'err' || status === 'block' ? { bad: true } : {}),
-      })
-    }
-    if (c.waits) timeline.push({ at: ms(c.at), ...(done ? { until: ms(c.at + c.dur) } : {}), kind: 'wait' })
   }
 
   // Subagents at work: their Agent call still running.
@@ -217,7 +207,6 @@ export function boardAt(s, base, figures) {
       satellites: figures.satellites ? { files: [...files.values()], skills: [...servers.values()] } : {},
       local,
       turns,
-      timeline,
       limits: [
         { kind: 'five_hour', percent: figures.fiveHour, resetsAt: new Date(now + 4.8 * hour).toISOString() },
         { kind: 'seven_day', percent: figures.weekly, resetsAt: new Date(now + 13.5 * hour).toISOString() },

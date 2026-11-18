@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register, Timer } from 'claude-code'
 
-import type { AgentInfo, Board, Entry, StationId, Status, TimelineMark, TurnSummary } from '../types'
+import type { AgentInfo, Board, Entry, StationId, Status, TurnSummary } from '../types'
 import {
   STATIONS,
   agentList,
@@ -58,8 +58,6 @@ const REFUSALS_KEPT = 64
 const CREW = 12
 /** How many turns the board keeps. */
 const TURNS = 12
-/** How many timeline marks the board keeps. */
-const MARKS = 240
 /** How many changed files the board keeps. */
 const CHANGED = 40
 /** The calls that change a file. */
@@ -137,39 +135,15 @@ function firstText(body: string): string | undefined {
   return undefined
 }
 
-/** The timeline with a mark opened for a call at its start, or its marks closed at its end. */
-function marked(b: Board, e: Entry, now: number, isStart = false): Pick<Board, 'timeline'> {
-  if (e.station === 'model' || e.mark !== undefined) return {}
-  const old = b.timeline ?? []
-  // An aborted turn lands on You as an error, and is no fault to mark.
-  const isBad = (e.status === 'err' || e.status === 'block') && e.station !== 'you' ? { bad: true as const } : {}
-  if (isStart) {
-    const mark: TimelineMark = {
-      at: e.startedAt,
-      of: e.id,
-      kind: e.waits === true ? 'wait' : e.station,
-      ...(e.status === 'run' ? {} : { until: e.endedAt ?? now, ...isBad }),
-    }
-    return { timeline: [...old, mark].slice(-MARKS) }
-  }
-  return { timeline: old.map(m => (m.until === undefined && m.of === e.id ? { ...m, until: now, ...(m.kind === e.station ? isBad : {}) } : m)) }
-}
-
-/** The timeline with the wait marks of one call closed: the person answered. */
-const unwaited = (b: Board, id: string, now: number): Pick<Board, 'timeline'> => ({
-  timeline: (b.timeline ?? []).map(m => (m.kind === 'wait' && m.until === undefined && m.of === id ? { ...m, until: now } : m)),
-})
-
-/** The picked running rows closed as ok at `now`, their time and marks folded in. */
-function closeRuns(b: Board, pick: (e: Entry) => boolean, now: number): Pick<Board, 'entries' | 'busyMs' | 'timeline'> {
+/** The picked running rows closed as ok at `now`, their time folded in. */
+function closeRuns(b: Board, pick: (e: Entry) => boolean, now: number): Pick<Board, 'entries' | 'busyMs'> {
   let acc: Board = b
   const entries = b.entries.map(e => {
     if (e.status !== 'run' || !pick(e)) return e
-    const done: Entry = { ...e, status: 'ok', endedAt: now }
-    acc = { ...acc, ...busier(acc, e, now), ...marked(acc, done, now) }
-    return done
+    acc = { ...acc, ...busier(acc, e, now) }
+    return { ...e, status: 'ok' as const, endedAt: now }
   })
-  return { entries, busyMs: acc.busyMs, timeline: acc.timeline }
+  return { entries, busyMs: acc.busyMs }
 }
 
 const oneMore = (counts: Board['faults'], station: StationId): Board['faults'] => ({ ...counts, [station]: (counts?.[station] ?? 0) + 1 })
@@ -248,7 +222,6 @@ async function begin($: EngineInterface, start: Start): Promise<string | undefin
         // An interrupted turn lands on the person's own station and is no fault of anything.
         ...bad,
         ...(counts ? inTurn({ ...b, ...bad }, t => ({ ...t, calls: t.calls + 1 })) : {}),
-        ...marked(b, entry, now, true),
         ...(entry.agentId !== undefined && !(b.agents ?? []).includes(entry.agentId) ? { agents: [...(b.agents ?? []), entry.agentId].slice(-CREW) } : {}),
       }
     })
@@ -275,7 +248,6 @@ async function finish($: EngineInterface, id: string | undefined, status: Status
         }),
         ...(open !== undefined ? tally(b, open.station, closed, open.agentId, open.turn) : {}),
         ...(open !== undefined ? busier(b, open, now) : {}),
-        ...(open !== undefined ? marked(b, { ...open, status: closed }, now) : {}),
       }
     })
   })
@@ -299,7 +271,6 @@ async function settle($: EngineInterface, task: string, status: Status): Promise
         entries: b.entries.map(e => (e === open ? { ...e, status, endedAt: now } : e)),
         ...tally(b, open.station, status, open.agentId, open.turn),
         ...busier(b, open, now),
-        ...marked(b, { ...open, status }, now),
       }
     })
   })
@@ -325,7 +296,6 @@ async function askOn($: EngineInterface, calls: Map<string, string>, call: strin
         if (isAsked) return e.waits === true ? e : { ...e, asks: true as const }
         return e.asks === true ? { ...bare(e), ranAt: now } : e
       }),
-      ...(!isAsked && b.entries.some(e => e.id === id && e.status === 'run' && e.asks === true) ? unwaited(b, id, now) : {}),
     }))
   })
 }
@@ -340,7 +310,7 @@ async function waitsOnYou($: EngineInterface, setup: Setup, calls: Map<string, s
     let row: Entry | undefined
     await update($, board, b => {
       row = b.entries.find(x => x.id === id && x.status === 'run' && x.asks === true && x.waits !== true)
-      return row === undefined ? b : { ...b, entries: b.entries.map(x => (x === row ? { ...x, waits: true as const } : x)), ...marked(b, { ...row, startedAt: now, waits: true }, now, true) }
+      return row === undefined ? b : { ...b, entries: b.entries.map(x => (x === row ? { ...x, waits: true as const } : x)) }
     })
     if (row === undefined) return
     const { t } = setup
@@ -596,9 +566,12 @@ async function share($: EngineInterface, setup: Setup): Promise<void> {
     const svg = isMoved || setup.motion === 'reduced' ? framedMap(state, now, setup, 920, 860) : undefined
     const isChanged = isMoved || (svg !== undefined && svg !== sharing.still)
     // The repository and branch, asked again every half minute while the window is wanted: a checkout changes the branch.
+    // Asked aside, never awaited here: a slow git must not hold the map; its answer goes in with the next write.
     if (now - place.at >= 30_000) {
       place.at = now
-      place.value = await placeOf($)
+      void quietly(async () => {
+        place.value = await placeOf($)
+      })
     }
     if (isChanged && svg !== undefined) {
       sharing.written = seen
