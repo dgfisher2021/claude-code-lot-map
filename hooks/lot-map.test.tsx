@@ -1,9 +1,10 @@
 import type { On } from 'claude-code'
 import { expect, mock, test } from 'claude-code/testing'
+import type { TestBody } from 'claude-code/testing'
 
 import type { Board } from '../types'
 import type { Entry, TurnSummary } from '../types'
-import { COLOR_NAMES, GLOW_MS, TRAIL_FADE_MS, TRAIL_HOLD_MS, changedLine, classify, clean, describeNow, drawMap, feedLines, firstLine, foldRows, formatMs, framedMap, keepNewest, memoryIds, motionOf, paletteOf, pinnedLines, routeOf, setupFrom, stateOf, stillChangeIn, taskNotice, taskOf, warningsOf } from './map'
+import { COLOR_NAMES, GLOW_MS, TRAIL_FADE_MS, TRAIL_HOLD_MS, changedLine, classify, clean, describeNow, drawMap, feedLines, firstLine, foldRows, formatMs, framedMap, keepNewest, memoryIds, motionOf, paletteOf, pinnedLines, pulseRadius, routeOf, setupFrom, stateOf, stillChangeIn, taskNotice, taskOf, warningsOf } from './map'
 import { mapSize, paceOf, paintMap } from './raster'
 import { stringsFor } from './text'
 import { layout } from '../renderer/layout.mjs'
@@ -2104,7 +2105,7 @@ test("/workmap help and /lot-map help answer the legend in the session's languag
   expect(answer.split('\n')).toEqual(stringsFor('ru').legend)
   expect(answer).toContain('Память')
   expect((await $.command.run({ command: 'lot-map', args: 'help' } as never)).text).toBe(answer)
-  for (const language of ['en', 'ru', 'es', 'fr', 'de', 'it', 'pt']) expect(stringsFor(language).legend.length).toBe(16)
+  for (const language of ['en', 'ru', 'es', 'fr', 'de', 'it', 'pt']) expect(stringsFor(language).legend.length).toBe(17)
 })
 
 test("the count keeps the session's errors and shows what this turn added", async ($, on) => {
@@ -3463,4 +3464,267 @@ test('a status write still running when the session ends does not bring the file
   // Every write that landed after the end was taken away again (the end itself had no file yet to remove).
   const removals = runs.filter(argv => argv[0] === 'rm' && argv[3] === `${SESSIONS}/abc-123.json`).length
   expect(removals).toBe(written.length)
+})
+
+// ---- contextCost: what each call added to the context -----------------------------------------------
+
+const COST = { contextCost: true } as const
+
+/** A figure after a row's time, and not the `+4` a folded row carries after its words. */
+const COST_FIGURE = /\d (?:ms|s) ~?\+\d/
+
+/** The engine beneath the mod: a clock that moves, a context the test sets, and steps and calls that answer at once. */
+function costKit($: Parameters<TestBody>[0], on: On) {
+  let clock = 1_000_000
+  let tokens = 10_000
+  on('clock.now', () => ({ value: (clock += 7) }))
+  on('session.usage', () => ({ value: { startedAt: 0, context: { window: 200_000, percent: Math.round((tokens / 200_000) * 100), tokens } } }) as never)
+  on('turn.step', async function* (_, e) {
+    return { turnId: e.turnId, index: e.index, answer: '', toolUses: [] } as never
+  })
+  on('session.compact', () => ({ skip: 'test' }) as never)
+  on('tool.call', () => ({ result: {} }))
+  on('turn.complete', () => ({ text: '' }))
+  on('command.register', (_, e) => ({ value: { command: e.name } }))
+  on('session.start', (_, e) => ({ cwd: e.cwd }))
+  return {
+    set: (n: number) => {
+      tokens = n
+    },
+    step: async (index: number, agentId?: string) => {
+      for await (const _ of $.turn.step({
+        turnId: 't1',
+        index,
+        model: 'claude-opus-5-5',
+        messageCount: 1,
+        ...(agentId !== undefined ? { agentId } : {}),
+      } as never))
+        void _
+    },
+    call: async (tool: string, input: Record<string, unknown> = {}, agentId?: string) => {
+      await $.tool.call({ tool, ...input, ...(agentId !== undefined ? { agentId } : {}) } as never)
+    },
+    done: async () => {
+      await $.turn.complete({ answer: '', durationMs: 1, isAborted: false, turnId: 't1', reason: 'answer' } as never)
+    },
+  }
+}
+
+const sourceOf = async (ui: { find: (q: { type: 'Svg' }) => Promise<{ props: Record<string, unknown> } | undefined> }): Promise<string> =>
+  String((await ui.find({ type: 'Svg' }))?.props.source)
+
+test('contextCost is off unless set to true, and off it adds no figure anywhere', async ($, on) => {
+  expect(setupFrom({}).contextCost).toBe(false)
+  expect(setupFrom({ contextCost: 'true' }).contextCost).toBe(false)
+  expect(setupFrom({ contextCost: true }).contextCost).toBe(true)
+
+  const k = costKit($, on)
+  await k.step(0)
+  await k.call('Read', { file_path: '/a/b/big.ts' })
+  k.set(52_000)
+  await k.step(1)
+  for (const surface of ['desktop', 'terminal', 'vscode'] as const) {
+    const ui = await $.ui.mount({ ...PANE, surface })
+    expect(await ui.find({ type: 'Text', text: COST_FIGURE })).toBeUndefined()
+    await ui.unmount()
+  }
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  expect(await sourceOf(ui)).not.toContain(' · 42k')
+  await ui.unmount()
+  expect(
+    feedLines([{ id: 'a', station: 'files', label: 'x', from: 'core', startedAt: 1, endedAt: 9, status: 'ok', tokens: 5000 }], stringsFor('en'))[0]?.line,
+  ).not.toContain('+5k')
+})
+
+test('a call gets what the context grew by, one step late, on its row on every surface', { options: COST }, async ($, on) => {
+  const k = costKit($, on)
+  await k.step(0)
+  await k.call('Read', { file_path: '/a/b/big.ts' })
+
+  // Not yet: the reading that holds the call's answer is the next step's.
+  const before = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  expect(await before.find({ type: 'Text', text: /\+42k/ })).toBeUndefined()
+  await before.unmount()
+
+  k.set(52_000)
+  await k.step(1)
+  for (const surface of ['desktop', 'terminal', 'vscode'] as const) {
+    const ui = await $.ui.mount({ ...PANE, surface })
+    // The figure stands after the time, in the same text and so in the same colour as the time.
+    expect((await ui.find({ type: 'Text', text: /\+42k$/ }))?.text).toMatch(/big\.ts +\d+ ms \+42k$/)
+    await ui.unmount()
+  }
+})
+
+test("a station's sum joins its count line on the map, after the counts", { options: COST }, async ($, on) => {
+  const k = costKit($, on)
+  await k.step(0)
+  await k.call('Read', { file_path: '/a/b/big.ts' })
+  k.set(52_000)
+  await k.step(1)
+  await k.call('Read', { file_path: '/a/b/other.ts' })
+  k.set(60_000)
+  await k.step(2)
+
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  // Two reads at Files: 42k and 8k.
+  expect(await sourceOf(ui)).toContain('>2 · 50k</text>')
+  await ui.unmount()
+})
+
+test("a station's sum takes the count line's own colour, on any theme, and follows the counts", () => {
+  const entry: Entry = { id: 'a', station: 'files', label: 'x', from: 'core', startedAt: 1, endedAt: 2, status: 'ok', tokens: 42_000 }
+  const board: Board = { entries: [entry], counts: { files: 1, memory: 3 }, pushed: 2, spent: { files: 42_000, memory: 9000 } }
+  expect(drawMap(board, NOW, setupFrom({ theme: 'dark', contextCost: true }))).toContain('fill="#6b7280">1 · 42k</text>')
+  expect(drawMap(board, NOW, setupFrom({ theme: 'light', contextCost: true }))).toContain('fill="#8b909a">1 · 42k</text>')
+  expect(drawMap(board, NOW, setupFrom({ theme: 'contrast', contextCost: true }))).toContain('fill="#b4b9c2">1 · 42k</text>')
+  expect(drawMap(board, NOW, setupFrom({ contextCost: true, colors: 'faint=#123456' }))).toContain('fill="#123456">1 · 42k</text>')
+  // Memory keeps its two counts first; the session's errors come before the sum.
+  expect(drawMap(board, NOW, setupFrom({ theme: 'dark', contextCost: true }))).toMatch(/1 <tspan fill="#[0-9a-f]{6}">↓2<\/tspan> · 9k<\/text>/)
+  const faulty: Board = { ...board, faultTotals: { files: 4 } }
+  expect(drawMap(faulty, NOW, setupFrom({ theme: 'dark', contextCost: true }))).toMatch(/1<tspan fill="#[0-9a-f]{6}"> · 4✕<\/tspan> · 42k<\/text>/)
+  // Without the option the line is the count alone.
+  expect(drawMap(board, NOW, setupFrom({ theme: 'dark' }))).toContain('fill="#6b7280">1</text>')
+})
+
+test('a few calls in one step share its growth evenly and are marked; many get no figure', { options: COST }, async ($, on) => {
+  const k = costKit($, on)
+  await k.step(0)
+  await k.call('Read', { file_path: '/a/b/one.ts' })
+  await k.call('Bash', { command: 'make', description: 'Build it' })
+  k.set(52_000)
+  await k.step(1)
+  const term = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  expect((await term.find({ type: 'Text', text: /~\+21k$/ }))?.text).toMatch(/~\+21k$/)
+  await term.unmount()
+
+  // Five calls at three stations: a share would say a short command cost as much as a large read.
+  for (const [tool, input] of [
+    ['Read', { file_path: '/a/b/c.ts' }],
+    ['Bash', { command: 'ls', description: 'List' }],
+    ['WebFetch', { url: 'https://example.com/x' }],
+    ['Grep', { pattern: 'x' }],
+    ['Read', { file_path: '/a/b/d.ts' }],
+  ] as const) {
+    await k.call(tool, input)
+  }
+  k.set(152_000)
+  await k.step(2)
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  expect(await ui.find({ type: 'Text', text: /\+20k$/ })).toBeUndefined()
+  // Files keeps the 21k of the first step and gets nothing of this one.
+  expect(await sourceOf(ui)).toContain('· 21k</text>')
+  await ui.unmount()
+})
+
+test('many calls at one station give their rows no figure, but the station its whole sum', { options: COST }, async ($, on) => {
+  const k = costKit($, on)
+  await k.step(0)
+  for (const name of ['a', 'b', 'c', 'd', 'e']) await k.call('Read', { file_path: `/x/y/${name}.ts` })
+  k.set(110_000)
+  await k.step(1)
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  expect(await ui.find({ type: 'Text', text: COST_FIGURE })).toBeUndefined()
+  expect(await sourceOf(ui)).toContain('>5 · 100k</text>')
+  await ui.unmount()
+})
+
+test("a call whose step was the last of its turn, one before a compaction and a subagent's call get no figure", { options: COST }, async ($, on) => {
+  const k = costKit($, on)
+  await k.step(0)
+  await k.call('Read', { file_path: '/a/b/last.ts' })
+  // The turn ends without another step: the next reading is the next turn's, with the next message in it.
+  await k.done()
+  k.set(80_000)
+  await k.step(0)
+
+  await k.call('Read', { file_path: '/a/b/before.ts' })
+  await $.session.compact({ trigger: 'auto', messages: [{ role: 'user', text: 'kept', toolUses: [] }] } as never)
+  k.set(20_000)
+  await k.step(1)
+  // Smaller than before: the context shrank, and nothing is put anywhere.
+  await k.call('Read', { file_path: '/a/b/after.ts' })
+  k.set(15_000)
+  await k.step(2)
+
+  // A subagent's call fills its own context, which the engine does not report.
+  await k.call('Read', { file_path: '/a/b/sub.ts' }, 'a1')
+  k.set(30_000)
+  await k.step(3)
+
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  for (const name of [/last\.ts/, /before\.ts/, /after\.ts/, /sub\.ts/]) expect(await ui.find({ type: 'Text', text: name })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: COST_FIGURE })).toBeUndefined()
+  await ui.unmount()
+})
+
+test("a folded row sums its calls' figures, and is marked when some of them have none", () => {
+  const at = (id: string, startedAt: number, more: Partial<Entry>): Entry => ({
+    id,
+    station: 'files',
+    label: id,
+    from: 'core',
+    startedAt,
+    endedAt: startedAt + 5,
+    status: 'ok',
+    ...more,
+  })
+  const whole = foldRows([at('a', 1, { tokens: 2000 }), at('b', 10, { tokens: 3000 })])[0]
+  expect([whole?.times, whole?.tokens, whole?.isShared]).toEqual([2, 5000, undefined])
+  const part = foldRows([at('a', 1, {}), at('b', 10, { tokens: 3000 })])[0]
+  expect([part?.times, part?.tokens, part?.isShared]).toEqual([2, 3000, true])
+  const none = foldRows([at('a', 1, {}), at('b', 10, {})])[0]
+  expect([none?.tokens, none?.isShared]).toEqual([undefined, undefined])
+  expect(foldRows([at('a', 1, { tokens: 700, shared: true })])[0]?.isShared).toBe(true)
+  expect(feedLines([at('a', 1, { tokens: 700, shared: true })], stringsFor('en'), {}, [], true)[0]?.line).toMatch(/ ~\+700$/)
+})
+
+test("a pulse's radius grows with its call's tokens, 3 at none to 7 from 50k, and only with contextCost", () => {
+  expect(pulseRadius(0, 3.8)).toBe(3)
+  expect(pulseRadius(50_000, 3.8)).toBe(7)
+  expect(pulseRadius(900_000, 3.8)).toBe(7)
+  expect(pulseRadius(12_500, 3.8)).toBe(5)
+  expect(pulseRadius(undefined, 3.8)).toBe(3.8)
+
+  const entry: Entry = { id: 'a', station: 'files', label: 'x', from: 'core', startedAt: NOW - 100, status: 'run', tokens: 50_000 }
+  const radii = (svg: string): number[] => [...svg.matchAll(/<circle r="([\d.]+)" fill="#[0-9a-f]{6}" opacity="0">/g)].map(m => Number(m[1]))
+  const board: Board = { entries: [entry], counts: { files: 1 } }
+  expect(Math.max(...radii(drawMap(board, NOW, setupFrom({ theme: 'dark', contextCost: true }))))).toBe(7)
+  expect(Math.max(...radii(drawMap(board, NOW, setupFrom({ theme: 'dark' }))))).toBe(3.8)
+})
+
+test('/workmap usage names the three heaviest calls of the session, label and tokens, the heaviest first', { options: COST }, async ($, on) => {
+  const k = costKit($, on)
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  let tokens = 10_000
+  await k.step(0)
+  for (const [name, grow] of [
+    ['a.ts', 5000],
+    ['b.ts', 40_000],
+    ['c.ts', 1000],
+    ['d.ts', 22_000],
+  ] as const) {
+    await k.call('Read', { file_path: `/x/y/${name}` })
+    k.set((tokens += grow))
+    await k.step(0)
+  }
+  const lines = String((await $.command.run({ command: 'workmap', args: 'usage' } as never)).text).split('\n')
+  const named = (lines.find(l => l.startsWith('Heaviest calls')) ?? '').split(': ').slice(1).join(': ').split('; ')
+  expect(named.length).toBe(3)
+  expect(named[0]).toMatch(/b\.ts \+40k$/)
+  expect(named[1]).toMatch(/d\.ts \+22k$/)
+  expect(named[2]).toMatch(/a\.ts \+5k$/)
+})
+
+test('a long session keeps its sums whole while the list keeps its newest entries', { options: COST, timeoutMs: 30_000 }, async ($, on) => {
+  const k = costKit($, on)
+  await k.step(0)
+  for (let i = 0; i < 60; i++) {
+    await k.call('Read', { file_path: `/x/y/f${i}.ts` })
+    k.set(10_000 + (i + 1) * 100)
+    await k.step(0)
+  }
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  expect(await sourceOf(ui)).toContain('>60 · 6k</text>')
+  await ui.unmount()
 })

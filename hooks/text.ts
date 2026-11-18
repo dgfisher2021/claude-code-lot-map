@@ -3,7 +3,7 @@
 import type { LimitKind, StationId } from '../types'
 
 /** 74000 as `74k`, 1500000 as `1.5M`. */
-const tokensShort = (n: number): string => (n >= 1_000_000 ? `${Math.round(n / 100_000) / 10}M` : n >= 1000 ? `${Math.round(n / 1000)}k` : String(n))
+export const tokensShort = (n: number): string => (n >= 1_000_000 ? `${Math.round(n / 100_000) / 10}M` : n >= 1000 ? `${Math.round(n / 1000)}k` : String(n))
 
 /** The window words of a language, the hover title and the reset phrase built from its parts. */
 const limits = (
@@ -104,6 +104,7 @@ export type Strings = {
   /** /workmap usage: the context's fill and, when known, its tokens of the window; the cost, an estimate; nothing to show. */
   usageContext: (percent: number, tokens?: number, window?: number) => string
   estimatedCost: (cost: string) => string
+  usageHeaviest: (calls: string) => string
   usageNothing: string
 }
 
@@ -166,6 +167,7 @@ const en: Strings = {
     '✎ Files changed this session, by name, most edited first; ×N is how many times.',
     'Amber ring and line: a command failing over and over, a call far past its usual time, a quiet turn.',
     'Rings around the centre: context, then the five-hour and weekly limits (red from 90); $ is the estimated cost.',
+    'contextCost: +42k after a row is what its call added to the context, ~ shared; at a station, a sum.',
     'Overview: /workmap all shows every session, the ones that need you first; amber waits, red errors.',
   ],
   callsHere: n => `${n} ${n === 1 ? 'call' : 'calls'} this session`,
@@ -211,6 +213,7 @@ const en: Strings = {
   usageContext: (percent, tokens, window) =>
     `Context: ${percent}%${tokens === undefined || window === undefined ? '' : ` · ${tokensShort(tokens)} of ${tokensShort(window)} tokens`}`,
   estimatedCost: cost => `Cost so far, an estimate: ${cost}`,
+  usageHeaviest: calls => `Heaviest calls, by what they added to the context: ${calls}`,
   usageNothing: 'The engine has no usage figures yet.',
 }
 
@@ -273,6 +276,7 @@ const ru: Strings = {
     '✎ Файлы, изменённые за сессию, по имени, чаще правленные первыми; ×N — сколько раз.',
     'Янтарное кольцо и строка: команда падает снова и снова, вызов затянулся, ход затих.',
     'Кольца вокруг центра: контекст, затем пятичасовой и недельный лимиты (красный от 90); $ — оценка стоимости.',
+    'contextCost: +42k у строки — прирост контекста от вызова, ~ — доля шага; у станции — сумма.',
     'Обзор: /workmap all — все сессии, сначала те, что ждут тебя; янтарный — ждёт, красный — ошибки.',
   ],
   callsHere: n => `вызовов за сессию: ${n}`,
@@ -317,6 +321,7 @@ const ru: Strings = {
   usageContext: (percent, tokens, window) =>
     `Контекст: ${percent}%${tokens === undefined || window === undefined ? '' : ` · ${tokensShort(tokens)} из ${tokensShort(window)} токенов`}`,
   estimatedCost: cost => `Стоимость пока, оценка: ${cost}`,
+  usageHeaviest: calls => `Самые тяжёлые вызовы по приросту контекста: ${calls}`,
   usageNothing: 'Данных об использовании у движка пока нет.',
 }
 
@@ -379,6 +384,7 @@ const es: Strings = {
     '✎ Archivos cambiados en la sesión, por nombre, los más editados primero; ×N son las veces.',
     'Anillo y línea ámbar: un comando que falla sin parar, una llamada muy lenta, un turno en silencio.',
     'Anillos junto al centro: contexto, límites de cinco horas y semanal (rojo desde 90); $ es el coste estimado.',
+    'contextCost: +42k tras una fila es lo que su llamada añadió al contexto, ~ compartido; en la estación, suma.',
     'Resumen: /workmap all muestra todas las sesiones, primero las que te esperan; ámbar espera, rojo errores.',
   ],
   callsHere: n => `${n} llamadas en esta sesión`,
@@ -426,6 +432,7 @@ const es: Strings = {
   usageContext: (percent, tokens, window) =>
     `Contexto: ${percent}%${tokens === undefined || window === undefined ? '' : ` · ${tokensShort(tokens)} de ${tokensShort(window)} tokens`}`,
   estimatedCost: cost => `Coste hasta ahora, una estimación: ${cost}`,
+  usageHeaviest: calls => `Llamadas más pesadas, por lo que añadieron al contexto: ${calls}`,
   usageNothing: 'El motor aún no tiene cifras de uso.',
 }
 
@@ -488,6 +495,7 @@ const fr: Strings = {
     '✎ Fichiers modifiés dans la session, par nom, les plus modifiés d’abord ; ×N est le nombre de fois.',
     'Anneau et ligne ambre : une commande qui échoue sans cesse, un appel trop long, un tour silencieux.',
     'Anneaux autour du centre : contexte, limites de cinq heures et hebdo (rouge dès 90) ; $ : le coût estimé.',
+    'contextCost : +42k après une ligne = ajout au contexte de son appel, ~ partagé ; à la station, la somme.',
     "Aperçu : /workmap all montre toutes les sessions, d'abord celles qui attendent ; ambre attente, rouge erreurs.",
   ],
   callsHere: n => `${n} appels pendant la session`,
@@ -535,6 +543,7 @@ const fr: Strings = {
   usageContext: (percent, tokens, window) =>
     `Contexte : ${percent} %${tokens === undefined || window === undefined ? '' : ` · ${tokensShort(tokens)} sur ${tokensShort(window)} tokens`}`,
   estimatedCost: cost => `Coût jusqu'ici, une estimation : ${cost}`,
+  usageHeaviest: calls => `Appels les plus lourds, par ce qu'ils ont ajouté au contexte : ${calls}`,
   usageNothing: "Le moteur n'a pas encore de chiffres d'usage.",
 }
 
@@ -597,6 +606,7 @@ const de: Strings = {
     '✎ In der Sitzung geänderte Dateien nach Namen, meistbearbeitete zuerst; ×N ist die Anzahl.',
     'Bernsteinring und -zeile: Befehl scheitert immer wieder, Aufruf dauert zu lange, Zug ist still.',
     'Ringe um die Mitte: Kontext, dann Fünf-Stunden- und Wochenlimit (rot ab 90); $ sind die geschätzten Kosten.',
+    'contextCost: +42k nach einer Zeile ist der Kontextzuwachs ihres Aufrufs, ~ geteilt; an der Station die Summe.',
     'Übersicht: /workmap all zeigt alle Sitzungen, zuerst die wartenden; Bernstein wartet, Rot Fehler.',
   ],
   callsHere: n => `${n} Aufrufe in dieser Sitzung`,
@@ -642,6 +652,7 @@ const de: Strings = {
   usageContext: (percent, tokens, window) =>
     `Kontext: ${percent} %${tokens === undefined || window === undefined ? '' : ` · ${tokensShort(tokens)} von ${tokensShort(window)} Tokens`}`,
   estimatedCost: cost => `Kosten bisher, geschätzt: ${cost}`,
+  usageHeaviest: calls => `Schwerste Aufrufe, nach dem Zuwachs des Kontexts: ${calls}`,
   usageNothing: 'Die Engine hat noch keine Nutzungswerte.',
 }
 
@@ -704,6 +715,7 @@ const it: Strings = {
     '✎ File modificati nella sessione, per nome, i più modificati prima; ×N è il numero di volte.',
     'Anello e riga ambra: un comando che fallisce di continuo, una chiamata troppo lunga, un turno in silenzio.',
     'Anelli attorno al centro: contesto, limiti di cinque ore e settimanale (rosso da 90); $ è il costo stimato.',
+    "contextCost: +42k dopo una riga: l'aggiunta della chiamata al contesto, ~ condiviso; alla stazione, somma.",
     'Panoramica: /workmap all mostra tutte le sessioni, prima quelle in attesa; ambra attesa, rosso errori.',
   ],
   callsHere: n => `${n} chiamate nella sessione`,
@@ -751,6 +763,7 @@ const it: Strings = {
   usageContext: (percent, tokens, window) =>
     `Contesto: ${percent}%${tokens === undefined || window === undefined ? '' : ` · ${tokensShort(tokens)} su ${tokensShort(window)} token`}`,
   estimatedCost: cost => `Costo finora, una stima: ${cost}`,
+  usageHeaviest: calls => `Chiamate più pesanti, per quanto hanno aggiunto al contesto: ${calls}`,
   usageNothing: "Il motore non ha ancora dati d'uso.",
 }
 
@@ -814,6 +827,7 @@ const pt: Strings = {
     '✎ Arquivos alterados na sessão, por nome, os mais editados primeiro; ×N é o número de vezes.',
     'Anel e linha âmbar: um comando que falha sem parar, uma chamada longa demais, um turno parado.',
     'Anéis em volta do centro: contexto, limites de cinco horas e semanal (vermelho desde 90); $ é custo estimado.',
+    'contextCost: +42k após uma linha é o que a chamada somou ao contexto, ~ partilhado; na estação, a soma.',
     'Visão geral: /workmap all mostra todas as sessões, primeiro as à espera; âmbar espera, vermelho erros.',
   ],
   callsHere: n => `${n} chamadas nesta sessão`,
@@ -861,6 +875,7 @@ const pt: Strings = {
   usageContext: (percent, tokens, window) =>
     `Contexto: ${percent}%${tokens === undefined || window === undefined ? '' : ` · ${tokensShort(tokens)} de ${tokensShort(window)} tokens`}`,
   estimatedCost: cost => `Custo até agora, uma estimativa: ${cost}`,
+  usageHeaviest: calls => `Chamadas mais pesadas, pelo que somaram ao contexto: ${calls}`,
   usageNothing: 'O motor ainda não tem números de uso.',
 }
 

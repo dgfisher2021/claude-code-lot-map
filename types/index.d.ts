@@ -32,6 +32,10 @@ export type Entry = {
   reason?: string
   /** The person's message this call came under: the `n` of a `TurnSummary`. */
   turn?: number
+  /** With `contextCost`: about how many tokens the context grew by with this call's answer. A number, never content. */
+  tokens?: number
+  /** The growth was one step's, shared evenly with the other calls of that step: shown with `~`. */
+  shared?: true
 }
 
 /** One message of the person's and what followed it: when, how many calls counted, how many ended in error. */
@@ -90,6 +94,10 @@ export type Board = {
   limits?: { kind: LimitKind; percent: number; resetsAt?: string }[]
   /** What the session has cost so far, in US dollars: an estimate. */
   cost?: number
+  /** With `contextCost`: about how many tokens each station's calls added to the context this session. */
+  spent?: Partial<Record<StationId, number>>
+  /** With `contextCost`: the three calls that added the most to the context this session, by label, the heaviest first. */
+  heaviest?: { label: string; tokens: number }[]
 }
 
 declare module 'claude-code' {

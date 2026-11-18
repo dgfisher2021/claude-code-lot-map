@@ -31,6 +31,7 @@ import {
 } from './map'
 import type { Setup } from './map'
 import { tilesFrom, tileText } from './overview'
+import { tokensShort } from './text'
 import type { Tile } from './overview'
 import { MAP_COLUMNS, MAP_MIN_COLUMNS, MAP_ROWS, PICTURE_CELL, mapSize, paceOf, paintMap } from './raster'
 
@@ -38,6 +39,13 @@ const PANE = 'lot-map'
 /** The terminal map's Raster or Image, by the key a repaint names it with. */
 const MAP = 'map'
 const KEEP = 80
+/**
+ * One step's growth of the context is shared evenly among its calls when there are at most this many. With more, an
+ * even share says too little: a large read and a short command would each show the same. Their rows then get no figure.
+ */
+const SHARED_AT_MOST = 3
+/** How many calls with the most growth the board keeps by name. */
+const HEAVIEST = 3
 /** How many refusals are remembered until their calls come by: a call that never comes would stay for the whole session. */
 const REFUSALS_KEPT = 64
 const CREW = 12
@@ -236,10 +244,50 @@ async function waitsOnYou($: EngineInterface, setup: Setup, calls: Map<string, s
   })
 }
 
-/** How full the context window is, as the status line has it; costs nothing. */
-async function contextOf($: EngineInterface): Promise<Pick<Board, 'context'>> {
-  const percent = await quietly(async () => (await $.session.usage()).context.percent)
-  return typeof percent === 'number' ? { context: percent } : {}
+/** How full the context window is, as the status line has it, and its tokens; costs nothing. */
+async function contextOf($: EngineInterface): Promise<{ patch: Pick<Board, 'context'>; tokens: number | undefined }> {
+  const context = await quietly(async () => (await $.session.usage()).context)
+  return {
+    patch: typeof context?.percent === 'number' ? { context: context.percent } : {},
+    tokens: typeof context?.tokens === 'number' ? context.tokens : undefined,
+  }
+}
+
+/**
+ * What one step of the main loop added to the context, put on the calls whose answers it was sent with.
+ *
+ * The engine reads the context as the input a response was answered over, so the calls of step N show in the reading
+ * of step N+1: `before` and `after` are those two readings. The growth also holds the model's own words, what a hook
+ * added and, at the start of a turn, the message: an estimate. A context that shrank, as at a compaction, puts nothing
+ * anywhere. Calls no longer in the list lose their figure.
+ *
+ * Up to SHARED_AT_MOST calls share it evenly, marked as shared. With more the rows get nothing, but when every call
+ * was at one station there is no doubt where it went, and that station's sum gets it whole.
+ */
+async function charge($: EngineInterface, calls: readonly string[], before: number | undefined, after: number | undefined): Promise<void> {
+  if (before === undefined || after === undefined || calls.length === 0 || after <= before) return
+  const grown = after - before
+  await quietly(() =>
+    update($, board, b => {
+      const own = b.entries.filter(e => calls.includes(e.id))
+      if (own.length === 0) return b
+      const share = calls.length <= SHARED_AT_MOST ? Math.round(grown / calls.length) : undefined
+      const spent = { ...b.spent }
+      const add = (station: StationId, tokens: number): void => {
+        spent[station] = (spent[station] ?? 0) + tokens
+      }
+      if (share !== undefined) for (const e of own) add(e.station, share)
+      else if (own.length === calls.length && new Set(own.map(e => e.station)).size === 1 && own[0] !== undefined) add(own[0].station, grown)
+      if (share === undefined) return { ...b, spent }
+      const heaviest = [...(b.heaviest ?? []), ...own.map(e => ({ label: e.label, tokens: share }))].sort((x, y) => y.tokens - x.tokens).slice(0, HEAVIEST)
+      return {
+        ...b,
+        spent,
+        heaviest,
+        entries: b.entries.map(e => (calls.includes(e.id) ? { ...e, tokens: share, ...(calls.length > 1 ? { shared: true as const } : {}) } : e)),
+      }
+    }),
+  )
 }
 
 /**
@@ -435,7 +483,7 @@ async function share($: EngineInterface, setup: Setup): Promise<void> {
         warnings: warnings.map(w => w.line),
         changed,
         pinned,
-        rows: feedLines(state.entries, setup.t, state.agentNames, state.turns),
+        rows: feedLines(state.entries, setup.t, state.agentNames, state.turns, setup.contextCost),
         empty: setup.t.nothingYet,
         legend: setup.t.legend,
         windowRows: setup.windowRows,
@@ -554,6 +602,9 @@ async function usageLines($: EngineInterface, setup: Setup): Promise<string> {
         ' · ',
       ),
     ),
+    ...(state.heaviest === undefined || state.heaviest.length === 0
+      ? []
+      : [t.usageHeaviest(state.heaviest.map(h => `${h.label} +${tokensShort(h.tokens)}`).join('; '))]),
     ...[costText(state.cost)].flatMap(cost => (cost === undefined ? [] : [t.estimatedCost(cost)])),
   ]
   return lines.length === 0 ? t.usageNothing : lines.join('\n')
@@ -748,6 +799,10 @@ export const register: Register = (on, options) => {
   let modelKey = 'model'
   /** The context's fill and window at the last measurement; forgotten at a session's start and end, so a /clear marks nothing. */
   let lastContext: { percent: number; window: number } | undefined
+  // With `contextCost`: the main loop's calls since its last model step, and the context that step was answered over.
+  // Lost with a reload, which costs at most one step's figures.
+  let awaiting: string[] = []
+  let lastTokens: number | undefined
   /**
    * The rows a person's prompt brought before its turn started, its settings hooks' and a typed skill's: they join the
    * turn when it starts. Unset while no prompt waits for its turn.
@@ -880,6 +935,9 @@ export const register: Register = (on, options) => {
         })
       }
     }
+    // The calls whose answers this step is sent with: those made since the last step. A call this step starts is the next one's.
+    const answered = isMain ? awaiting : []
+    if (isMain) awaiting = []
     const id = await begin($, {
       station: 'model',
       label: `${shortModel(e.model)} · ${t.step(e.index + 1)}${isMain ? '' : ` · ${t.subagent}`}`,
@@ -889,7 +947,16 @@ export const register: Register = (on, options) => {
     try {
       return yield* next(e)
     } finally {
-      await finish($, id, 'ok', isMain ? await contextOf($) : undefined)
+      if (isMain) {
+        const context = await contextOf($)
+        await finish($, id, 'ok', context.patch)
+        if (setup.contextCost) {
+          await charge($, answered, lastTokens, context.tokens)
+          lastTokens = context.tokens
+        }
+      } else {
+        await finish($, id, 'ok')
+      }
     }
   })
 
@@ -906,6 +973,8 @@ export const register: Register = (on, options) => {
         }))
       })
     } else {
+      // What the last step's calls added would show only in the next turn's first reading, beside the next message: none.
+      awaiting = []
       await begin($, {
         station: 'you',
         label: e.isAborted ? t.turnAborted : t.answerReady,
@@ -941,6 +1010,8 @@ export const register: Register = (on, options) => {
         ...(waits ? { waits: true as const } : {}),
       })
     })
+    // A subagent's calls fill its own context, which the engine does not report: only the main loop's are counted.
+    if (setup.contextCost && id !== undefined && e.agentId === undefined) awaiting = [...awaiting, id].slice(-KEEP)
     if (id !== undefined && e.tool_use_id !== undefined) {
       calls.set(e.tool_use_id, id)
       keepNewest(calls, REFUSALS_KEPT)
@@ -1102,10 +1173,13 @@ export const register: Register = (on, options) => {
     on('session.compact', async ($, e, next) => {
       const before = (await quietly(() => read($, board)))?.phase
       const id = await begin($, { station: 'model', label: t.compacting, patch: { phase: 'compacting' } })
+      // After a compaction the context starts again: no call before it gets a figure, and the next step only sets the mark.
+      awaiting = []
+      lastTokens = undefined
       try {
         return await next(e)
       } finally {
-        await finish($, id, 'ok', await contextOf($))
+        await finish($, id, 'ok', (await contextOf($)).patch)
         await quietly(() => update($, board, b => ({ ...b, phase: before })))
       }
     })
@@ -1127,6 +1201,10 @@ export const register: Register = (on, options) => {
       // A switch to a model with another window moves the fill with no compaction.
       const fell = lastContext !== undefined && lastContext.window === window && lastContext.percent - percent >= 30
       lastContext = { percent, window }
+      if (fell) {
+        awaiting = []
+        lastTokens = undefined
+      }
       if (!setup.guardedHooks && fell) await begin($, { station: 'model', label: t.compacted, status: 'ok' })
     })
     return next(e)
@@ -1138,7 +1216,7 @@ export const register: Register = (on, options) => {
     const { Box, Text } = $.ui.resolve(e)
 
     // Theme keys, so the rows read on a light theme as well as on a dark one.
-    const rows = feedLines(state.entries, t, state.agentNames, state.turns).map(({ line, tone, isBold }) => (
+    const rows = feedLines(state.entries, t, state.agentNames, state.turns, setup.contextCost).map(({ line, tone, isBold }) => (
       <Text
         mono
         size="footnote"

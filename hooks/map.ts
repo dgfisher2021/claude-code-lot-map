@@ -2,7 +2,7 @@
 // Nothing here touches the engine.
 import type { Board, Entry, PlanItem, StationId, Status, TurnSummary } from '../types'
 import { clean, formatMs, shortModel } from './classify'
-import { stringsFor } from './text'
+import { stringsFor, tokensShort } from './text'
 import type { Strings } from './text'
 
 export { classify, clean, firstLine, formatMs, memoryIds, shortModel } from './classify'
@@ -45,6 +45,8 @@ export type Setup = {
   hookReasons: boolean
   /** Whether the first line of a failed call's error is shown on its row. Off, the row says only that it failed. */
   errorReasons: boolean
+  /** Whether a row says about how much its call added to the context, a station's count line its sum, and a pulse's width follows it. */
+  contextCost: boolean
   /** Whether the mod listens to the five events an organisation's guard keeps a mod away from. Off, it adds no hook on them. */
   guardedHooks: boolean
   theme: 'auto' | 'dark' | 'light' | 'contrast'
@@ -98,6 +100,7 @@ export function setupFrom(options: Readonly<Record<string, unknown>> = {}): Setu
     hookRecords: options.hookRecords === true,
     hookReasons: options.hookReasons === true,
     errorReasons: options.errorReasons === true,
+    contextCost: options.contextCost === true,
     guardedHooks: !(options.guardedHooks === false || options.guardedHooks === 'false'),
     theme: options.theme === 'dark' || options.theme === 'light' || options.theme === 'contrast' ? options.theme : 'auto',
     background: options.background === 'transparent' ? 'transparent' : 'solid',
@@ -304,6 +307,11 @@ export function aside(a: Point, b: Point, off: number): [Point, Point] {
   return [{ x: a.x + dx, y: a.y + dy }, { x: b.x + dx, y: b.y + dy }]
 }
 
+/** With `contextCost`, a pulse's radius grows with its call's tokens: 3 at none, 7 from 50k, square-root scaled. */
+export function pulseRadius(tokens: number | undefined, fallback: number): number {
+  return tokens === undefined ? fallback : 3 + 4 * Math.sqrt(Math.min(Math.max(tokens, 0), 50_000) / 50_000)
+}
+
 /** A pulse with a short tail behind it. A hollow one is a signal nobody asked for. */
 function pulse(a: Point, b: Point, color: string, age: number, radius: number, isHollow = false): string {
   // A negative begin carries on where the last drawing left off, so a redraw never restarts a flight.
@@ -463,6 +471,8 @@ export function laneOf(list: readonly Entry[], e: Entry): number {
 }
 
 type Scene = {
+  /** With `contextCost` on: each station's tokens this session, for the count line. */
+  spent: Board['spent'] | undefined
   entries: Entry[]
   board: Board
   now: number
@@ -473,7 +483,11 @@ type Scene = {
   isStill: boolean
 }
 
-function station(s: (typeof STATIONS)[number], i: number, { entries, board, now, c, names, t, warned, isStill }: Scene): { under: string; over: string } {
+function station(
+  s: (typeof STATIONS)[number],
+  i: number,
+  { entries, board, now, c, names, t, warned, isStill, spent }: Scene,
+): { under: string; over: string } {
   const p = place(i)
   const x = n1(p.x)
   const y = n1(p.y)
@@ -543,7 +557,10 @@ function station(s: (typeof STATIONS)[number], i: number, { entries, board, now,
       pushed === 0 ? String(count) : `${asked > 0 ? `${asked} ` : ''}<tspan fill="${main}">↓${pushed}</tspan>`
     // After the count: what this turn added, then the session's errors in red.
     const extra = (turn > 0 && turn < count ? `<tspan fill-opacity="0.55"> +${turn}</tspan>` : '') + (total > 0 ? `<tspan fill="${c.red}"> · ${total}✕</tspan>` : '')
-    over += `<text x="${x}" y="${n1(p.y + NODE + 28)}" text-anchor="middle" ${FONT} font-size="9.5" ${rim} fill="${c.dim}">${figures}${extra}</text>`
+    // With `contextCost`, last: about how much the station's calls added to the context, in the count's own colour.
+    const tokens = spent?.[s.id] ?? 0
+    const cost = tokens > 0 ? ` · ${tokensShort(tokens)}` : ''
+    over += `<text x="${x}" y="${n1(p.y + NODE + 28)}" text-anchor="middle" ${FONT} font-size="9.5" ${rim} fill="${c.dim}">${figures}${extra}${cost}</text>`
   }
 
   // Top right: how many run at once. Top left: what went wrong since the last message, until the next one.
@@ -625,6 +642,7 @@ export function drawMap(board: Board, now: number, setup: Setup, isFilling = fal
   })
 
   const scene: Scene = {
+    spent: setup.contextCost ? board.spent : undefined,
     entries: recent,
     board,
     now,
@@ -649,12 +667,12 @@ export function drawMap(board: Board, now: number, setup: Setup, isFilling = fal
     if (e.from === 'inbound') {
       body += pulse(b, a, color, age, 3.8, true) + ripple(core, HUB - 2, color, age)
     } else {
-      body += pulse(a, b, color, age, 3.8) + ripple(place(indexOf(e.station)), NODE, color, age)
+      body += pulse(a, b, color, age, setup.contextCost ? pulseRadius(e.tokens, 3.8) : 3.8) + ripple(place(indexOf(e.station)), NODE, color, age)
     }
   }
   for (const e of returns) {
     const [a, b] = aside(...endsOf(e), laneOf(returns, e))
-    body += pulse(b, a, e.status === 'ok' ? c.ash : c.red, now - (e.endedAt as number), 2.6)
+    body += pulse(b, a, e.status === 'ok' ? c.ash : c.red, now - (e.endedAt as number), setup.contextCost ? pulseRadius(e.tokens, 2.6) : 2.6)
   }
 
   body += drawn.map(d => d.over).join('')
@@ -765,7 +783,32 @@ function escapeXml(text: string): string {
 // ---- the feed ---------------------------------------------------------------------------------
 
 /** A row of the feed: one entry, or several finished ones in a row at one station, shown as the newest of them. */
-export type Row = { entry: Entry; times: number; tookMs: number }
+export type Row = {
+  entry: Entry
+  times: number
+  tookMs: number
+  /** With `contextCost`: the tokens the row's calls added to the context, where any of them has a figure. */
+  tokens?: number
+  /** The figure is not all of it: one call's share of a step, or a folded row some of whose calls have none. */
+  isShared?: boolean
+}
+
+/** A row of one entry, with its share of the context if it has one. */
+const rowOf = (e: Entry, tookMs: number): Row => ({
+  entry: e,
+  times: 1,
+  tookMs,
+  ...(e.tokens === undefined ? {} : { tokens: e.tokens, ...(e.shared ? { isShared: true } : {}) }),
+})
+
+/** One more call folded into a row: its time and its tokens; the figure is partial when only one side has any. */
+function fold(row: Row, e: Entry, took: number): void {
+  row.times++
+  row.tookMs += took
+  if (e.tokens === undefined && row.tokens === undefined) return
+  if (e.tokens === undefined || row.tokens === undefined || e.shared) row.isShared = true
+  row.tokens = (row.tokens ?? 0) + (e.tokens ?? 0)
+}
 
 const isPlain = (e: Entry): boolean => e.status === 'ok' && e.mark === undefined
 
@@ -787,8 +830,7 @@ export function foldRows(entries: readonly Entry[], max = 16): Row[] {
     const took = e.endedAt === undefined ? 0 : Math.max(0, e.endedAt - e.startedAt)
     const last = rows[rows.length - 1]
     if (!isCut && last !== undefined && isPlain(e) && isPlain(last.entry) && last.entry.station === e.station && last.entry.from === e.from) {
-      last.times++
-      last.tookMs += took
+      fold(last, e, took)
       continue
     }
     if (rows.length >= max) {
@@ -796,11 +838,11 @@ export function foldRows(entries: readonly Entry[], max = 16): Row[] {
       isCut = true
       if (e.status !== 'run') continue
       const oldest = running[running.length - 1]
-      if (running.length < held || oldest === undefined) running.push({ entry: e, times: 1, tookMs: took })
+      if (running.length < held || oldest === undefined) running.push(rowOf(e, took))
       else oldest.times++
       continue
     }
-    rows.push({ entry: e, times: 1, tookMs: took })
+    rows.push(rowOf(e, took))
   }
   return running.length === 0 ? rows : [...rows.slice(0, max - running.length), ...running]
 }
@@ -982,11 +1024,12 @@ export function feedLines(
   t: Strings,
   agentNames: Readonly<Record<string, string>> = {},
   turns: readonly TurnSummary[] = [],
+  withCost = false,
 ): FeedLine[] {
   const open = turns[turns.length - 1]
   // Work still going in the background is pinned above the rows, not listed among them.
   const shown = entries.filter(e => !isPinned(e))
-  if (open === undefined) return rowLines(foldRows(shown), t, agentNames)
+  if (open === undefined) return rowLines(foldRows(shown), t, agentNames, withCost)
   const from = Math.max(0, turns.length - 1 - EARLIER)
   // An entry with no turn goes with the open one.
   const mine = shown.filter(e => e.turn === undefined || e.turn === open.n)
@@ -1004,15 +1047,17 @@ export function feedLines(
       return { line: t.turnHeader(x.n, formatMs(end - x.startedAt, t), x.calls, x.errors), tone: 'ok' }
     })
     .reverse()
-  return [header, ...rowLines(foldRows(mine, FEED_MAX - 1 - heads.length), t, agentNames), ...heads]
+  return [header, ...rowLines(foldRows(mine, FEED_MAX - 1 - heads.length), t, agentNames, withCost), ...heads]
 }
 
-function rowLines(rows: readonly Row[], t: Strings, agentNames: Readonly<Record<string, string>>): FeedLine[] {
+function rowLines(rows: readonly Row[], t: Strings, agentNames: Readonly<Record<string, string>>, withCost: boolean): FeedLine[] {
   const column = columnOf(t)
-  return rows.map(({ entry, times, tookMs }) => {
+  return rows.map(({ entry, times, tookMs, tokens, isShared }) => {
     const isSwitch = entry.mark === 'switch'
     const mark = isSwitch ? '◆' : entry.status === 'run' ? '●' : entry.status === 'ok' ? '·' : entry.status === 'block' ? '⊘' : '✕'
-    const took = entry.endedAt === undefined ? t.running : tookMs > 0 ? formatMs(tookMs, t) : ''
+    // With `contextCost`, what the call added to the context follows its time: `85 ms +42k`, `~+14k` when shared.
+    const cost = withCost && tokens !== undefined ? `${isShared ? '~' : ''}+${tokensShort(tokens)}` : ''
+    const took = [entry.endedAt === undefined ? t.running : tookMs > 0 ? formatMs(tookMs, t) : '', cost].filter(x => x !== '').join(' ')
     const exit = entry.exit === undefined ? '' : `  ${t.exitCode(entry.exit)}`
     // A subagent's call carries its name, when it is known.
     const agent = entry.agentId === undefined ? undefined : agentNames[entry.agentId]

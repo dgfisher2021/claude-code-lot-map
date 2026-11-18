@@ -97,6 +97,19 @@ The rows are grouped by your messages. The newest turn opens with a bold header,
 | --- | --- | --- |
 | ![A change of model](docs/map-switch.png) | ![After the answer](docs/map-after.png) | ![Light colours](docs/map-light.png) |
 
+### What each call adds to the context
+
+The ring says how full the context window is, not what filled it. With `contextCost` on, a call's row says about how many tokens the context grew by with its answer, after its time: `85 ms +42k`. A station's count line adds its sum for the session: `9 · 180k`, and `3 ↓2 · 9k` on Memory, after any errors. A pulse's width follows its call's tokens, from a small dot at none to a large one from 50k. `/workmap usage` names the three calls that added the most.
+
+It is an estimate. Claude Code tells a mod how many tokens the last response was answered over, so the mod sees how much the context grew from one model step to the next and puts that on the calls whose answers went with the step. The growth also holds the model's own words, what hooks added and, at the start of a turn, your message.
+
+- **One step late.** A call's figure shows when the next step has been answered, not when the call ends. A call made in the last step of a turn, before an interrupted turn or before a compaction never gets one, and a compaction, which makes the context smaller, puts nothing anywhere.
+- **Shared.** Two or three calls in one step share its growth evenly, and their figures are marked `~`: `~+14k`. With more calls in one step their rows get none, since an even share would give a large read and a short command the same figure; when all of them were at one station, that station's sum still gets the whole of it. A folded row adds up its calls' figures, marked `~` when some of them have none.
+- **The main loop only.** A subagent fills a context of its own, which Claude Code does not report: its calls get no figure. The growth its answer brought shows on the main loop's call that started it.
+- **Only what the list keeps.** A figure stands on a row only while the row is among the newest 80; the station sums and the three heaviest calls are kept for the session.
+
+Figures are whole numbers (`420`, `42k`). With `motion: reduced` no pulse is drawn, so none is wide either.
+
 ## In a terminal
 
 A terminal shows no drawing of the app's kind, so the map is painted into the pane's cells instead: each cell is split in four with the block characters `▘▝▀▖▌▞▛▗▚▐▜▄▙▟█` and given the two colours that fit it best, and the names and counts are written over it as text. Everything the drawing shows is there: the stations, the worn spokes, the route, the pulses and the rings, the clock hands, the context ring, the subagents circling their station.
@@ -165,6 +178,7 @@ The install offers them on a screen. Later, use `/config` in a terminal or `clau
 | `hookRecords` | `false` | turn on if a hook of yours adds memory records numbered like `[#123]`; they appear on Memory by number only. Such a number in the text of any hook counts, not only a memory hook's |
 | `hookReasons` | `false` | show the first line of a hook's refusal, up to 72 characters; off, the map says only which tool was stopped |
 | `errorReasons` | `false` | show the first line of a failed call's error after its row, as ` — cannot open file`, cleaned and cut to 72 characters; off, a row says only that the call failed (a shell command still shows its exit code). A refused call never shows one. It shows on its row in the pane and the window (whose feed file holds the rows), never in the `/workmap all` status file nor a notification |
+| `contextCost` | `false` | each row says about how many tokens the context grew by with its call's answer, a station's count line adds its sum, and a pulse's width follows its call's tokens. An estimate, shown one step late; see [What each call adds to the context](#what-each-call-adds-to-the-context) |
 | `guardedHooks` | `true` | turn off on a Team or Enterprise login where the transcript gets notices like `lot-map: its classic.PreToolUse hook was skipped`. An organisation's guard keeps mods away from five events there, and with this off the mod adds no hook on them. The map then loses the Hooks station, the records a hook adds, the row of a typed slash command and the mark of a compaction (it marks a sharp fall of the context in its place); a call a hook refused still gets its `✕`, as a failed call and not as a blocked one |
 | `theme` | `auto` | the map's colours: `dark`, `light`, `contrast`, or `auto`, which is dark on a dark surface and light on a light one. `contrast` is the dark palette on black, every word at 7:1 or more against the ground and every mark at 4.5:1 or more; colours of your own still win |
 | `motion` | `full` | `full`, or `reduced`: nothing on any surface moves by itself. No pulses, rings, beams or blinking; a lit station stays lit, whole, until its time is up and then goes out, as does a leg of the route; the running station keeps its ring, and its clock hands step every five seconds; the cells repaint every five seconds at most, and a picture is painted again only when the map changes |
@@ -220,7 +234,7 @@ The mod makes no network requests, reads no files, runs no processes, calls no m
 
 Like any mod that follows tool calls, it is handed every call's whole input, including command lines and the text written to files. It takes names from that and nothing else; the code that does so is `classify` in `hooks/classify.ts`. A marketplace added from this repository follows its `main` branch, so an update brings whatever is there: read the diff before updating if that matters to you.
 
-It asks Claude Code how full the context window is, after each model step and for `/workmap usage`, and hears the rate-limit windows and the estimated cost as the engine measures them. Between sessions it keeps one thing, the name of the model last used in each folder, so that it can show a change. Each is stored under the folder's full path, in Claude Code's own store for the plugin.
+It asks Claude Code how full the context window is, and with `contextCost` on how many tokens that is, after each model step and for `/workmap usage`, and hears the rate-limit windows and the estimated cost as the engine measures them. Between sessions it keeps one thing, the name of the model last used in each folder, so that it can show a change. Each is stored under the folder's full path, in Claude Code's own store for the plugin.
 
 What its hooks do. The mod listens to the session's start, prompts, turns, model steps, tool calls, skills, compaction, and to three events of settings hooks: `PreToolUse`, where it sees whether a hook refused the call, asked for permission or took a moment, and `UserPromptSubmit` and `SessionStart`, where it sees the context a hook added. Each of its hooks passes the event on as it came and returns what came back as it was: it changes no input, no result, no context and no permission decision, and makes none of its own. Its one command, `/lot-map`, also called `/workmap`, opens the pane, or in Windows Terminal from WSL the window; `/lot-map window` opens [a window of its own](#a-window-of-its-own).
 
