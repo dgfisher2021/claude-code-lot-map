@@ -16,6 +16,7 @@ What changed in each version of lot-map, newest first. To get a new version, see
 - New option `errorReasons`, off by default: a failed call's row shows the first line of its error after the label, ` — cannot open file`, cleaned and cut to 72 characters. A refused call shows none; the `/workmap all` status file and notifications never carry it.
 
 - New option `contextCost`, from upstream's #83, off by default: a row says about how many tokens the context grew by with its call's answer, after its time (`85 ms +42k`, `~+14k` when a step's growth is shared by two or three calls; more get no row figure), and a station's count line adds its sum (`9 · 180k`). It is an estimate shown one step late; a subagent's calls get none. A pulse's width grows with its call's tokens, from a radius of 3 at none to 7 from 50k. `/workmap usage` names the three calls that added the most. The legend has one more line.
+- A timeline strip under the map shows where the time went: a mark for every call, with memory in its colour, errors in red and waits on you dashed amber, and a tick at each message of yours. The map is 448 tall now. The dock's map draws the same strip as one row of quarter blocks, when it has a row to spare under the lowest station's name.
 
 ## 0.11.0 (2026-11-17)
 
