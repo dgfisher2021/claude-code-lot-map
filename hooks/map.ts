@@ -64,6 +64,8 @@ export type Setup = {
   terminalPicture: 'auto' | 'off'
   /** In Windows Terminal from WSL, whether the map is a window of its own in place of the pane (`auto`) or the pane (`off`). */
   terminalWindow: 'auto' | 'off'
+  /** Whether a spoke wears by its station's calls or by its share of the busy time. */
+  spokes: 'calls' | 'time'
   /** Whether a wait on the person and a finished turn raise a notification. */
   notify: boolean
   /** The rows the map window keeps for the list under the map: 3 to 30. */
@@ -110,9 +112,27 @@ export function setupFrom(options: Readonly<Record<string, unknown>> = {}): Setu
     terminalMap: options.terminalMap !== false,
     terminalPicture: options.terminalPicture === 'off' ? 'off' : 'auto',
     terminalWindow: options.terminalWindow === 'off' ? 'off' : 'auto',
+    spokes: options.spokes === 'time' ? 'time' : 'calls',
     notify: options.notify === true,
     windowRows: Math.min(30, Math.max(3, Math.round(Number(options.windowRows ?? 10)) || 10)),
   }
+}
+
+const busyAll = (board: Board): number => Object.values(board.busyMs ?? {}).reduce((a, b) => a + b, 0)
+
+/** A station's share of the session's busy time, in whole percent. */
+export function timeShareOf(board: Board, id: StationId): number {
+  const all = busyAll(board)
+  return all > 0 ? Math.round(((board.busyMs?.[id] ?? 0) / all) * 100) : 0
+}
+
+/** How worn a spoke is, 0 to 1: by the station's calls, or with `spokes: time` by its share of the busy time, on the same scale. */
+export function wearOf(board: Board, id: StationId, setup: Setup): number {
+  if (setup.spokes !== 'time') return Math.min(1, Math.log2(1 + (board.counts[id] ?? 0)) / 7)
+  const all = busyAll(board)
+  const calls = Object.values(board.counts).reduce((a, b) => a + b, 0)
+  const asCalls = all > 0 ? ((board.busyMs?.[id] ?? 0) / all) * calls : 0
+  return Math.min(1, Math.log2(1 + asCalls) / 7)
 }
 
 // ---- drawing ----------------------------------------------------------------------------------
@@ -553,6 +573,7 @@ function station(
     `<text x="${x}" y="${n1(p.y + NODE + 15)}" text-anchor="middle" ${FONT} font-size="11.5" ${rim} fill="${isLit || isAlarm ? c.bone : c.ash}">${names[s.id]}</text>`
 
   const turn = board.turnCounts?.[s.id] ?? 0
+  const share = timeShareOf(board, s.id)
   const total = board.faultTotals?.[s.id] ?? 0
   if (count > 0) {
     // Memory keeps two counts: what was asked for, and what a hook brought down unasked.
@@ -594,6 +615,7 @@ function station(
     turn > 0 && turn < count ? t.thisTurn(turn) : '',
     faults > 0 ? t.errorsHere(faults) : '',
     blocks > 0 ? t.refusedHere(blocks) : '',
+    share > 0 ? t.timeShare(share) : '',
     total > 0 ? t.errorsInSession(total) : '',
   ]
   const title = `${names[s.id]}: ${figures.filter(f => f !== '').join(' · ')}`
@@ -640,7 +662,7 @@ export function drawMap(board: Board, now: number, setup: Setup, isFilling = fal
     const p = place(i)
     const a = edge(core, p, HUB)
     const b = edge(p, core, NODE)
-    const worn = Math.min(1, Math.log2(1 + (board.counts[s.id] ?? 0)) / 7)
+    const worn = wearOf(board, s.id, setup)
     const line = `<line x1="${n1(a.x)}" y1="${n1(a.y)}" x2="${n1(b.x)}" y2="${n1(b.y)}" stroke-width="${n1(1 + 2.6 * worn)}" stroke-linecap="round"`
     body += `${line} stroke="${c.spoke}"/>`
     if (worn > 0) body += `${line} stroke="${s.id === 'memory' ? c.mem : c.accent}" opacity="${n1(worn * 0.55)}"/>`

@@ -34,6 +34,7 @@ import {
   stateOf,
   stationState,
   warningsOf,
+  wearOf,
 } from './map'
 import type { Palette, Point, Setup } from './map'
 
@@ -442,7 +443,7 @@ export function paintMap(board: Board, now: number, setup: Setup, columns: numbe
     const p = place(i)
     const a = edge(core, p, HUB)
     const b = edge(p, core, NODE)
-    const worn = Math.min(1, Math.log2(1 + (board.counts[st.id] ?? 0)) / 7)
+    const worn = wearOf(board, st.id, setup)
     const width = (HAIR + 1.6 * worn) / s
     cv.path([a, b], width, c.spoke)
     if (worn > 0) cv.path([a, b], width, st.id === 'memory' ? c.mem : c.accent, worn * 0.55)

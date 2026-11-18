@@ -136,6 +136,10 @@ async function keepSatellite($: EngineInterface, tool: string, input: Record<str
   await update($, board, b => ({ ...b, satellites: withSatellite(b.satellites, seen.station, clean(name, 40), CHANGING_TOOLS.has(tool), now) }))
 }
 
+/** A call that ended adds its time to its station: one number per station, whatever the length of the session. */
+export const busier = (b: Board, e: Entry, endedAt: number): Pick<Board, 'busyMs'> =>
+  e.station === 'model' || e.station === 'you' ? {} : { busyMs: { ...b.busyMs, [e.station]: (b.busyMs?.[e.station] ?? 0) + Math.max(0, endedAt - (e.ranAt ?? e.startedAt)) } }
+
 async function begin($: EngineInterface, start: Start): Promise<string | undefined> {
   return quietly(async () => {
     const now = await $.clock.now()
@@ -191,6 +195,7 @@ async function finish($: EngineInterface, id: string | undefined, status: Status
           return { ...bare(e), status: closed, endedAt: now, ...(exit === undefined || refusal ? {} : { exit }), ...(reason === undefined || refusal ? {} : { reason }) }
         }),
         ...(open !== undefined ? tally(b, open.station, closed, open.agentId, open.turn) : {}),
+        ...(open !== undefined ? busier(b, open, now) : {}),
       }
     })
   })
@@ -213,6 +218,7 @@ async function settle($: EngineInterface, task: string, status: Status): Promise
         ...b,
         entries: b.entries.map(e => (e === open ? { ...e, status, endedAt: now } : e)),
         ...tally(b, open.station, status, open.agentId, open.turn),
+        ...busier(b, open, now),
       }
     })
   })
