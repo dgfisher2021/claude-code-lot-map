@@ -533,7 +533,8 @@ const place: { at: number; value?: Place } = { at: 0 }
 
 /** The folder's repository by one `git rev-parse` (its common folder, its top, its branch); a folder outside git, by its name. */
 async function placeOf($: EngineInterface): Promise<Place | undefined> {
-  const cwd = overview.cwd
+  // The session's root follows a worktree it moves into or a /cd; the folder it started in is the fallback.
+  const cwd = (await quietly(() => $.session.root())) || overview.cwd
   if (cwd === '') return undefined
   const base = (path: string): string => path.split(/[\\/]/).filter(Boolean).at(-1) ?? path
   const ran = await quietly(() => $.process.run(['git', '-C', cwd, 'rev-parse', '--path-format=absolute', '--git-common-dir', '--show-toplevel', '--abbrev-ref', 'HEAD']))
