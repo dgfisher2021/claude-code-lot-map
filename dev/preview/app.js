@@ -74,10 +74,10 @@ function setTime(s) {
 
 // ---- drawing ----------------------------------------------------------------------------------
 
-/** The map's room in the pane: what is left above the rows, the hint and the gap. */
+/** The map's room in the pane: what is left above the rows and the gap. */
 function mapRoom() {
   const rows = Math.max(3, Number(state.options.windowRows) || 10)
-  const room = Math.max(120, pane.clientHeight - (rows + 1) * LINE_H - 16)
+  const room = Math.max(120, pane.clientHeight - rows * LINE_H - 16)
   // As large as the width allows while the rows keep their room, as renderer/layout.mjs lays out the window.
   return { w: pane.clientWidth, h: Math.min(room, Math.round((pane.clientWidth * (lib?.H ?? 430)) / (lib?.W ?? 460))) }
 }
@@ -216,11 +216,13 @@ function tipHtml(t) {
 }
 
 function showTip() {
+  if (helpShown) return
   const rich = pointer && tipAt(pointer.x, pointer.y)
   const text = pointer && !rich && titleAt(pointer.x, pointer.y)
   tip.style.display = rich || text ? 'block' : 'none'
   if (!rich && !text) return
   tip.classList.toggle('rich', Boolean(rich))
+  tip.classList.remove('help')
   if (rich) tip.innerHTML = tipHtml(rich)
   else tip.textContent = text
   // Beside the pointer, flipped to the other side near an edge of the window.
@@ -237,6 +239,57 @@ mapBox.addEventListener('mouseleave', () => {
   pointer = undefined
   showTip()
 })
+
+// ---- keys and commands ----------------------------------------------------------------------
+
+// What the ? in the corner explains: the window's keys, then the commands typed in the chat.
+const KEYS = [
+  [['m'], 'Map and list, the map alone, or the list alone'],
+  [['?'], 'What the marks on the map mean'],
+  [['↑', '↓', 'PgUp', 'PgDn'], 'Scroll back through every call'],
+  [['e'], 'Only errors and refusals'],
+  [['1', '–', '9'], "One station's calls", '0 shows all again'],
+  [['a'], "One subagent's calls at a time"],
+  [['/'], 'Search the rows', 'Enter keeps it, Esc clears it'],
+  [['q'], 'Close the window'],
+]
+const COMMANDS = [
+  ['/workmap', 'Open the map again'],
+  ['/workmap help', 'What the marks mean'],
+  ['/workmap usage', 'Context, limits and cost'],
+  ['/workmap recap', 'The session in a few lines'],
+  ['/workmap log', 'Every call, newest first'],
+  ['/workmap changed', 'The files Claude changed'],
+  ['/workmap all', 'Every session at a glance'],
+]
+function helpHtml() {
+  const keys = KEYS.map(
+    ([keys, does, more]) =>
+      `<span>${keys.map(k => (k === '–' ? '–' : `<kbd>${esc(k)}</kbd>`)).join(' ')}</span><span>${esc(does)}${more ? `<br><small>${esc(more)}</small>` : ''}</span>`,
+  ).join('')
+  const commands = COMMANDS.map(([command, does]) => `<span><kbd>${esc(command)}</kbd></span><span>${esc(does)}</span>`).join('')
+  return (
+    `<div class="tip-head">${$('help').innerHTML}<strong>Keys and commands</strong></div>` +
+    // One grid for both sections, so every description starts in the same column.
+    `<div class="keys"><div class="tip-section">In this window</div>${keys}<div class="tip-section">In the chat</div>${commands}</div>`
+  )
+}
+let helpShown = false
+function showHelp(isShown) {
+  helpShown = isShown
+  tip.style.display = isShown ? 'block' : 'none'
+  if (!isShown) return
+  tip.classList.add('rich', 'help')
+  tip.innerHTML = helpHtml()
+  // Under the icon, its right edge on the icon's, kept on screen.
+  const icon = $('help').getBoundingClientRect()
+  tip.style.left = `${Math.max(8, icon.right - tip.offsetWidth)}px`
+  tip.style.top = `${icon.bottom + 6}px`
+}
+$('help').addEventListener('mouseenter', () => showHelp(true))
+$('help').addEventListener('mouseleave', () => showHelp(false))
+$('help').addEventListener('focus', () => showHelp(true))
+$('help').addEventListener('blur', () => showHelp(false))
 
 // ---- notes ------------------------------------------------------------------------------------
 
