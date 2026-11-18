@@ -2,6 +2,10 @@
 
 What changed in each version of workmap, newest first; up to 0.12.0 it was called lot-map. To get a new version, see [Updating](README.md#updating).
 
+## 1.2.1 (2026-11-18)
+
+- The window's title follows the session into a worktree, or a folder `/cd` takes it to: it showed the folder the session started in, so a session moved into a worktree read as `main` with no worktree.
+
 ## 1.2.0 (2026-11-18)
 
 - What you need to do: nothing but update. `terminalWindow` of `pane` reads as `auto`, which is the split now; `edge` opens the Edge window first.
