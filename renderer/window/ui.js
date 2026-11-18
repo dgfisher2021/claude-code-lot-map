@@ -14,11 +14,12 @@ const ICONS = {
   tokens: '<path d="m12 3 9 4.5-9 4.5-9-4.5zM3 12l9 4.5 9-4.5M3 16.5l9 4.5 9-4.5"/>',
 }
 
-// A most-used item's icon: a pencil for a file edited, an eye for one only read, a server for an MCP server.
+// A listed item's icon: a pencil for a file edited, an eye for one only read, a server, a clock for a subagent at work.
 const TOP_ICONS = {
   edited: '<path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>',
   read: '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
   server: '<path d="M4 4h16v6H4zM4 14h16v6H4zM8 7h.01M8 17h.01"/>',
+  clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
 }
 
 // An icon carries its own size, so it stays small even before the page's styles apply.
@@ -58,7 +59,7 @@ function usageHtml(tip) {
   const rows = tip.rows
     .map(
       r =>
-        `<div class="fig usage">${r.color ? `<i class="swatch" style="background:${esc(r.color)}"></i>` : svgIcon(COIN)}` +
+        `<div class="fig usage${r.isReached ? ' t-bad' : ''}">${r.color ? `<i class="swatch" style="background:${esc(r.color)}"></i>` : svgIcon(COIN)}` +
         `<span>${esc(r.label)}${r.note ? `<small>${esc(r.note)}</small>` : ''}</span><b>${esc(r.value)}</b></div>`,
     )
     .join('')
@@ -121,16 +122,48 @@ function parted(el, text) {
  * Draws the lines under the map (lines.mjs feedLines) into `box`, each in its tone, the top line bold. A plan line
  * wraps between its parts, its later lines under the words rather than the mark; every other line keeps to one.
  */
+/** The lines under the map: a call's row in four aligned columns (mark, station, what, time), every other line as text. */
 export function drawLines(box, lines) {
+  // The station column is as wide as the longest station name among the rows.
+  const widest = Math.max(4, ...lines.filter(l => l.cols).map(l => [...l.cols[1]].length))
+  box.style.setProperty('--station', `${widest}ch`)
   box.replaceChildren(
     ...lines.map(l => {
       const div = document.createElement('div')
-      div.className = l.isNow ? `n-${l.tone}` : l.isLegend ? 'legend' : `t-${l.tone}${l.isBold ? ' b' : ''}${l.isPlan ? ' wrap' : ''}`
+      div.className = l.isNow ? `n-${l.tone}` : l.isLegend ? 'legend' : `t-${l.tone}${l.isBold ? ' b' : ''}${l.isPlan ? ' wrap' : ''}${l.cols ? ' row' : ''}`
       if (l.isPlan) parted(div, l.line)
-      else div.textContent = String(l.line)
+      else if (l.cols) {
+        for (const text of l.cols) {
+          const span = document.createElement('span')
+          span.textContent = text
+          div.append(span)
+        }
+      } else div.textContent = String(l.line)
       return div
     }),
   )
+}
+
+/**
+ * A handle between the map and the lines: dragging it sets how tall the lines are, `onDrag(px)` while it moves and
+ * `onDone(px)` when it is let go.
+ */
+export function wireSplit(handle, onDrag, onDone) {
+  let height
+  handle.addEventListener('pointerdown', e => {
+    handle.setPointerCapture(e.pointerId)
+    const move = ev => {
+      height = Math.round(innerHeight - ev.clientY - handle.offsetHeight / 2)
+      onDrag(height)
+    }
+    const up = () => {
+      handle.removeEventListener('pointermove', move)
+      handle.removeEventListener('pointerup', up)
+      if (height !== undefined) onDone(height)
+    }
+    handle.addEventListener('pointermove', move)
+    handle.addEventListener('pointerup', up)
+  })
 }
 
 /** The `?` button's icon: a question mark in a circle. */

@@ -69,11 +69,11 @@ export type Strings = {
   errorsInSession: (n: number) => string
   /** A station's tooltip: what lands there (commands in backticks), and the label of each figure. */
   stationAbout: Record<StationId, string>
-  tip: { calls: string; turn: string; running: string; time: string; errors: string; session: string; refused: string; pushed: string; tokens: string; mostUsed: string; read: string; local: string }
+  tip: { calls: string; turn: string; running: string; time: string; errors: string; session: string; refused: string; pushed: string; tokens: string; mostUsed: string; read: string; local: string; working: string }
   /** The map window's line of local servers: its label. */
   localTitle: string
   /** The core's tooltip: what it shows, the session's context, the cost and that it is an estimate. */
-  usage: { about: string; session: string; cost: string; estimate: string }
+  usage: { about: string; session: string; cost: string; estimate: string; reached: string }
   /** A word under a station for what it is doing now. */
   doing: Record<Exclude<StationId, 'agents' | 'you' | 'model'> | 'reading' | 'editing' | 'searching' | 'thinking' | 'compacting' | 'needsYou' | 'permission', string>
   /** The map window's ? button: its keys, each with what it does. */
@@ -117,8 +117,6 @@ export type Strings = {
   /** A failed shell command's exit code, in its row. */
   exitCode: (n: number) => string
   /** Warnings under the top line: a command failing again and again, a call running past its usual time, a turn gone quiet. */
-  failedInARow: (station: string, label: string, n: number) => string
-  runningLong: (station: string, label: string, elapsed: string, usual: string) => string
   quietFor: (minutes: number) => string
   /** Claude's plan over the rows: how many of how many tasks are done, and the calls a finished task took. */
   planHeader: (done: number, total: number) => string
@@ -151,7 +149,7 @@ const en: Strings = {
     web: 'Network',
     browser: 'Browser',
     agents: 'Agents',
-    skills: 'Skills',
+    skills: 'Skills & MCP',
     hooks: 'Hooks',
   },
   newMessage: 'new message',
@@ -220,10 +218,10 @@ const en: Strings = {
     files:
       "Read, Write, Edit, Grep, Glob, a language server's code intelligence, and shell commands that work on files and nothing else: they read, search, move, delete or edit in place (`cat`, `grep`, `mv`, `rm`, `sed`, `tee`, `find … -delete`)",
     shell: 'every other shell command',
-    web: 'web fetch and search, MCP servers, work kept on claude.ai (artifacts, projects, designs), and shell commands known to reach the network: `curl`, `gh`, `ssh`, `rsync`, `git push`, `npm install`, `docker pull` and the like, also inside `$(…)`',
+    web: 'web fetch and search, work kept on claude.ai (artifacts, projects, designs), and shell commands known to reach the network: `curl`, `gh`, `ssh`, `rsync`, `git push`, `npm install`, `docker pull` and the like, also inside `$(…)`',
     browser: 'browser tools',
     agents: 'subagents, workflows, schedules, and waiting on background work; their own calls start from this station',
-    skills: 'skills, tool search, and the skill, plugin and connector catalogue',
+    skills: 'skills, MCP servers and their connectors, tool search, and the skill, plugin and connector catalogue',
     hooks: 'settings hooks that refuse a call, ask for permission, add context or take a moment',
   },
   tip: {
@@ -239,9 +237,10 @@ const en: Strings = {
     mostUsed: 'Most used',
     read: 'read',
     local: 'Local servers Claude used',
+    working: 'Working now',
   },
   localTitle: 'Local',
-  usage: { about: 'The model answering, and how much is used', session: 'Session context', cost: 'Cost so far', estimate: 'an estimate' },
+  usage: { about: 'The model answering, and how much is used', session: 'Session context', cost: 'Cost so far', estimate: 'an estimate', reached: 'limit reached' },
   doing: {
     memory: 'recalling',
     files: 'working',
@@ -316,8 +315,6 @@ const en: Strings = {
   minutes: (m, s) => `${m} min ${s} s`,
   wholeMinutes: m => `${m} min`,
   exitCode: n => `exit ${n}`,
-  failedInARow: (s, l, n) => `Failing again and again: ${s} ${l} · ${n} times in a row`,
-  runningLong: (s, l, e, u) => `${s} ${l} has run ${e}, usually ${u}`,
   quietFor: m => `Nothing has happened for ${m} min`,
   ...limits(
     { five_hour: 'Five-hour', seven_day: 'Weekly' },
@@ -440,8 +437,6 @@ const ru: Strings = {
   minutes: (m, s) => `${m} мин ${s} с`,
   wholeMinutes: m => `${m} мин`,
   exitCode: n => `код ${n}`,
-  failedInARow: (s, l, n) => `Снова и снова падает: ${s} ${l} · ${n} раз подряд`,
-  runningLong: (s, l, e, u) => `${s} ${l} идёт уже ${e}, обычно ${u}`,
   quietFor: m => `Ничего не происходит уже ${m} мин`,
   ...limits(
     { five_hour: 'Пятичасовой', seven_day: 'Недельный' },
@@ -567,8 +562,6 @@ const es: Strings = {
   minutes: (m, s) => `${m} min ${s} s`,
   wholeMinutes: m => `${m} min`,
   exitCode: n => `exit ${n}`,
-  failedInARow: (s, l, n) => `Falla una y otra vez: ${s} ${l} · ${n} veces seguidas`,
-  runningLong: (s, l, e, u) => `${s} ${l} lleva ${e}, suele tardar ${u}`,
   quietFor: m => `No pasa nada desde hace ${m} min`,
   ...limits(
     { five_hour: 'De cinco horas', seven_day: 'Semanal' },
@@ -694,8 +687,6 @@ const fr: Strings = {
   minutes: (m, s) => `${m} min ${s} s`,
   wholeMinutes: m => `${m} min`,
   exitCode: n => `exit ${n}`,
-  failedInARow: (s, l, n) => `Échoue encore et encore : ${s} ${l} · ${n} fois de suite`,
-  runningLong: (s, l, e, u) => `${s} ${l} dure depuis ${e}, d’ordinaire ${u}`,
   quietFor: m => `Rien ne se passe depuis ${m} min`,
   ...limits(
     { five_hour: 'De cinq heures', seven_day: 'Hebdomadaire' },
@@ -819,8 +810,6 @@ const de: Strings = {
   minutes: (m, s) => `${m} Min. ${s} s`,
   wholeMinutes: m => `${m} Min.`,
   exitCode: n => `Code ${n}`,
-  failedInARow: (s, l, n) => `Scheitert immer wieder: ${s} ${l} · ${n} Mal hintereinander`,
-  runningLong: (s, l, e, u) => `${s} ${l} läuft seit ${e}, sonst ${u}`,
   quietFor: m => `Seit ${m} Min. passiert nichts`,
   ...limits(
     { five_hour: 'Fünf-Stunden', seven_day: 'Wochen' },
@@ -946,8 +935,6 @@ const it: Strings = {
   minutes: (m, s) => `${m} min ${s} s`,
   wholeMinutes: m => `${m} min`,
   exitCode: n => `exit ${n}`,
-  failedInARow: (s, l, n) => `Fallisce di continuo: ${s} ${l} · ${n} volte di fila`,
-  runningLong: (s, l, e, u) => `${s} ${l} va avanti da ${e}, di solito ${u}`,
   quietFor: m => `Non succede nulla da ${m} min`,
   ...limits(
     { five_hour: 'Di cinque ore', seven_day: 'Settimanale' },
@@ -1074,8 +1061,6 @@ const pt: Strings = {
   minutes: (m, s) => `${m} min ${s} s`,
   wholeMinutes: m => `${m} min`,
   exitCode: n => `exit ${n}`,
-  failedInARow: (s, l, n) => `Falha repetidas vezes: ${s} ${l} · ${n} vezes seguidas`,
-  runningLong: (s, l, e, u) => `${s} ${l} roda há ${e}, costuma levar ${u}`,
   quietFor: m => `Nada acontece há ${m} min`,
   ...limits(
     { five_hour: 'De cinco horas', seven_day: 'Semanal' },

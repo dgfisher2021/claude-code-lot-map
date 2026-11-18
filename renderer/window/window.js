@@ -2,16 +2,17 @@
 // are the terminal window's: m, ?, the arrows and PgUp/PgDn, e, 1-9 and 0, a, / and q.
 
 import { feedLines, freshList, listKey, nextAgent } from './lines.mjs'
-import { drawLines, drawLocal, setHelp, showTip, untitle, watchLocal, wireHelp } from './ui.js'
+import { drawLines, drawLocal, setHelp, showTip, untitle, watchLocal, wireHelp, wireSplit } from './ui.js'
 
 const $ = id => document.getElementById(id)
 const mapBox = $('map')
 const linesBox = $('lines')
 const localBox = $('local')
+const splitBox = $('split')
 const help = $('help')
 const tip = $('tip')
 const live = new URLSearchParams(location.search).get('live') ?? ''
-const LINE_H = 17
+const LINE_H = 22
 /** Rows the map keeps however short the window, as layout.mjs has it: the list gives way first. */
 const MAP_MIN_ROWS = 12
 
@@ -38,12 +39,23 @@ function aspect() {
 }
 
 /** The map as large as the width allows while the list keeps the session's windowRows, never under twelve rows. */
+/** How tall you dragged the lines to be, kept for the next window; until then, the session's windowRows. */
+let listPx = Number(load('workmap-list-px')) || 0
+function load(key) {
+  try {
+    return localStorage.getItem(key)
+  } catch {
+    return null
+  }
+}
+
 function mapSize() {
   if (view === 'list') return { w: 0, h: 0 }
   // The line of local servers, when it shows, takes its room from the map's.
   const room = innerHeight - (localBox.hidden ? 0 : localBox.offsetHeight)
   const listRows = Math.max(3, Number(feed.windowRows) || 10)
-  const tall = view === 'map' ? room : Math.max(MAP_MIN_ROWS * LINE_H, room - listRows * LINE_H - 8)
+  const list = listPx > 0 ? listPx : listRows * LINE_H + 8
+  const tall = view === 'map' ? room : Math.max(MAP_MIN_ROWS * 17, room - list - splitBox.offsetHeight)
   return { w: innerWidth, h: Math.max(0, Math.min(tall, Math.round(innerWidth * aspect()))) }
 }
 
@@ -63,10 +75,11 @@ function drawMap() {
 
 function drawRows() {
   if (view === 'map') return
+  // A page for the keys is what fits; the lines hold more, and the wheel scrolls them.
   const room = Math.max(1, Math.floor((linesBox.clientHeight - 8) / LINE_H))
-  const shown = feedLines(feed, list, room, showsLegend)
+  const shown = feedLines(feed, list, Math.max(room, 200), showsLegend)
   list = shown.list
-  page = shown.page ?? page
+  page = room
   drawLines(linesBox, shown.lines)
 }
 
@@ -150,4 +163,17 @@ mapBox.addEventListener('mouseleave', () => {
   showTip(tip, mapBox, pointer)
 })
 wireHelp(tip, help, () => feed.keyHelp)
+wireSplit(
+  splitBox,
+  px => {
+    listPx = Math.max(3 * LINE_H, Math.min(innerHeight - MAP_MIN_ROWS * 17, px))
+    drawMap()
+    drawRows()
+  },
+  () => {
+    try {
+      localStorage.setItem('workmap-list-px', String(listPx))
+    } catch {}
+  },
+)
 watchLocal(localBox)

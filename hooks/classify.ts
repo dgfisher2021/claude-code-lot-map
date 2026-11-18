@@ -632,12 +632,12 @@ export function classify(tool: string, input: Record<string, unknown>, setup: Se
     case 'PublishPlugin':
       return { station: 'web', label: tool }
     // An MCP server's resources: Memory when the server is one of the person's memory servers, the station the person
-    // gave it in `serverStations`, else as any MCP call.
+    // gave it in `serverStations`, else Skills, as any MCP call.
     // The server's name decides the station; the label is the tool's name, never the resource's address.
     case 'ListMcpResourcesTool':
     case 'ReadMcpResourceTool':
     case 'ReadMcpResourceDirTool':
-      return { station: setup.memoryServers.has(str(input.server)) ? 'memory' : (setup.serverStations.get(str(input.server)) ?? 'web'), label: tool }
+      return { station: setup.memoryServers.has(str(input.server)) ? 'memory' : (setup.serverStations.get(str(input.server)) ?? 'skills'), label: tool }
     case 'Agent':
       return { station: 'agents', label: str(input.description) || t.subagent }
     case 'Monitor':
@@ -727,8 +727,8 @@ export function classify(tool: string, input: Record<string, unknown>, setup: Se
   }
   if (server === 'terminal') return { station: 'shell', label: name.replace(/_+/g, ' ') }
   if (server === 'visualize' || server.startsWith('ccd_')) return { station: 'you', label: name.replace(/_+/g, ' ') }
-  if (server === 'plugin-authoring') return { station: 'skills', label: name.replace(/_+/g, ' ') }
-  return { station: 'web', label: `${server}: ${name.replace(/_+/g, ' ')}` }
+  // Any other MCP server sits with the skills: both are what Claude is given to work with, beyond its own tools.
+  return { station: 'skills', label: `${server}: ${name.replace(/_+/g, ' ')}` }
 }
 
 /** `claude-opus-5-5` reads as `opus 5.5`. */

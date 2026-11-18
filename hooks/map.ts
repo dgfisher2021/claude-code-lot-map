@@ -163,10 +163,6 @@ export type Palette = {
   memHot: string
   /** The route between stations: as light as the words on a dark ground, a soft grey on a light one, where a thin dark line weighs much more. */
   trail: string
-  /** The usage rings round the core, each its own colour whatever its fill: the session's context, the five-hour limit, the weekly limit. */
-  session: string
-  fiveHour: string
-  week: string
 }
 
 const DARK: Palette = {
@@ -184,9 +180,6 @@ const DARK: Palette = {
   memHot: '#a5e6dc',
   // One step away from `bone`, so that the light rules can give the route a color of its own.
   trail: '#ebe6dd',
-  session: '#7aa2f7',
-  fiveHour: '#bb9af7',
-  week: '#9ece6a',
 }
 
 const LIGHT: Palette = {
@@ -203,9 +196,6 @@ const LIGHT: Palette = {
   mem: '#1c8c81',
   memHot: '#136a62',
   trail: '#9c978b',
-  session: '#3a64c8',
-  fiveHour: '#8250c4',
-  week: '#4d8a2a',
 }
 
 /** The dark palette at full contrast: text at 7:1 or more against the ground, every mark at 4.5:1 or more. */
@@ -223,9 +213,6 @@ const CONTRAST: Palette = {
   mem: '#4de3d1',
   memHot: '#b3fff5',
   trail: '#f0f0f0',
-  session: '#9cbcff',
-  fiveHour: '#d4b8ff',
-  week: '#b4e88a',
 }
 
 const PALETTES = { auto: DARK, dark: DARK, light: LIGHT, contrast: CONTRAST }
@@ -260,9 +247,6 @@ export const COLOR_NAMES: Record<string, keyof Palette> = {
   memory: 'mem',
   memoryActive: 'memHot',
   route: 'trail',
-  session: 'session',
-  fiveHour: 'fiveHour',
-  week: 'week',
 }
 
 /**
@@ -528,7 +512,7 @@ export type TipFigure = {
 }
 
 /** One of a station's most used: a file (edited, or only read) or an MCP server, with how often. */
-export type TipItem = { name: string; uses: string; icon: 'edited' | 'read' | 'server'; note?: string }
+export type TipItem = { name: string; uses: string; icon: 'edited' | 'read' | 'server' | 'clock'; note?: string }
 
 /**
  * A station's tooltip: its name, what lands there, and its figures (the calls and this turn always, the rest when they have
@@ -536,13 +520,14 @@ export type TipItem = { name: string; uses: string; icon: 'edited' | 'read' | 's
  */
 export type StationTip = { station: StationId; name: string; about: string; figures: TipFigure[]; top?: { title: string; items: TipItem[] } }
 
-export function stationTip(board: Board, id: StationId, t: Strings, running = 0, spent?: Board['spent']): StationTip {
+export function stationTip(board: Board, id: StationId, t: Strings, running = 0, spent?: Board['spent'], now?: number): StationTip {
   const count = board.counts[id] ?? 0
   const pushed = id === 'memory' ? Math.min(count, board.pushed ?? 0) : 0
   const share = timeShareOf(board, id)
   const tokens = spent?.[id] ?? 0
   const when = (n: number, figure: TipFigure): TipFigure[] => (n > 0 ? [figure] : [])
-  // Browser lists the local servers Claude's calls used; a file or server station, its most used.
+  // Agents lists the subagents at work; Browser the local servers Claude's calls used; a file or server station, its most used.
+  const crew = id === 'agents' ? crewOf(board) : []
   const local = id === 'browser' ? (board.local ?? []) : []
   const listed = listedOf(board.satellites?.[id])
   const items = listed.map(
@@ -567,6 +552,16 @@ export function stationTip(board: Board, id: StationId, t: Strings, running = 0,
       ...when(tokens, { icon: 'tokens', label: t.tip.tokens, value: `~${tokensShort(tokens)}` }),
     ],
     ...(items.length > 0 ? { top: { title: t.tip.mostUsed, items } } : {}),
+    ...(crew.length > 0
+      ? {
+          top: {
+            title: t.tip.working,
+            items: crew.map(
+              (m): TipItem => ({ name: m.name ?? t.subagent, uses: m.since === undefined || now === undefined ? '' : formatClock(now - m.since, t), icon: 'clock' }),
+            ),
+          },
+        }
+      : {}),
     ...(local.length > 0 ? { top: { title: t.tip.local, items: local.map((l): TipItem => ({ name: l.host, uses: '', icon: 'server' })) } } : {}),
   }
 }
@@ -734,7 +729,7 @@ function station(
   ]
   const title = `${names[s.id]}: ${figures.filter(f => f !== '').join(' · ')}`
   // The title for a surface that shows only text; the tooltip's parts for one that draws its own.
-  const tip = escapeXml(JSON.stringify(stationTip(board, s.id, t, running.length, spent)))
+  const tip = escapeXml(JSON.stringify(stationTip(board, s.id, t, running.length, spent, now)))
   return { under, over: `<g data-tip="${tip}"><title>${escapeXml(title)}</title>${over}</g>` }
 }
 
@@ -756,89 +751,17 @@ export function framedMap(board: Board, now: number, setup: Setup, width: number
 
 // ---- the crew at the agents station -----------------------------------------------------------
 
-/** A subagent still at work, or a Workflow's agents as one: its label and when it began. */
-type Crew = { label?: string; since?: number; isFaulty: boolean; isRun: boolean }
+/** A subagent still at work: its short name and when it began. */
+type Crew = { id: string; name?: string; since?: number }
 
-const CREW_LABELS = 6
-const CREW_ROW = 9
-
-/** The crew in `board.agents` order: each subagent, a Workflow's agents as one with `done/started`. */
+/** The subagents still at work, in `board.agents` order, each with when its first call started. */
 function crewOf(board: Board): Crew[] {
-  const live = board.agents ?? []
-  const info = board.agentInfo ?? {}
-  const faulty = board.agentFaults ?? []
-  const first = (id: string): number | undefined => {
+  return (board.agents ?? []).map(id => {
     const own = board.entries.filter(e => e.agentId === id).map(e => e.startedAt)
-    return own.length > 0 ? Math.min(...own) : info[id]?.at
-  }
-  const seen = new Set<string>()
-  const crew: Crew[] = []
-  for (const id of live) {
-    const run = info[id]?.run
-    if (run === undefined) {
-      const name = Array.from(board.agentNames?.[id] ?? '').slice(0, 10).join('')
-      const since = first(id)
-      crew.push({ ...(name === '' ? {} : { label: name }), ...(since === undefined ? {} : { since }), isFaulty: faulty.includes(id), isRun: false })
-    } else if (!seen.has(run)) {
-      seen.add(run)
-      const all = Object.keys(info).filter(x => info[x]?.run === run)
-      const starts = all.map(first).filter((x): x is number => x !== undefined)
-      crew.push({
-        label: `${all.filter(x => !live.includes(x)).length}/${all.length}`,
-        ...(starts.length > 0 ? { since: Math.min(...starts) } : {}),
-        isFaulty: all.some(x => faulty.includes(x)),
-        isRun: true,
-      })
-    }
-  }
-  return crew
-}
-
-/** Whether a stack of `rows` labels with its top edge at `top` beside `at` stands clear of the canvas edge and of every other station's name and count. */
-function isClear(at: Point, top: number, rows: number): boolean {
-  const bottom = top + CREW_ROW * (rows - 1) + 9
-  return (
-    top >= 2 &&
-    bottom <= H - 2 &&
-    STATIONS.every((s, i) => {
-      const p = place(i)
-      return s.id === 'agents' || at.x - 30 >= p.x + 33 || at.x + 26 <= p.x - 33 || bottom <= p.y - 30 || top >= p.y + 54
-    })
-  )
-}
-
-/** The crew's label rows: those shown, and the top edge of their stack, under the station's count or above it when that room is taken. */
-function crewRows(crew: readonly Crew[], at: Point): { shown: Crew[]; top: number } {
-  const shown = crew.filter(m => m.label !== undefined).slice(0, CREW_LABELS)
-  const height = CREW_ROW * (shown.length - 1) + 9
-  const below = at.y + NODE + 36
-  const above = at.y - NODE - 16 - height
-  return { shown, top: isClear(at, below, shown.length) || !isClear(at, above, shown.length) ? below : above }
-}
-
-/** The label rows of the first six: a dot, its clock arc (a lap a minute) and its name, under the station's count, or above it when that room is taken. */
-function crewLabels(crew: readonly Crew[], at: Point, c: Palette, now: number, isStill: boolean): string {
-  const { shown, top } = crewRows(crew, at)
-  if (shown.length === 0) return ''
-  let out = ''
-  shown.forEach((m, k) => {
-    const y = top + 7 + k * CREW_ROW
-    const cx = at.x - 24
-    const cy = y - 2.5
-    const ring = `cx="${n1(cx)}" cy="${n1(cy)}" r="3.4" fill="none" stroke-width="1" pathLength="1"`
-    out += `<circle ${ring} stroke="${c.line}"/><circle cx="${n1(cx)}" cy="${n1(cy)}" r="1.6" fill="${m.isFaulty ? c.red : c.hot}"/>`
-    if (m.since !== undefined) {
-      const elapsed = Math.max(0, now - m.since)
-      const held = isStill ? elapsed - (elapsed % STILL_STEP_MS) : elapsed
-      const done = held % 60_000
-      const arc = `<circle ${ring} stroke="${m.isFaulty ? c.red : c.hot}" stroke-dasharray="1 1" transform="rotate(-90 ${n1(cx)} ${n1(cy)})"`
-      out += isStill
-        ? `${arc} stroke-dashoffset="${n1(1 - done / 60_000)}"/>`
-        : `${arc} stroke-dashoffset="1"><animate attributeName="stroke-dashoffset" values="1;0" begin="${clock(-done)}" dur="${clock(60_000)}" repeatCount="indefinite"/></circle>`
-    }
-    out += `<text x="${n1(at.x - 17)}" y="${n1(y)}" text-anchor="start" ${FONT} font-size="7" paint-order="stroke" stroke="${c.ground}" stroke-width="3" stroke-linejoin="round" fill="${c.ash}">${escapeXml(m.label as string)}</text>`
+    const since = own.length > 0 ? Math.min(...own) : board.agentInfo?.[id]?.at
+    const name = board.agentNames?.[id]
+    return { id, ...(name ? { name } : {}), ...(since === undefined ? {} : { since }) }
   })
-  return out
 }
 
 /** Every subagent the window can pick: those named, then those still at work, each with its id. */
@@ -848,13 +771,16 @@ export function agentList(board: Board): { id: string; name: string }[] {
 }
 
 
+/** A warning triangle on a 24-unit grid: a limit reached. */
+const WARNING = 'M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h16.9a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0zM12 9v4M12 17h.01'
+
 /** The usage rings: the first's middle, each band's width, and the step from one band to the next. */
 const RING_FIRST = 3.5
 const RING_W = 3
 const RING_STEP = 4.6
 
 /** A row of the core's tooltip: a swatch of its ring's colour (none for the cost), what it measures, the figure, and a note. */
-export type UsageRow = { color: string; label: string; value: string; note?: string; ring?: number }
+export type UsageRow = { color: string; label: string; value: string; note?: string; ring?: number; isReached?: true }
 
 /** The core's tooltip: the model answering, then the session's context, the five-hour and weekly limits, and the cost. */
 export type UsageTip = { kind: 'usage'; name: string; about: string; rows: UsageRow[] }
@@ -866,7 +792,9 @@ export function usageTip(board: Board, now: number, setup: Setup, c: Palette): U
     const found = board.limits?.find(l => l.kind === kind)
     if (found === undefined) return [{ color, label: t.limitNames[kind], value: '–' }]
     const until = untilText(found.resetsAt, now, t)
-    return [{ color, label: t.limitNames[kind], value: `${pct(found.percent)}%`, ring: pct(found.percent), ...(until === undefined ? {} : { note: t.resetsIn(until) }) }]
+    const isReached = found.percent >= 100
+    const note = [...(isReached ? [t.usage.reached] : []), ...(until === undefined ? [] : [t.resetsIn(until)])].join(' · ')
+    return [{ color, label: t.limitNames[kind], value: `${pct(found.percent)}%`, ring: pct(found.percent), ...(note === '' ? {} : { note }), ...(isReached ? { isReached: true as const } : {}) }]
   }
   const spent = costText(board.cost)
   return {
@@ -875,10 +803,10 @@ export function usageTip(board: Board, now: number, setup: Setup, c: Palette): U
     about: t.usage.about,
     rows: [
       board.context === undefined
-        ? { color: c.session, label: t.usage.session, value: '–' }
-        : { color: c.session, label: t.usage.session, value: `${pct(board.context)}%`, ring: pct(board.context) },
-      ...limit('five_hour', c.fiveHour),
-      ...limit('seven_day', c.week),
+        ? { color: c.accent, label: t.usage.session, value: '–' }
+        : { color: c.accent, label: t.usage.session, value: `${pct(board.context)}%`, ring: pct(board.context) },
+      ...limit('five_hour', c.ash),
+      ...limit('seven_day', c.mem),
       ...(spent === undefined ? [] : [{ color: '', label: t.usage.cost, value: spent, note: t.usage.estimate }]),
     ],
   }
@@ -950,28 +878,26 @@ export function drawMap(board: Board, now: number, setup: Setup, isFilling = fal
 
   body += drawn.map(d => d.over).join('')
 
-  // Each subagent still at work circles the agents station; a Workflow's agents are one dot between them.
+  // Each subagent still at work circles the agents station; its name and time are in the station's tooltip.
   const crew = crewOf(board)
-  crew.forEach((member, k) => {
+  crew.forEach((_, k) => {
     const lap = 7000
     const spin = `${n1(agentsAt.x)} ${n1(agentsAt.y)}`
-    // A subagent a call of which failed or was refused circles in red.
-    const dot = member.isFaulty ? c.red : c.hot
-    const mark = `<circle cx="${n1(agentsAt.x)}" cy="${n1(agentsAt.y - NODE - 6)}" r="${member.isRun ? 4 : 3}" fill="${dot}"/>`
+    const mark = `<circle cx="${n1(agentsAt.x)}" cy="${n1(agentsAt.y - NODE - 6)}" r="3" fill="${c.hot}"/>`
     // Standing still, each keeps its own place on the circle.
     body += isStill
       ? `<g transform="rotate(${n1((360 * k) / crew.length)} ${spin})">${mark}</g>`
       : `<g><animateTransform attributeName="transform" type="rotate" from="0 ${spin}" to="360 ${spin}" begin="${clock(-((now + (k * lap) / crew.length) % lap))}" dur="${clock(lap)}" repeatCount="indefinite"/>${mark}</g>`
   })
-  body += crewLabels(crew, agentsAt, c, now, isStill)
 
   // The core breathes at rest and quickens while something runs.
   const period = anyRunning ? 1600 : 4800
   const breath = `begin="${clock(-(now % period))}" dur="${clock(period)}" repeatCount="indefinite"`
+  // It reaches a little past the outermost usage ring.
   body += isStill
-    ? `<circle cx="${CX}" cy="${CY}" r="${CORE + 8}" fill="${c.accent}" opacity="${anyRunning ? '.16' : '.08'}"/>`
-    : `<circle cx="${CX}" cy="${CY}" r="${CORE + 6}" fill="${c.accent}" opacity=".08">` +
-      `<animate attributeName="r" values="${CORE + 3};${CORE + 13};${CORE + 3}" ${breath}/>` +
+    ? `<circle cx="${CX}" cy="${CY}" r="${CORE + 20}" fill="${c.accent}" opacity="${anyRunning ? '.16' : '.08'}"/>`
+    : `<circle cx="${CX}" cy="${CY}" r="${CORE + 12}" fill="${c.accent}" opacity=".08">` +
+      `<animate attributeName="r" values="${CORE + 8};${CORE + 22};${CORE + 8}" ${breath}/>` +
       `<animate attributeName="opacity" values=".05;${anyRunning ? '.24' : '.12'};.05" ${breath}/></circle>`
 
   // The core and its usage rings are one thing to hover: the model, then what is used.
@@ -993,10 +919,20 @@ export function drawMap(board: Board, now: number, setup: Setup, isFilling = fal
   // The model in the middle: it is always Claude, so the model is what tells one session from another.
   const name = board.model === undefined ? setup.core : shortModel(board.model)
   const nameSize = Math.min(15, 62 / (0.62 * Math.max(4, [...name].length)))
-  const spent = costText(board.cost)
-  ringed += `<text x="${CX}" y="${CY + (spent === undefined ? 5 : 2)}" text-anchor="middle" ${FONT} font-size="${n1(nameSize)}" letter-spacing="${n1(nameSize * 0.06)}" fill="${isSwitching ? c.hot : c.bone}">${escapeXml(name)}</text>`
-  if (spent !== undefined) ringed += `<text x="${CX}" y="${CY + 16}" text-anchor="middle" ${FONT} font-size="8" fill="${c.dim}">${spent}</text>`
+  if (board.context !== undefined) {
+    ringed += `<text x="${CX}" y="${CY - 13}" text-anchor="middle" ${FONT} font-size="9" fill="${c.dim}">${Math.round(Math.max(0, Math.min(100, board.context)))}%</text>`
+  }
+  ringed += `<text x="${CX}" y="${CY + 5}" text-anchor="middle" ${FONT} font-size="${n1(nameSize)}" letter-spacing="${n1(nameSize * 0.06)}" fill="${isSwitching ? c.hot : c.bone}">${escapeXml(name)}</text>`
   const plain = [usage.name, ...usage.rows.map(r => `${r.label} ${r.value}`)].join(' · ')
+  // A limit reached wears a warning at the core's upper right, outside its rings.
+  if (usage.rows.some(r => r.isReached === true)) {
+    const at = (CORE + 19) * Math.SQRT1_2
+    const bx = CX + at
+    const by = CY - at
+    ringed +=
+      `<circle cx="${n1(bx)}" cy="${n1(by)}" r="9" fill="${c.raised}" stroke="${c.red}" stroke-width="1.2"/>` +
+      `<path transform="translate(${n1(bx - 6)} ${n1(by - 6.3)}) scale(.5)" d="${WARNING}" fill="none" stroke="${c.red}" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>`
+  }
   body += `<g data-tip="${escapeXml(JSON.stringify(usage))}"><title>${escapeXml(plain)}</title>${ringed}</g>`
 
   // A changed model rings at the core and at its station for a few seconds.
@@ -1296,7 +1232,14 @@ export function recapLines(
 }
 
 /** A row of the feed as written: at work, finished, gone wrong, refused, a change of model, or plain words. */
-export type FeedLine = { line: string; agentId?: string; tone: 'run' | 'ok' | 'bad' | 'block' | 'switch' | 'plain'; isBold?: true }
+/** A line under the map; a row of a call also carries its parts (mark, station, label, time), for a window that aligns them. */
+export type FeedLine = {
+  line: string
+  agentId?: string
+  tone: 'run' | 'ok' | 'bad' | 'block' | 'switch' | 'plain'
+  isBold?: true
+  cols?: [string, string, string, string]
+}
 
 /** The most lines the rows take, headers included. */
 const FEED_MAX = 16
@@ -1367,9 +1310,11 @@ function rowLines(rows: readonly Row[], t: Strings, agentNames: Readonly<Record<
     // A subagent's call carries its name, when it is known.
     const agent = entry.agentId === undefined ? undefined : agentNames[entry.agentId]
     const label = agent === undefined ? entry.label : `↳ ${agent} · ${entry.label}`
-    const line = `${mark} ${t.stations[entry.station].padEnd(column)} ${label}${times > 1 ? `  +${times - 1}` : ''}${exit}${entry.reason === undefined ? '' : ` — ${entry.reason}`}${took === '' ? '' : `  ${took}`}`
+    const what = `${label}${times > 1 ? `  +${times - 1}` : ''}${exit}${entry.reason === undefined ? '' : ` — ${entry.reason}`}`
+    const line = `${mark} ${t.stations[entry.station].padEnd(column)} ${what}${took === '' ? '' : `  ${took}`}`
     const tone = isSwitch ? 'switch' : entry.status === 'run' ? 'run' : entry.status === 'ok' ? 'ok' : entry.status === 'block' ? 'block' : 'bad'
-    return { line, ...(entry.agentId === undefined ? {} : { agentId: entry.agentId }), tone }
+    const cols: FeedLine['cols'] = [mark, t.stations[entry.station], what, took]
+    return { line, cols, ...(entry.agentId === undefined ? {} : { agentId: entry.agentId }), tone }
   })
 }
 
@@ -1418,53 +1363,14 @@ export function stateOf(board: Board): SessionState {
 /** A sign that the session looks stuck, and the station it sits at, when it has one. */
 type Warning = { station?: StationId; line: string }
 
-const LOOP_MIN = 3
-const LONG_MS = 60_000
-const LONG_TIMES = 5
 const QUIET_MS = 180_000
 
-/** Work meant to run long, or to wait on the person, is never stuck. */
-const isPatient = (e: Entry): boolean => e.task !== undefined || e.waits === true || e.asks === true
-
 /**
- * What looks stuck, at most three: a command failing again and again in one loop, a call running far past its station's
- * usual time, a running turn with nothing new for three minutes.
+ * What looks stuck: a running turn with nothing new for three minutes.
  */
 export function warningsOf(board: Board, now: number, t: Strings): Warning[] {
   const out: Warning[] = []
-  const own = board.entries.filter(e => e.station !== 'model' && e.station !== 'you')
-
-  // A loop: the main loop's and each subagent's finished calls, newest first, the same failure from the newest back.
-  const loops = new Map<string | undefined, Entry[]>()
-  for (const e of own) if (e.status !== 'run') loops.set(e.agentId, [e, ...(loops.get(e.agentId) ?? [])])
   const state = stateOf(board)
-  const isGoing = (id: string | undefined): boolean =>
-    id === undefined ? ['thinking', 'running', 'waiting'].includes(state) : (board.agents ?? []).includes(id)
-  for (const [id, list] of loops) {
-    if (!isGoing(id)) continue
-    const [last] = list
-    if (last === undefined || last.status !== 'err') continue
-    const n = list.findIndex(e => e.status !== 'err' || e.station !== last.station || e.label !== last.label)
-    const streak = n === -1 ? list.length : n
-    if (streak >= LOOP_MIN) out.push({ station: last.station, line: t.failedInARow(t.stations[last.station], last.label, streak) })
-  }
-
-  // A call far past its station's median, each timed from when it was allowed to run.
-  for (const e of own) {
-    // A foreground subagent is work meant to run long.
-    if (e.status !== 'run' || isPatient(e) || e.station === 'agents') continue
-    const took = own
-      .filter(x => x.station === e.station && x.endedAt !== undefined && (x.status === 'ok' || x.status === 'err') && x.task === undefined)
-      .map(x => (x.endedAt ?? x.startedAt) - (x.ranAt ?? x.startedAt))
-      .sort((a, b) => a - b)
-    if (took.length < 3) continue
-    const median = took[Math.floor(took.length / 2)] ?? 0
-    const elapsed = now - (e.ranAt ?? e.startedAt)
-    if (elapsed > LONG_MS && elapsed > LONG_TIMES * median) {
-      out.push({ station: e.station, line: t.runningLong(t.stations[e.station], e.label, formatClock(elapsed, t), formatMs(median, t)) })
-    }
-  }
-
   // A running turn with nothing running and nothing starting or ending.
   if ((state === 'thinking' || state === 'running') && board.entries.length > 0 && !board.entries.some(e => e.status === 'run')) {
     const newest = Math.max(...board.entries.map(e => Math.max(e.startedAt, e.endedAt ?? 0)))

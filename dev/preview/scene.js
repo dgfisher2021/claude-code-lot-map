@@ -22,7 +22,7 @@ const SCRIPT = [
   call(-206, 0.4, 'files', 'hooks/map.ts', { file: 'hooks/map.ts', edit: true, tokens: 600 }),
   call(-204, 6, 'shell', 'Run the tests', { end: 'err', exit: 1, reason: '2 tests failed', tokens: 3100 }),
   call(-197, 2, 'model', 'opus 5.5 · step 3', { step: 3 }),
-  call(-194, 1.2, 'web', 'github: list issues', { server: 'github', tokens: 5200 }),
+  call(-194, 1.2, 'skills', 'github: list issues', { server: 'github', tokens: 5200 }),
   call(-192, 0.8, 'web', 'github.com', { tokens: 7000 }),
   call(-190, 4, 'model', 'opus 5.5 · step 4', { step: 4, answer: true }),
 
@@ -93,7 +93,6 @@ export function boardAt(s, base, figures) {
   const files = new Map()
   const servers = new Map()
   let local = []
-  const agentFaults = new Set()
   let step
   let answeredAt
   const turns = []
@@ -144,7 +143,6 @@ export function boardAt(s, base, figures) {
     if (status === 'block') {
       blocks = bump(blocks, c.station)
       blockTotals = bump(blockTotals, c.station)
-      if (c.agent) agentFaults.add(c.agent)
     }
     if (c.station !== 'model' && c.station !== 'you' && !c.task) {
       busyMs = bump(busyMs, c.station, Math.round((Math.min(s, c.at + c.dur) - c.at) * 1000))
@@ -205,14 +203,13 @@ export function boardAt(s, base, figures) {
       agents: figures.agents ? agents : [],
       agentNames: { [A1]: 'find the ring code', [A2]: 'draft the change' },
       agentInfo: { [A1]: { type: 'Explore', at: ms(10) }, [A2]: { type: 'Plan', at: ms(11) } },
-      agentFaults: [...agentFaults],
       context: figures.context,
       peakContext: figures.context,
       phase: isAnswered ? 'done' : 'thinking',
       ...(isAnswered ? { answeredAt } : {}),
       ...(plan ? { plan } : {}),
       changed,
-      satellites: figures.satellites ? { files: [...files.values()], web: [...servers.values()] } : {},
+      satellites: figures.satellites ? { files: [...files.values()], skills: [...servers.values()] } : {},
       local,
       turns,
       timeline,

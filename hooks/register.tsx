@@ -79,23 +79,21 @@ async function quietly<T>(work: () => Promise<T>): Promise<T | undefined> {
   }
 }
 
-/** What a spawn tells of its subagent, kept by id (the last 24): its parent, its type's name and, under a running Workflow call, that call's row. */
-const spawnInfo = (b: Board, id: string, e: { parentAgentId?: string; subagentType?: string }, now: number, workflow: string): Pick<Board, 'agentInfo'> => {
-  const run = b.entries.find(x => x.status === 'run' && x.agentId === undefined && x.station === 'agents' && x.label === workflow)
+/** What a spawn tells of its subagent, kept by id (the last 24): its parent and its type's name. */
+const spawnInfo = (b: Board, id: string, e: { parentAgentId?: string; subagentType?: string }, now: number): Pick<Board, 'agentInfo'> => {
   const info: AgentInfo = {
     at: now,
     ...(e.parentAgentId ? { parent: e.parentAgentId } : {}),
     ...(e.subagentType ? { type: Array.from(clean(e.subagentType)).slice(0, 24).join('') } : {}),
-    ...(run !== undefined ? { run: run.id } : {}),
   }
   return { agentInfo: Object.fromEntries([...Object.entries(b.agentInfo ?? {}), [id, info]].slice(-24)) }
 }
 
 /** Keeps what a spawn told of its subagent. */
-async function noteSpawn($: EngineInterface, id: string, e: { parentAgentId?: string; subagentType?: string }, workflow: string): Promise<void> {
+async function noteSpawn($: EngineInterface, id: string, e: { parentAgentId?: string; subagentType?: string }): Promise<void> {
   await quietly(async () => {
     const now = await $.clock.now()
-    await update($, board, b => ({ ...b, ...spawnInfo(b, id, e, now, workflow) }))
+    await update($, board, b => ({ ...b, ...spawnInfo(b, id, e, now) }))
   })
 }
 
@@ -177,8 +175,8 @@ function closeRuns(b: Board, pick: (e: Entry) => boolean, now: number): Pick<Boa
 const oneMore = (counts: Board['faults'], station: StationId): Board['faults'] => ({ ...counts, [station]: (counts?.[station] ?? 0) + 1 })
 
 /**
- * A call that ended badly counts on its station, an error with the faults and a refusal with the blocks, and marks the
- * subagent that made it.
+ * A call that ended badly counts on its station, an error with the faults and a refusal with the blocks. A subagent's own
+ * failure shows on its Agent call's row; one bad call inside it does not mark it.
  */
 function tally(
   b: Board,
@@ -186,16 +184,15 @@ function tally(
   status: Status,
   agentId?: string,
   turn?: number,
-): Pick<Board, 'faults' | 'faultTotals' | 'blocks' | 'blockTotals' | 'agentFaults' | 'turns'> {
+): Pick<Board, 'faults' | 'faultTotals' | 'blocks' | 'blockTotals' | 'turns'> {
   if (status !== 'err' && status !== 'block') return {}
-  const agentFaults = agentId === undefined || (b.agentFaults ?? []).includes(agentId) ? {} : { agentFaults: [...(b.agentFaults ?? []), agentId].slice(-12) }
   const bad =
     status === 'err'
       ? { faults: oneMore(b.faults, station), faultTotals: oneMore(b.faultTotals, station) }
       : { blocks: oneMore(b.blocks, station), blockTotals: oneMore(b.blockTotals, station) }
   // An error counts on the turn of the call.
   const turns = status === 'err' && station !== 'model' && station !== 'you' ? inTurn(b, t => ({ ...t, errors: t.errors + 1 }), turn) : {}
-  return { ...bad, ...agentFaults, ...turns }
+  return { ...bad, ...turns }
 }
 
 /** The calls that read or change a file. */
@@ -1046,7 +1043,7 @@ export const register: Register = (on, options) => {
         update($, board, b => ({ ...b, agentNames: Object.fromEntries([...Object.entries(b.agentNames ?? {}), [agentId, name]].slice(-12)) })),
       )
     }
-    if (agentId !== undefined) await noteSpawn($, agentId, e, t.workflow)
+    if (agentId !== undefined) await noteSpawn($, agentId, e)
     return spawned
   })
 

@@ -42,6 +42,44 @@
 .lines > div.legend {
   white-space: normal;
 }
+/* A call's row: its mark, its station, what it did, and its time in a column of its own at the right. */
+.lines > div.row {
+  display: grid;
+  grid-template-columns: 2ch var(--station, 8ch) minmax(0, 1fr) auto;
+  column-gap: 1.2ch;
+}
+.lines > div.row > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: pre;
+}
+.lines > div.row > span:last-child {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+/* The handle between the map and the lines: drag it to share the window between them. */
+#split {
+  flex: none;
+  height: 9px;
+  cursor: row-resize;
+  touch-action: none;
+  position: relative;
+}
+#split::after {
+  content: '';
+  position: absolute;
+  left: 45%;
+  right: 45%;
+  top: 3px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--dim);
+  opacity: 0.35;
+}
+#split:hover::after {
+  background: var(--accent);
+  opacity: 0.9;
+}
 .wrap span {
   white-space: nowrap;
 }

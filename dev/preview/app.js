@@ -1,7 +1,7 @@
 // The preview page: draws the window (map and rows) from the made-up session or a live one, with tooltips and notes.
 
 import { feedLines, freshList } from '/window/lines.mjs'
-import { drawLines, drawLocal, setHelp, showTip as showTipAt, tipAt, untitle, watchLocal, wireHelp } from '/window/ui.js'
+import { drawLines, drawLocal, setHelp, showTip as showTipAt, tipAt, untitle, watchLocal, wireHelp, wireSplit } from '/window/ui.js'
 import { LOOP_S, boardAt } from './scene.js'
 
 const $ = id => document.getElementById(id)
@@ -10,7 +10,7 @@ const mapBox = $('map')
 const rowsBox = $('rows')
 const tip = $('tip')
 const help = $('help')
-const LINE_H = 17
+const LINE_H = 22
 
 const DEFAULTS = {
   source: 'scene',
@@ -81,7 +81,9 @@ function setTime(s) {
 function mapRoom() {
   const rows = Math.max(3, Number(state.options.windowRows) || 10)
   const local = $('local').hidden ? 0 : $('local').offsetHeight
-  const room = Math.max(120, pane.clientHeight - rows * LINE_H - 16 - local)
+  // The lines' height as dragged at the handle, or windowRows until it is.
+  const list = state.listPx > 0 ? state.listPx : rows * LINE_H + 12
+  const room = Math.max(120, pane.clientHeight - list - local - $('split').offsetHeight)
   // As large as the width allows while the rows keep their room, as renderer/layout.mjs lays out the window.
   return { w: pane.clientWidth, h: Math.min(room, Math.round((pane.clientWidth * (lib?.H ?? 430)) / (lib?.W ?? 460))) }
 }
@@ -93,7 +95,8 @@ function renderRows(feed) {
   setHelp(help, keyHelp)
   drawLocal($('local'), feed.local)
   const rows = Math.max(3, Number(state.options.windowRows) || 10)
-  drawLines(rowsBox, feedLines(feed, freshList(), rows, false).lines.slice(0, rows))
+  // Every line the window would hold; the box scrolls when they overflow.
+  drawLines(rowsBox, feedLines(feed, freshList(), Math.max(rows, 200), false).lines)
 }
 
 function setMap(svg) {
@@ -164,6 +167,14 @@ const showTip = () => showTipAt(tip, mapBox, pointer)
 
 // The ? in the corner: the window's keys, as the map window shows them.
 wireHelp(tip, help, () => keyHelp)
+wireSplit(
+  $('split'),
+  px => {
+    state.listPx = Math.max(3 * LINE_H, Math.min(pane.clientHeight - 200, px - (innerHeight - pane.getBoundingClientRect().bottom)))
+    draw()
+  },
+  save,
+)
 watchLocal($('local'))
 mapBox.addEventListener('mousemove', e => {
   pointer = { x: e.clientX, y: e.clientY }

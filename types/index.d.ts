@@ -60,8 +60,8 @@ export type LimitKind = 'five_hour' | 'seven_day'
 /** A file or MCP server a station serves: its name, how often it was used, whether it was edited, and when last. */
 export type Satellite = { name: string; uses: number; isEdited?: true; lastAt: number }
 
-/** What a subagent's spawn told: who it came from, its type's name, when, and the Workflow call it ran under. */
-export type AgentInfo = { parent?: string; type?: string; at: number; run?: string }
+/** What a subagent's spawn told: who it came from, its type's name, and when. */
+export type AgentInfo = { parent?: string; type?: string; at: number }
 
 /** A stretch of time at a station, or a wait on the person; `until` is unset while it goes on, `bad` marks an error or a refusal. */
 export type TimelineMark = { at: number; until?: number; of?: string; kind: StationId | 'wait'; bad?: true }
@@ -91,8 +91,6 @@ export type Board = {
   agentNames?: Record<string, string>
   /** What each subagent's spawn told, by its id: the last 24. */
   agentInfo?: Record<string, AgentInfo>
-  /** Subagents a call of which failed or was refused. */
-  agentFaults?: string[]
   /** How full the context window is, 0 to 100. */
   context?: number
   /** The highest the context's fill has been this session. */

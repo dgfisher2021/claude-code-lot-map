@@ -39,9 +39,9 @@
         display: block;
       }
       #lines {
-        font: 13px/17px var(--mono);
-        padding: 8px 10px 0;
-        overflow: hidden;
+        font: 13px/22px var(--mono);
+        padding: 4px 12px 8px;
+        overflow-y: auto;
         flex: 1;
         min-height: 0;
       }
@@ -57,6 +57,7 @@
   <body>
     <div id="map"><div id="say">Starting the map…</div></div>
     <div id="local" hidden></div>
+    <div id="split"></div>
     <div id="lines" class="lines"></div>
     <button id="help" type="button" hidden></button>
     <div id="tip"></div>

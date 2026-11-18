@@ -57,10 +57,26 @@
       #map svg {
         display: block;
       }
-      #rows {
-        font: 13px/17px var(--mono);
-        padding: 8px 10px 0;
+      /* ?window=<session>: one session filling the window, as the map window shows it. */
+      body.windowed {
+        padding: 0;
+        height: 100vh;
         overflow: hidden;
+      }
+      body.windowed #side {
+        display: none;
+      }
+      body.windowed #pane {
+        width: 100vw;
+        height: 100vh;
+        border: 0;
+        border-radius: 0;
+        resize: none;
+      }
+      #rows {
+        font: 13px/22px var(--mono);
+        padding: 4px 12px 8px;
+        overflow-y: auto;
         flex: 1;
       }
       .pin {
@@ -190,6 +206,7 @@
       <div id="error"></div>
       <div id="map"></div>
       <div id="local" hidden></div>
+      <div id="split"></div>
       <div id="rows" class="lines"></div>
       <button id="help" type="button" hidden></button>
     </div>
