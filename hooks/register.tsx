@@ -512,9 +512,8 @@ async function writePicture($: EngineInterface, state: Board, now: number, setup
  * Terminal: `/workmap window` keeps the live map in a folder (map.svg, the rows under it in feed.json, and a heartbeat
  * in alive) and opens renderer/view.mjs beside the session to draw them.
  */
-const sharing: { dir?: string; timer?: Timer; written: string; rings: string; still: string; line: string; beat: number } = {
+const sharing: { dir?: string; timer?: Timer; written: string; still: string; line: string; beat: number } = {
   written: '',
-  rings: '',
   still: '',
   line: '',
   beat: 0,
@@ -558,11 +557,9 @@ async function share($: EngineInterface, setup: Setup): Promise<void> {
     const now = await $.clock.now()
     const seen = JSON.stringify(state)
     const warnings = warningsOf(state, now, setup.t)
-    // A ring comes and goes with time alone, so the stations that wear one count in what decides a rewrite.
-    const rings = warnings.map(w => w.station ?? '').join()
     // Without animation nothing fades the map's marks out by itself, so a still map is written again when its drawing changes.
-    const isMoved = seen !== sharing.written || rings !== sharing.rings
-    // The picture is built only when the board or a ring moved, or, still, to see whether its drawing did.
+    const isMoved = seen !== sharing.written
+    // The picture is built only when the board moved, or, still, to see whether its drawing did.
     const svg = isMoved || setup.motion === 'reduced' ? framedMap(state, now, setup, 920, 860) : undefined
     const isChanged = isMoved || (svg !== undefined && svg !== sharing.still)
     // The repository and branch, asked again every half minute while the window is wanted: a checkout changes the branch.
@@ -575,7 +572,6 @@ async function share($: EngineInterface, setup: Setup): Promise<void> {
     }
     if (isChanged && svg !== undefined) {
       sharing.written = seen
-      sharing.rings = rings
       sharing.still = svg
       await $.fs.write(`${dir}/map.svg`, svg)
     }
@@ -794,7 +790,7 @@ async function runCommand($: EngineInterface, args: string, setup: Setup, openin
 async function stopSharing($: EngineInterface): Promise<void> {
   const dir = sharing.dir
   sharing.timer?.cancel()
-  Object.assign(sharing, { dir: undefined, timer: undefined, written: '', rings: '', still: '', line: '', beat: 0 })
+  Object.assign(sharing, { dir: undefined, timer: undefined, written: '', still: '', line: '', beat: 0 })
   if (dir !== undefined && /\/workmap-live-[a-z0-9]+$/.test(dir)) await quietly(() => $.process.run(['rm', '-rf', '--', dir]))
 }
 

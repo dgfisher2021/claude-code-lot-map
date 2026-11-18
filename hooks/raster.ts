@@ -33,7 +33,6 @@ import {
   shortModel,
   stateOf,
   stationState,
-  warningsOf,
   wearOf,
 } from './map'
 import type { Palette, Point, Setup } from './map'
@@ -450,7 +449,6 @@ export function paintMap(board: Board, now: number, setup: Setup, columns: numbe
   })
 
   const states = STATIONS.map(st => stationState(st.id, recent, board, now))
-  const warned = new Set(warningsOf(board, now, setup.t).map(w => w.station))
 
   // Under the stations: the glow, the beat of what runs and the two hands of its clock.
   STATIONS.forEach((st, i) => {
@@ -533,7 +531,7 @@ export function paintMap(board: Board, now: number, setup: Setup, columns: numbe
     if (running.length > 0) cv.ring(p, NODE, 1.2, color)
     else if (isLit || isAlarm) cv.ring(p, NODE, 1.2, color, isStill ? 1 : 1 - fade / span)
 
-    const sign = warned.has(st.id) ? c.accent : isAlarm ? c.red : isLit ? hot : st.id === 'memory' && count > 0 ? main : c.ash
+    const sign = isAlarm ? c.red : isLit ? hot : st.id === 'memory' && count > 0 ? main : c.ash
     if (hasSigns) words.push({ col: Math.floor(colOf(p.x)), row: Math.floor(rowOf(p.y)), parts: [{ text: SIGNS[st.id], fg: sign }] })
 
     const parts = [{ text: setup.t.stations[st.id], fg: isLit || isAlarm ? c.bone : c.ash }]

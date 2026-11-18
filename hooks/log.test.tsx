@@ -32,7 +32,11 @@ function fakeHost(on: Parameters<typeof mock.clock>[0]): string[][] {
 test('logLines: every entry newest first and unfolded, a closing line only when older calls are gone', () => {
   const entries = [call(1), call(2), call(3)]
   const whole = logLines(entries, en)
-  expect(whole.map(l => l.line.slice(2))).toEqual(['Files    f3.ts  10 ms', 'Files    f2.ts  10 ms', 'Files    f1.ts  10 ms'])
+  // The station's column is as wide as the longest station name.
+  const files = 'Files'.padEnd(Math.max(8, ...Object.values(en.stations).map(n => n.length)))
+  expect(whole.map(l => l.line.slice(2))).toEqual([`${files} f3.ts  10 ms`, `${files} f2.ts  10 ms`, `${files} f1.ts  10 ms`])
+  // The window gets the row's parts, to align them in columns.
+  expect(whole[0]?.cols).toEqual(['·', 'Files', 'f3.ts', '10 ms'])
   expect(whole.map(l => l.station)).toEqual(['files', 'files', 'files'])
   const cut = logLines(entries, en, {}, 10)
   expect(cut.length).toBe(4)
