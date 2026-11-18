@@ -202,6 +202,12 @@ const ICONS = {
   tokens: '<path d="m12 3 9 4.5-9 4.5-9-4.5zM3 12l9 4.5 9-4.5M3 16.5l9 4.5 9-4.5"/>',
 }
 // An icon carries its own size, so it stays small even before the page's styles apply.
+// A most-used item's icon: a pencil for a file edited, an eye for one only read, a server for an MCP server.
+const TOP_ICONS = {
+  edited: '<path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>',
+  read: '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
+  server: '<path d="M4 4h16v6H4zM4 14h16v6H4zM8 7h.01M8 17h.01"/>',
+}
 const svgIcon = (inner, size = 16, viewBox = '0 0 24 24', width = 2) =>
   `<svg width="${size}" height="${size}" viewBox="${viewBox}" fill="none" stroke="currentColor" stroke-width="${width}" stroke-linecap="round" stroke-linejoin="round">${inner}</svg>`
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c])
@@ -214,9 +220,19 @@ function tipHtml(t) {
   const rows = t.figures
     .map(f => `<div class="fig${f.tone ? ` t-${f.tone}` : ''}">${svgIcon(ICONS[f.icon] ?? '')}<span>${esc(f.label)}</span><b>${esc(f.value)}</b></div>`)
     .join('')
+  const top = t.top
+    ? `<div class="tip-section">${esc(t.top.title)}</div><div class="tip-top">` +
+      t.top.items
+        .map(
+          i =>
+            `<div class="fig">${svgIcon(TOP_ICONS[i.icon] ?? '')}<span>${esc(i.name)}${i.note ? ` <small>${esc(i.note)}</small>` : ''}</span><b>${esc(i.uses)}</b></div>`,
+        )
+        .join('') +
+      '</div>'
+    : ''
   return (
     `<div class="tip-head">${svgIcon(`<path d="${esc(glyph)}"/>`, 20, '-10 -10 20 20', 1.4)}<strong>${esc(t.name)}</strong></div>` +
-    `<p class="tip-about">${withCode(t.about)}</p><div class="tip-figures">${rows}</div>`
+    `<p class="tip-about">${withCode(t.about)}</p><div class="tip-figures">${rows}</div>${top}`
   )
 }
 

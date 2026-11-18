@@ -278,11 +278,6 @@ export function stillChangeIn(board: Board, now: number): number | undefined {
       const elapsed = now - Math.min(...running.map(e => e.startedAt))
       waits.push(STILL_STEP_MS - (elapsed % STILL_STEP_MS))
     } else if (isLit || isAlarm) waits.push(span - fade)
-    // A lit satellite goes out when its time is up.
-    for (const sat of drawnOf(board.satellites?.[s.id])) {
-      const left = satelliteLitFor(sat, now)
-      if (left !== undefined) waits.push(left)
-    }
   }
   for (const leg of legsOf(recent, now)) if (leg.age < TRAIL_HOLD_MS) waits.push(TRAIL_HOLD_MS - leg.age)
   return waits.length > 0 ? Math.max(1, Math.min(...waits)) : undefined
@@ -516,8 +511,14 @@ export type TipFigure = {
   tone?: 'bad' | 'block' | 'run'
 }
 
-/** A station's tooltip: its name, what lands there, and its figures; the calls and this turn always, the rest when they have something. */
-export type StationTip = { station: StationId; name: string; about: string; figures: TipFigure[] }
+/** One of a station's most used: a file (edited, or only read) or an MCP server, with how often. */
+export type TipItem = { name: string; uses: string; icon: 'edited' | 'read' | 'server'; note?: string }
+
+/**
+ * A station's tooltip: its name, what lands there, and its figures (the calls and this turn always, the rest when they have
+ * something), then its most used files or servers when it has any.
+ */
+export type StationTip = { station: StationId; name: string; about: string; figures: TipFigure[]; top?: { title: string; items: TipItem[] } }
 
 export function stationTip(board: Board, id: StationId, t: Strings, running = 0, spent?: Board['spent']): StationTip {
   const count = board.counts[id] ?? 0
@@ -525,6 +526,13 @@ export function stationTip(board: Board, id: StationId, t: Strings, running = 0,
   const share = timeShareOf(board, id)
   const tokens = spent?.[id] ?? 0
   const when = (n: number, figure: TipFigure): TipFigure[] => (n > 0 ? [figure] : [])
+  const listed = listedOf(board.satellites?.[id])
+  const items = listed.map(
+    (sat): TipItem =>
+      id === 'files'
+        ? { name: sat.name, uses: `×${sat.uses}`, icon: sat.isEdited === true ? 'edited' : 'read', note: sat.isEdited === true ? t.satelliteEdited : t.tip.read }
+        : { name: sat.name, uses: `×${sat.uses}`, icon: 'server' },
+  )
   return {
     station: id,
     name: t.stations[id],
@@ -540,8 +548,12 @@ export function stationTip(board: Board, id: StationId, t: Strings, running = 0,
       ...when(board.blocks?.[id] ?? 0, { icon: 'refused', label: t.tip.refused, value: String(board.blocks?.[id] ?? 0), tone: 'block' }),
       ...when(tokens, { icon: 'tokens', label: t.tip.tokens, value: `~${tokensShort(tokens)}` }),
     ],
+    ...(items.length > 0 ? { top: { title: t.tip.mostUsed, items } } : {}),
   }
 }
+
+/** A station's name sits below the outermost ring it can wear (the warning ring at NODE + 12), never on one. */
+const NAME_DROP = NODE + 24
 
 function station(
   s: (typeof STATIONS)[number],
@@ -608,7 +620,7 @@ function station(
   let over =
     `<circle cx="${x}" cy="${y}" r="${NODE}" fill="${c.raised}" stroke="${c.line}" stroke-width="1.2"/>${cooling}` +
     `<path transform="translate(${x} ${y})" d="${s.icon}" fill="none" stroke="${glyphColor}" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round"/>` +
-    `<text x="${x}" y="${n1(p.y + NODE + 15)}" text-anchor="middle" ${FONT} font-size="11.5" ${rim} fill="${isLit || isAlarm ? c.bone : c.ash}">${names[s.id]}${added}</text>`
+    `<text x="${x}" y="${n1(p.y + NAME_DROP)}" text-anchor="middle" ${FONT} font-size="11.5" ${rim} fill="${isLit || isAlarm ? c.bone : c.ash}">${names[s.id]}${added}</text>`
 
   const turn = board.turnCounts?.[s.id] ?? 0
   const share = timeShareOf(board, s.id)
@@ -727,12 +739,6 @@ function crewRows(crew: readonly Crew[], at: Point): { shown: Crew[]; top: numbe
   return { shown, top: isClear(at, below, shown.length) || !isClear(at, above, shown.length) ? below : above }
 }
 
-/** The room each crew label takes, so the satellites keep clear of it. */
-function crewBoxes(crew: readonly Crew[], at: Point): Box[] {
-  const { shown, top } = crewRows(crew, at)
-  return shown.map((m, k) => ({ x0: at.x - 28, y0: top + k * CREW_ROW, x1: at.x - 15 + [...(m.label as string)].length * 4.3, y1: top + k * CREW_ROW + 9 }))
-}
-
 /** The label rows of the first six: a dot, its clock arc (a lap a minute) and its name, under the station's count, or above it when that room is taken. */
 function crewLabels(crew: readonly Crew[], at: Point, c: Palette, now: number, isStill: boolean): string {
   const { shown, top } = crewRows(crew, at)
@@ -829,7 +835,7 @@ export function drawMap(board: Board, now: number, setup: Setup, isFilling = fal
     body += pulse(b, a, e.status === 'ok' ? c.ash : c.red, now - (e.endedAt as number), setup.contextCost ? pulseRadius(e.tokens, 2.6) : 2.6)
   }
 
-  body += drawn.map(d => d.over).join('') + satellites(board, now, setup, c, isStill, crewBoxes(crewOf(board), agentsAt))
+  body += drawn.map(d => d.over).join('')
 
   // Each subagent still at work circles the agents station; a Workflow's agents are one dot between them.
   const crew = crewOf(board)
@@ -896,11 +902,11 @@ export function drawMap(board: Board, now: number, setup: Setup, isFilling = fal
       : ''
   // A wait on you wears a dashed ring inside the core's edge, a sign that does not depend on the blink.
   if (state === 'waiting') body += `<circle cx="${CX}" cy="${CY}" r="${CORE - 4}" fill="none" stroke="${c.accent}" stroke-width="1.4" stroke-dasharray="3 3"/>`
-  body += `<text x="${CX}" y="${CY + CORE + 17}" text-anchor="middle" ${FONT} font-size="9" paint-order="stroke" stroke="${c.ground}" stroke-width="3.5" stroke-linejoin="round" fill="${stateColor}">${blink}${escapeXml(setup.t.states[state])}</text>`
+  body += `<text x="${CX}" y="${CY + CORE + 25}" text-anchor="middle" ${FONT} font-size="9" paint-order="stroke" stroke="${c.ground}" stroke-width="3.5" stroke-linejoin="round" fill="${stateColor}">${blink}${escapeXml(setup.t.states[state])}</text>`
   const spent = costText(board.cost)
   // The cost is an estimate, and its title says so.
   if (spent !== undefined) {
-    body += `<text x="${CX}" y="${CY + CORE + 28}" text-anchor="middle" ${FONT} font-size="8" fill="${c.dim}"><title>${escapeXml(setup.t.estimatedCost(spent))}</title>${spent}</text>`
+    body += `<text x="${CX}" y="${CY + CORE + 36}" text-anchor="middle" ${FONT} font-size="8" fill="${c.dim}"><title>${escapeXml(setup.t.estimatedCost(spent))}</title>${spent}</text>`
   }
 
   // A changed model rings at the core and at its station for a few seconds.
@@ -1408,12 +1414,10 @@ export function describeNow(board: Board, t: Strings, now: number, withContext =
 
 // ---- satellites -------------------------------------------------------------------------------
 
-/** How many satellites a station keeps, how many it draws, and how long a name shows. */
+/** How many satellites a station keeps: its tooltip lists the most used. */
 const SAT_KEPT = 12
-const SAT_DRAWN = 5
-const SAT_NAME = 12
-/** The lowest a satellite's label may reach: just inside the map's bottom edge. */
-const SAT_BOTTOM = 428
+/** How many of them a tooltip lists. */
+const SAT_LISTED = 5
 
 /** The satellites with one more use of `name` at `station`: twelve kept, the least used going first and never the newest. */
 export function withSatellite(sat: Board['satellites'], station: StationId, name: string, isEdited: boolean, now: number): Board['satellites'] {
@@ -1428,97 +1432,6 @@ export function withSatellite(sat: Board['satellites'], station: StationId, name
   return { ...sat, [station]: [...rest, next] }
 }
 
-/** The satellites a station draws: the most used, the latest first among equals. */
-const drawnOf = (list: readonly Satellite[] | undefined): Satellite[] => [...(list ?? [])].sort((a, b) => b.uses - a.uses || b.lastAt - a.lastAt).slice(0, SAT_DRAWN)
-
-/** How long a satellite stays lit after its use, or undefined when it is not lit. */
-const satelliteLitFor = (s: Satellite, now: number): number | undefined => (now - s.lastAt >= 0 && now - s.lastAt < GLOW_MS ? GLOW_MS - (now - s.lastAt) : undefined)
-
-type Box = { x0: number; y0: number; x1: number; y1: number }
-type Disc = { x: number; y: number; r: number }
-const overlap = (a: Box, b: Box): boolean => a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y0 < a.y1
-const touches = (b: Box, d: Disc): boolean => Math.hypot(Math.max(b.x0 - d.x, 0, d.x - b.x1), Math.max(b.y0 - d.y, 0, d.y - b.y1)) < d.r
-
-/** The plain text of a station's count line, as the map draws it, to size the room it takes. */
-function countText(board: Board, id: StationId, hasCost: boolean): string {
-  const count = board.counts[id] ?? 0
-  const pushed = id === 'memory' ? Math.min(count, board.pushed ?? 0) : 0
-  const turn = board.turnCounts?.[id] ?? 0
-  const total = board.faultTotals?.[id] ?? 0
-  const tokens = hasCost ? (board.spent?.[id] ?? 0) : 0
-  return (
-    (pushed === 0 ? String(count) : `${count - pushed > 0 ? `${count - pushed} ` : ''}↓${pushed}`) +
-    (turn > 0 && turn < count ? ` +${turn}` : '') +
-    (total > 0 ? ` · ${total}✕` : '') +
-    (tokens > 0 ? ` · ${tokensShort(tokens)}` : '')
-  )
-}
-
-/**
- * The small labelled dots around the stations that serve files or servers: on an arc outside the station, away from the core,
- * moved along the arc (and out a ring) wherever a name, a count, another station or the edge is in the way.
- */
-function satellites(board: Board, now: number, setup: Setup, c: Palette, isStill: boolean, crewRoom: Box[]): string {
-  if (STATIONS.every(s => (board.satellites?.[s.id]?.length ?? 0) === 0)) return ''
-  const core: Point = { x: CX, y: CY }
-  const discs: Disc[] = [{ ...core, r: CORE + 16 }]
-  const boxes: Box[] = [...crewRoom]
-  STATIONS.forEach((s, i) => {
-    const p = place(i)
-    discs.push({ ...p, r: s.id === 'agents' ? NODE + 34 : NODE + 12 })
-    const half = ([...setup.t.stations[s.id]].length * 7.2) / 2 + 2
-    boxes.push({ x0: p.x - half, y0: p.y + NODE + 3, x1: p.x + half, y1: p.y + NODE + 19 })
-    if ((board.counts[s.id] ?? 0) > 0) {
-      const wide = ([...countText(board, s.id, setup.contextCost)].length * 5.7) / 2 + 2
-      boxes.push({ x0: p.x - wide, y0: p.y + NODE + 19, x1: p.x + wide, y1: p.y + NODE + 32 })
-    }
-  })
-  const rim = `paint-order="stroke" stroke="${c.ground}" stroke-width="3" stroke-linejoin="round"`
-  let out = ''
-  STATIONS.forEach((s, i) => {
-    if (s.id === 'agents') return
-    const p = place(i)
-    const away = Math.atan2(p.y - CY, p.x - CX)
-    for (const sat of drawnOf(board.satellites?.[s.id])) {
-      const label = clean(sat.name, SAT_NAME)
-      const width = [...label].length * 4.4 + 1
-      let spot: { x: number; y: number; isRight: boolean; box: Box; dot: Box } | undefined
-      for (const r of [NODE + 16, NODE + 30]) {
-        for (let k = 0; k < 19 && spot === undefined; k++) {
-          const a = away + ((k % 2 === 1 ? 1 : -1) * Math.ceil(k / 2) * 14) / r
-          const x = p.x + r * Math.cos(a)
-          const y = p.y + r * Math.sin(a)
-          // A satellite is nearer its own station than any other's centre, or it is not drawn.
-          if (STATIONS.some((_, j) => j !== i && Math.hypot(x - place(j).x, y - place(j).y) <= r)) continue
-          const dot: Box = { x0: x - 4, y0: y - 4, x1: x + 4, y1: y + 4 }
-          for (const isRight of Math.cos(a) >= 0 ? [true, false] : [false, true]) {
-            const box: Box = isRight ? { x0: x + 5, y0: y - 5, x1: x + 6 + width, y1: y + 5 } : { x0: x - 6 - width, y0: y - 5, x1: x - 5, y1: y + 5 }
-            const isIn = Math.min(dot.x0, box.x0) >= 2 && Math.max(dot.x1, box.x1) <= W - 2 && Math.min(dot.y0, box.y0) >= 2 && Math.max(dot.y1, box.y1) <= SAT_BOTTOM
-            if (isIn && ![dot, box].some(b => boxes.some(o => overlap(b, o)) || discs.some(d => touches(b, d)))) {
-              spot = { x, y, isRight, box, dot }
-              break
-            }
-          }
-        }
-        if (spot !== undefined) break
-      }
-      if (spot === undefined) continue
-      boxes.push(spot.dot, spot.box)
-      const cx = n1(spot.x)
-      const cy = n1(spot.y)
-      const fill = sat.isEdited === true ? `fill="${c.dim}"` : `fill="none" stroke="${c.dim}" stroke-width="1"`
-      const left = satelliteLitFor(sat, now)
-      const lit =
-        left === undefined
-          ? ''
-          : isStill
-            ? `<circle cx="${cx}" cy="${cy}" r="3" fill="${c.hot}" data-lit="1"/>`
-            : `<circle cx="${cx}" cy="${cy}" r="3" fill="${c.hot}" data-lit="1"><animate attributeName="opacity" values="1;0" begin="${clock(left - GLOW_MS)}" dur="${clock(GLOW_MS)}" fill="freeze"/></circle>`
-      const title = `${sat.name}: ${setup.t.callsHere(sat.uses)}${sat.isEdited === true ? ` · ${setup.t.satelliteEdited}` : ''}`
-      out +=
-        `<g><title>${escapeXml(title)}</title><circle cx="${cx}" cy="${cy}" r="3" ${fill} data-satellite="${sat.isEdited === true ? 'edited' : 'read'}"/>${lit}` +
-        `<text x="${n1(spot.x + (spot.isRight ? 6 : -6))}" y="${n1(spot.y + 2.5)}" text-anchor="${spot.isRight ? 'start' : 'end'}" ${FONT} font-size="7" ${rim} fill="${c.dim}">${escapeXml(label)}</text></g>`
-    }
-  })
-  return out
-}
+/** The satellites a tooltip lists: the most used, the latest first among equals. */
+const listedOf = (list: readonly Satellite[] | undefined): Satellite[] =>
+  [...(list ?? [])].sort((a, b) => b.uses - a.uses || b.lastAt - a.lastAt).slice(0, SAT_LISTED)

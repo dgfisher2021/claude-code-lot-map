@@ -69,7 +69,7 @@ export type Strings = {
   errorsInSession: (n: number) => string
   /** A station's tooltip: what lands there (commands in backticks), and the label of each figure. */
   stationAbout: Record<StationId, string>
-  tip: { calls: string; turn: string; running: string; time: string; errors: string; session: string; refused: string; pushed: string; tokens: string }
+  tip: { calls: string; turn: string; running: string; time: string; errors: string; session: string; refused: string; pushed: string; tokens: string; mostUsed: string; read: string }
   context: string
   andMore: (n: number) => string
   /** The changed line's count, and what /workmap changed answers when nothing was written or edited. */
@@ -226,6 +226,8 @@ const en: Strings = {
     refused: 'Refused since your last message',
     pushed: 'Brought in by hooks, unasked',
     tokens: 'Tokens added to context',
+    mostUsed: 'Most used',
+    read: 'read',
   },
   planHeader: (done, total) => `Plan ${done}/${total}`,
   planCalls: n => `${n} ${n === 1 ? 'call' : 'calls'}`,
