@@ -78,6 +78,8 @@ export type Board = {
   agentFaults?: string[]
   /** How full the context window is, 0 to 100. */
   context?: number
+  /** The highest the context's fill has been this session. */
+  peakContext?: number
   /** When the model last changed. */
   switchedAt?: number
   /** Where the main loop's turn stands: thinking from the person's message, done at its end, compacting meanwhile. */
